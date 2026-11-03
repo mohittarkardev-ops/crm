@@ -1,0 +1,41 @@
+import { createClient } from "@/lib/supabase/server";
+import { rowsOf } from "@/lib/data/helpers";
+
+/** Existing insurer names, offered as suggestions in the Add Policy form so names stay consistent. */
+export async function getInsurerNames(): Promise<string[]> {
+  const db = await createClient();
+  const res = await db.from("insurers").select("name").order("name");
+  return rowsOf<{ name: string }>(res, "Insurers").map((i) => i.name);
+}
+
+export type BusinessProfile = {
+  businessName: string;
+  licence: string;
+  supportPhone: string;
+  supportWhatsapp: string;
+  disclaimer: string;
+};
+
+/** The business profile from app_settings. `missing` is true until migration 0005 has been run. */
+export async function getBusinessProfile(): Promise<{ profile: BusinessProfile; missing: boolean }> {
+  const db = await createClient();
+  const res = await db.from("app_settings").select("key, value");
+
+  const empty: BusinessProfile = { businessName: "", licence: "", supportPhone: "", supportWhatsapp: "", disclaimer: "" };
+  if (res.error) {
+    if (res.error.code === "PGRST205" || res.error.code === "42P01") return { profile: empty, missing: true };
+    throw new Error(`Business profile: ${res.error.message}`);
+  }
+
+  const map = new Map(rowsOf<{ key: string; value: string | null }>(res, "Business profile").map((r) => [r.key, r.value ?? ""]));
+  return {
+    missing: false,
+    profile: {
+      businessName: map.get("business_name") ?? "",
+      licence: map.get("irdai_licence") ?? "",
+      supportPhone: map.get("support_phone") ?? "",
+      supportWhatsapp: map.get("support_whatsapp") ?? "",
+      disclaimer: map.get("disclaimer") ?? "",
+    },
+  };
+}

@@ -1,0 +1,267 @@
+@import "tailwindcss";
+
+/* ------------------------------------------------------------------
+   SecureDrive CRM tokens — source of truth is design.md (section 2).
+   Never hard-code hex values in components; use the utilities below.
+------------------------------------------------------------------- */
+:root {
+  /* Canvas */
+  --bg-from: #f1f1f0;
+  --bg-via: #e7e7e6;
+  --bg-to: #dcdcdb;
+
+  /* Surfaces */
+  --surface: #f6f6f5;
+  --surface-strong: #ffffff;
+  --surface-muted: #ececeb;
+  --border-soft: rgba(255, 255, 255, 0.9);
+  --divider: rgba(28, 28, 28, 0.12);
+  --rule: #1c1c1c;
+  --sidebar: #e4e4e3;
+  --sidebar-active: #f3f3f2;
+
+  /* Text */
+  --text: #1c1c1c;
+  --text-muted: #6e6e6e;
+  --text-faint: #9a9a9a;
+
+  /* Accent (yellow) */
+  --accent: #ede063;
+  --accent-strong: #ddd04a;
+  --accent-soft: #f6f1b8;
+  --accent-ink: #1c1c1c;
+
+  /* Chart greys (names kept for compatibility: blue/orange/lavender are now greys) */
+  --blue: #6f6f6f;
+  --blue-soft: #ececeb;
+  --orange: #a8a8a8;
+  --orange-soft: #ececeb;
+  --lavender: #2b2b2b;
+  --lavender-soft: #ececeb;
+  --grey: #d0d0d0;
+
+  /* Status */
+  --positive: #3f8f4a;
+  --positive-soft: #e4f1e5;
+  --negative: #d9534f;
+  --negative-soft: #fbe6e5;
+  --warning: #d99a1e;
+  --warning-soft: #fcf0d6;
+  --info: #4f74c8;
+  --info-soft: #e5ecfa;
+
+  /* Elevation */
+  --elev-1: 0 2px 12px rgba(0, 0, 0, 0.06);
+  --elev-2: 0 8px 24px rgba(0, 0, 0, 0.1);
+}
+
+/* Map tokens to Tailwind utilities (bg-surface, text-ink-muted, rounded-card ...) */
+@theme inline {
+  --color-surface: var(--surface);
+  --color-surface-strong: var(--surface-strong);
+  --color-surface-muted: var(--surface-muted);
+  --color-glass-border: var(--border-soft);
+  --color-divider: var(--divider);
+  --color-rule: var(--rule);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-active: var(--sidebar-active);
+
+  --color-ink: var(--text);
+  --color-ink-muted: var(--text-muted);
+  --color-ink-faint: var(--text-faint);
+
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-ink: var(--accent-ink);
+
+  --color-cat-blue: var(--blue);
+  --color-cat-blue-soft: var(--blue-soft);
+  --color-cat-orange: var(--orange);
+  --color-cat-orange-soft: var(--orange-soft);
+  --color-cat-lavender: var(--lavender);
+  --color-cat-lavender-soft: var(--lavender-soft);
+  --color-cat-grey: var(--grey);
+
+  --color-positive: var(--positive);
+  --color-positive-soft: var(--positive-soft);
+  --color-negative: var(--negative);
+  --color-negative-soft: var(--negative-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+
+  --radius-card: 12px;
+  --radius-tile: 8px;
+  --radius-control: 6px;
+
+  --shadow-card: var(--elev-1);
+  --shadow-card-hover: var(--elev-2);
+
+  --font-sans: var(--font-inter), system-ui, sans-serif;
+}
+
+html {
+  color-scheme: light;
+}
+
+body {
+  min-height: 100vh;
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 22px;
+  font-feature-settings: "tnum";
+  background: linear-gradient(160deg, var(--bg-from) 0%, var(--bg-via) 55%, var(--bg-to) 100%);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Only data is selectable: table cells, detail values and form fields. Headers, cards, charts and buttons are not. */
+body {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+td,
+dd,
+input,
+textarea,
+select,
+.select-text {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* Card surface (shadow is applied separately via shadow-card) */
+@utility glass {
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+}
+
+/* Focus ring on every interactive element */
+:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent-strong) 60%, transparent);
+  outline-offset: 2px;
+}
+
+/* Entry motion: fade + 8px slide, staggered via animation-delay */
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@utility fade-up {
+  animation: fade-up 250ms ease-out backwards;
+}
+
+/* Small dropdowns (account menu, notification panel) */
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@utility pop-in {
+  animation: pop-in 150ms ease-out;
+  transform-origin: top right;
+}
+
+/* Welcome splash: coloured washes spread across the screen, then dissolve into the CRM. */
+html[data-welcome="seen"] .welcome-splash {
+  display: none;
+}
+
+@keyframes welcome-wash {
+  from {
+    transform: scale(0);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+
+@keyframes welcome-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.welcome-wash {
+  position: absolute;
+  width: 300vmax;
+  height: 300vmax;
+  border-radius: 9999px;
+  transform: scale(0);
+  animation: welcome-wash 1500ms cubic-bezier(0.65, 0, 0.35, 1) forwards;
+}
+
+.welcome-wash-1 {
+  left: -150vmax;
+  top: calc(100% - 150vmax);
+  background: var(--accent);
+}
+
+.welcome-wash-2 {
+  left: calc(100% - 150vmax);
+  top: calc(100% - 150vmax);
+  background: var(--grey);
+  animation-delay: 500ms;
+}
+
+.welcome-wash-3 {
+  left: -150vmax;
+  top: -150vmax;
+  background: var(--bg-from);
+  animation-delay: 1100ms;
+}
+
+.welcome-item {
+  opacity: 0;
+  animation: welcome-in 700ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+/* Skeleton shimmer for loading states */
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@utility skeleton {
+  background: linear-gradient(90deg, var(--surface-muted) 25%, var(--surface-strong) 50%, var(--surface-muted) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 2.4s linear infinite;
+  border-radius: var(--radius-control);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
