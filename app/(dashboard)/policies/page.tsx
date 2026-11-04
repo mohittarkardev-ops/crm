@@ -77,7 +77,7 @@ export default async function PoliciesPage() {
               label: "Policy document",
               type: "file",
               accept: ".pdf,.jpg,.jpeg,.png,.webp",
-              hint: "PDF, JPG, PNG or WebP, up to 10 MB. Optional.",
+              hint: "PDF, JPG, PNG or WebP, up to 4 MB. Optional.",
             },
             { name: "documentType", label: "Document type", type: "select", options: DOCUMENT_TYPE_OPTIONS },
           ],

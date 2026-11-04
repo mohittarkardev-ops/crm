@@ -27,7 +27,7 @@ export async function getBusinessProfile(): Promise<{ profile: BusinessProfile; 
     throw new Error(`Business profile: ${res.error.message}`);
   }
 
-  const map = new Map(rowsOf<{ key: string; value: string | null }>(res, "Business profile").map((r) => [r.key, r.value ?? ""]));
+  const map = new Map(rowsOf<{ key: string; value: string | null }>(res, "Business profile").map((r): [string, string] => [r.key, r.value ?? ""]));
   return {
     missing: false,
     profile: {

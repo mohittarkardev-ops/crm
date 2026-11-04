@@ -1,22 +1,12 @@
-
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-
   experimental: {
-    serverActions: {
-      bodySizeLimit: "11mb",
-      allowedOrigins: [
-        "g2fpkpqk-3000.inc1.devtunnels.ms",
-      ],
-    },
+    // Document uploads go through Server Actions. Vercel itself rejects bodies over 4.5 MB, so uploads are capped at 4 MB
+    // (see lib/upload-limits.ts); this leaves headroom for the form fields.
+    serverActions: { bodySizeLimit: "5mb" },
   },
-
-  allowedDevOrigins: [
-    "g2fpkpqk-3000.inc1.devtunnels.ms",
-    "172.25.126.3",
-  ],
 };
 
 export default nextConfig;

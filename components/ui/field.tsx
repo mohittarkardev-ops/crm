@@ -1,4 +1,7 @@
+"use client";
+
 import { cn } from "@/lib/cn";
+import { rejectLargeFile } from "@/components/ui/file-guard";
 import type { FieldDef } from "@/lib/module-types";
 
 export const CONTROL =
@@ -53,6 +56,7 @@ export function Field({ field, error, value }: { field: FieldDef; error?: string
           name={name}
           type="file"
           accept={accept}
+          onChange={rejectLargeFile}
           aria-invalid={invalid}
           className={cn(
             control,

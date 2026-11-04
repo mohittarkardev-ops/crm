@@ -20,6 +20,7 @@ export default async function SupportPage() {
         index={4}
         rows={rows}
         emptyLabel="No support tickets yet"
+        rowHref="/support"
         search="Search user or subject…"
         tabs={{ key: "status", label: "Ticket status", options: SUPPORT_STATUS_OPTIONS }}
         columns={[

@@ -1,6 +1,7 @@
 import { CalendarClock, CalendarX2, Megaphone, ToggleRight } from "lucide-react";
 import { ModulePage } from "@/components/modules/module-page";
 import { MiniStat, StatRow } from "@/components/ui/mini-stat";
+import { activatePlacement, createPlacement, deactivatePlacement, deletePlacement } from "@/lib/actions/engagement";
 import { getPlacements } from "@/lib/data/engagement";
 import { PLACEMENT_STATUS_OPTIONS } from "@/lib/options";
 
@@ -32,17 +33,38 @@ export default async function PlacementsPage() {
           { key: "endsOn", label: "Ends", type: "date" },
           { key: "status", label: "Status", type: "chip" },
         ]}
+        rowActions={[
+          {
+            label: "Turn off",
+            action: deactivatePlacement,
+            showWhen: { key: "status", in: ["live", "scheduled"] },
+          },
+          { label: "Turn on", action: activatePlacement, showWhen: { key: "status", in: ["off"] } },
+          {
+            label: "Delete",
+            action: deletePlacement,
+            danger: true,
+            confirm: "Delete this placement? The app stops showing it immediately.",
+          },
+        ]}
         primary={{
           label: "New Placement",
           drawerTitle: "New Placement",
+          action: createPlacement,
           fields: [
-            { name: "slot", label: "Slot name", required: true },
+            {
+              name: "slot",
+              label: "Slot name",
+              required: true,
+              suggestions: slotOptions.map((s) => s.value),
+              hint: "Must match a slot the app reads, for example home_banner.",
+            },
             { name: "title", label: "Title", required: true },
             { name: "body", label: "Message", type: "textarea", full: true },
             { name: "ctaLabel", label: "Button label" },
-            { name: "actionUrl", label: "Button link" },
-            { name: "startsOn", label: "Starts on", type: "date" },
-            { name: "endsOn", label: "Ends on", type: "date" },
+            { name: "actionUrl", label: "Button link", hint: "Starts with https://" },
+            { name: "startsOn", label: "Starts on", type: "date", hint: "Leave empty to start now." },
+            { name: "endsOn", label: "Ends on", type: "date", hint: "Leave empty to run until switched off." },
           ],
         }}
       />

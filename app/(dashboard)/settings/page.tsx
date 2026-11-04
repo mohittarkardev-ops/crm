@@ -1,33 +1,27 @@
+import { TriangleAlert } from "lucide-react";
+import { BusinessProfileForm } from "@/components/modules/business-profile-form";
 import { ModulePage } from "@/components/modules/module-page";
-import { Button } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
-import { FieldGrid } from "@/components/ui/field";
 import { getStaffList } from "@/lib/data/admin";
-import { STAFF_ROLE_OPTIONS } from "@/lib/options";
+import { getBusinessProfile } from "@/lib/data/lookups";
 
 export default async function SettingsPage() {
-  const { rows } = await getStaffList();
+  const [{ rows }, { profile, missing }] = await Promise.all([getStaffList(), getBusinessProfile()]);
 
   return (
     <div className="space-y-4">
       <Card index={0}>
         <CardHeader title="Business profile" />
-        <form>
-          <FieldGrid
-            fields={[
-              { name: "businessName", label: "Advisor or business name" },
-              { name: "licence", label: "IRDAI licence number" },
-              { name: "supportPhone", label: "Support phone", type: "tel" },
-              { name: "supportWhatsapp", label: "Support WhatsApp number", type: "tel" },
-              { name: "disclaimer", label: "Disclaimer shown in the app", type: "textarea", full: true },
-            ]}
-          />
-          <div className="mt-5 flex justify-end">
-            <Button type="submit" disabled title="Saving is added in the next step">
-              Save
-            </Button>
-          </div>
-        </form>
+        {missing && (
+          <p className="mb-4 flex items-start gap-2 rounded-control bg-warning-soft px-3 py-2 text-xs text-warning">
+            <TriangleAlert size={14} strokeWidth={1.75} className="mt-0.5 shrink-0" aria-hidden="true" />
+            <span>
+              The settings table does not exist yet. Run <b>supabase/migrations/0005_app_settings.sql</b> in the Supabase
+              SQL Editor, then reload this page.
+            </span>
+          </p>
+        )}
+        <BusinessProfileForm profile={profile} />
       </Card>
 
       <ModulePage
@@ -42,15 +36,6 @@ export default async function SettingsPage() {
           { key: "role", label: "Role", type: "chip" },
           { key: "joined", label: "Joined", type: "date" },
         ]}
-        primary={{
-          label: "Invite Staff",
-          drawerTitle: "Invite Staff",
-          fields: [
-            { name: "name", label: "Full name", required: true },
-            { name: "email", label: "Email", type: "email", required: true },
-            { name: "role", label: "Role", type: "select", options: STAFF_ROLE_OPTIONS, required: true, full: true },
-          ],
-        }}
       />
     </div>
   );

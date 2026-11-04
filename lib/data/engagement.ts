@@ -50,7 +50,16 @@ export async function getQuotes() {
     };
   });
 
-  return { rows, stats: { total: records.length, ...counts } };
+  return {
+    rows,
+    stats: {
+      total: records.length,
+      new: counts.new,
+      in_progress: counts.in_progress,
+      completed: counts.completed,
+      closed: counts.closed,
+    },
+  };
 }
 
 /* ------------------------------- Notifications ------------------------------ */
@@ -179,5 +188,13 @@ export async function getSupport() {
     };
   });
 
-  return { rows, stats: { total: records.length, ...counts } };
+  return {
+    rows,
+    stats: {
+      total: records.length,
+      open: counts.open,
+      in_progress: counts.in_progress,
+      resolved: counts.resolved,
+    },
+  };
 }

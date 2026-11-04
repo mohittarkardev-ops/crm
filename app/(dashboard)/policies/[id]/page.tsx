@@ -7,6 +7,9 @@ import { DetailHeader } from "@/components/layout/detail-header";
 import { DocumentsCard } from "@/components/modules/documents-card";
 import { getPolicyDetail } from "@/lib/data/details";
 import { formatDate, formatINR } from "@/lib/format";
+import { StatusButtons } from "@/components/ui/status-buttons";
+import { setRenewalStatus, setVerification } from "@/lib/actions/policies";
+import { RENEWAL_STATUS_OPTIONS, VERIFICATION_OPTIONS } from "@/lib/options";
 import { categoryLabel } from "@/lib/status";
 
 function expiryText(daysLeft: number) {
@@ -84,7 +87,30 @@ export default async function PolicyDetailPage({ params }: { params: Promise<{ i
         </div>
 
         <div className="space-y-4">
-          <DocumentsCard index={3} policyId={p.id} documents={p.documents} />
+          <Card index={2}>
+            <CardHeader title="Verification" />
+            <StatusButtons
+              label="Verification"
+              current={p.verification}
+              options={VERIFICATION_OPTIONS}
+              action={setVerification.bind(null, p.id)}
+            />
+            {p.source === "user_added" && (
+              <p className="mt-3 text-xs text-ink-muted">Added by the user in the app. Check the documents, then verify or reject.</p>
+            )}
+          </Card>
+
+          <Card index={3}>
+            <CardHeader title="Renewal status" />
+            <StatusButtons
+              label="Renewal status"
+              current={p.renewals[0]?.status ?? null}
+              options={RENEWAL_STATUS_OPTIONS}
+              action={setRenewalStatus.bind(null, p.id)}
+            />
+          </Card>
+
+          <DocumentsCard index={4} policyId={p.id} documents={p.documents} />
 
           <Card index={4}>
             <CardHeader title="Renewal history" />

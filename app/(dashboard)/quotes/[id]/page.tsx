@@ -9,6 +9,9 @@ import { DetailHeader } from "@/components/layout/detail-header";
 import { DocumentsCard } from "@/components/modules/documents-card";
 import { getQuoteDetail } from "@/lib/data/details";
 import { formatDate, formatINR } from "@/lib/format";
+import { StatusButtons } from "@/components/ui/status-buttons";
+import { setQuoteStatus } from "@/lib/actions/status";
+import { QUOTE_STATUS_OPTIONS } from "@/lib/options";
 import { categoryLabel } from "@/lib/status";
 
 export default async function QuoteDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -46,6 +49,16 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
         <div className="space-y-4">
           <Card index={0}>
+            <CardHeader title="Update status" />
+            <StatusButtons
+              label="Quote status"
+              current={q.status}
+              options={QUOTE_STATUS_OPTIONS}
+              action={setQuoteStatus.bind(null, q.id)}
+            />
+          </Card>
+
+          <Card index={1}>
             <CardHeader title="Request" />
             <DetailList
               columns={1}

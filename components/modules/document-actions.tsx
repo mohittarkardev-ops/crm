@@ -4,6 +4,7 @@ import { useActionState, useEffect, useRef, useState } from "react";
 import { Trash2 } from "lucide-react";
 import { Button, buttonStyles } from "@/components/ui/button";
 import { CONTROL } from "@/components/ui/field";
+import { rejectLargeFile } from "@/components/ui/file-guard";
 import { toast } from "@/components/ui/toaster";
 import { deleteDocument, uploadDocument } from "@/lib/actions/policies";
 import { cn } from "@/lib/cn";
@@ -26,10 +27,11 @@ export function DocumentUpload({ policyId }: { policyId: string }) {
   return (
     <form ref={formRef} action={formAction} className="mt-4 space-y-3 border-t border-divider pt-4">
       <input type="hidden" name="policyId" value={policyId} />
-      <p className="text-xs font-medium text-ink-muted">Upload a document</p>
+      <p className="text-xs font-medium text-ink-muted">Upload a document (up to 4 MB)</p>
       <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_9rem]">
         <input
           name="document"
+          onChange={rejectLargeFile}
           type="file"
           accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
           className={cn(

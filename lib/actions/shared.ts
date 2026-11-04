@@ -2,13 +2,14 @@ import { revalidatePath } from "next/cache";
 import { getStaff } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import type { ActionState } from "@/lib/module-types";
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL } from "@/lib/upload-limits";
 
 /* Shared helpers for every server action (the files in this folder that start with "use server"). */
 
 export type Db = Awaited<ReturnType<typeof createClient>>;
 
 export const DOCUMENT_TYPES = ["application/pdf", "image/jpeg", "image/png", "image/webp"];
-export const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024; // matches the DOCUMENTS bucket limit
+export const MAX_DOCUMENT_BYTES = MAX_UPLOAD_BYTES; // Vercel rejects request bodies over 4.5 MB
 
 /** The signed-in CRM staff member, or null. Every action starts with this. */
 export async function requireStaff() {
@@ -95,7 +96,7 @@ export async function audit(db: Db, staffId: string, action: string, entity: str
 export function checkFile(entry: FormDataEntryValue | null): { file: File | null; error?: string } {
   if (!(entry instanceof File) || entry.size === 0) return { file: null };
   if (!DOCUMENT_TYPES.includes(entry.type)) return { file: null, error: "Documents must be a PDF, JPG, PNG or WebP file." };
-  if (entry.size > MAX_DOCUMENT_BYTES) return { file: null, error: "Documents must be 10 MB or smaller." };
+  if (entry.size > MAX_DOCUMENT_BYTES) return { file: null, error: `Documents must be ${MAX_UPLOAD_LABEL} or smaller.` };
   return { file: entry };
 }
 
