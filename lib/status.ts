@@ -58,6 +58,8 @@ const LABELS: Record<string, string> = {
   health: "Health",
   term: "Term",
   other: "Other",
+  user_added: "External policy",
+  advisor_added: "Insured by agency",
 };
 
 /** Category code from the database (car, bike, health, term, other) → display name. */

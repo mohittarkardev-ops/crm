@@ -25,7 +25,6 @@ type PolicyRecord = {
   insurers: Named<{ name: string }>;
   policy_types: Named<{ code: string | null }>;
   renewals?: { status: string | null; created_at: string }[] | null;
-  policy_documents?: { count: number }[] | null;
 };
 
 const BASE_SELECT =
@@ -43,11 +42,7 @@ export async function getPolicies() {
   const head = { count: "exact", head: true } as const;
 
   const [list, all, expired, expiring] = await Promise.all([
-    db
-      .from("policies")
-      .select(`${BASE_SELECT}, policy_documents(count)`)
-      .order("created_at", { ascending: false })
-      .limit(1000),
+    db.from("policies").select(BASE_SELECT).order("created_at", { ascending: false }).limit(1000),
     db.from("policies").select("id", head),
     db.from("policies").select("id", head).lt("due_date", today),
     db.from("policies").select("id", head).gte("due_date", today).lte("due_date", addDays(today, 30)),
@@ -64,7 +59,6 @@ export async function getPolicies() {
     status: policyState(p.due_date, today),
     source: p.source,
     verification: p.verification_status,
-    documents: p.policy_documents?.[0]?.count ?? 0,
   }));
 
   const total = countOf(all, "Policies count");

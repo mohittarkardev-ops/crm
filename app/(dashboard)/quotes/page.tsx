@@ -1,4 +1,4 @@
-import { CheckCircle2, Clock, MessageSquareQuote, Sparkles } from "lucide-react";
+import { CheckCircle2, Clock, Hourglass, Sparkles } from "lucide-react";
 import { ModulePage } from "@/components/modules/module-page";
 import { MiniStat, StatRow } from "@/components/ui/mini-stat";
 import { getQuotes } from "@/lib/data/engagement";
@@ -10,10 +10,10 @@ export default async function QuotesPage() {
   return (
     <div className="space-y-4">
       <StatRow>
-        <MiniStat index={0} title="Total Requests" icon={MessageSquareQuote} value={stats.total} />
-        <MiniStat index={1} title="New" icon={Sparkles} value={stats.new} />
+        <MiniStat index={0} title="New" icon={Sparkles} value={stats.new} />
+        <MiniStat index={1} title="Pending" icon={Hourglass} value={stats.pending} />
         <MiniStat index={2} title="In Progress" icon={Clock} value={stats.in_progress} />
-        <MiniStat index={3} title="Completed" icon={CheckCircle2} value={stats.completed} />
+        <MiniStat index={3} title="Renewed" icon={CheckCircle2} value={stats.renewed} />
       </StatRow>
 
       <ModulePage

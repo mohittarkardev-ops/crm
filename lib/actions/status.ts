@@ -7,7 +7,7 @@ import { NOT_STAFF, audit, dbMessage, done, fail, requireStaff } from "@/lib/act
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // Values allowed by the database check constraints.
-const QUOTE_STATUSES = ["new", "in_progress", "completed", "closed"];
+const QUOTE_STATUSES = ["new", "pending", "in_progress", "completed", "closed", "renewed"];
 const TICKET_STATUSES = ["open", "in_progress", "resolved"];
 
 export async function setQuoteStatus(id: string, status: string): Promise<ActionState> {

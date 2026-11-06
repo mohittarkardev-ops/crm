@@ -6,7 +6,14 @@ type Named<T> = T | T[] | null;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export type DocumentItem = { id: string; filePath: string; type: string | null; uploadedOn: string | null };
+export type DocumentItem = {
+  id: string;
+  filePath: string;
+  type: string | null;
+  uploadedOn: string | null;
+  /** 'user' = external (uploaded by the client in the app), 'staff' = agency. */
+  uploadedBy: "user" | "staff";
+};
 
 export type ClientInfo = {
   id: string;
@@ -26,7 +33,13 @@ type UserRecord = {
   created_at: string;
 };
 
-type DocumentRecord = { id: string; file_path: string; document_type: string | null; uploaded_at: string };
+type DocumentRecord = {
+  id: string;
+  file_path: string;
+  document_type: string | null;
+  uploaded_at: string;
+  uploaded_by: string | null;
+};
 
 function toClient(value: Named<UserRecord>): ClientInfo | null {
   const u = one(value);
@@ -45,11 +58,17 @@ function toClient(value: Named<UserRecord>): ClientInfo | null {
 function toDocuments(rows: DocumentRecord[] | null | undefined): DocumentItem[] {
   return [...(rows ?? [])]
     .sort((a, b) => b.uploaded_at.localeCompare(a.uploaded_at))
-    .map((d) => ({ id: d.id, filePath: d.file_path, type: d.document_type, uploadedOn: dateIST(d.uploaded_at) }));
+    .map((d) => ({
+      id: d.id,
+      filePath: d.file_path,
+      type: d.document_type,
+      uploadedOn: dateIST(d.uploaded_at),
+      uploadedBy: d.uploaded_by === "staff" ? ("staff" as const) : ("user" as const),
+    }));
 }
 
 const USER_FIELDS = "id, full_name, mobile_number, email, is_advisor_client, created_at";
-const DOC_FIELDS = "id, file_path, document_type, uploaded_at";
+const DOC_FIELDS = "id, file_path, document_type, uploaded_at, uploaded_by";
 
 /* --------------------------------- Policy ---------------------------------- */
 
@@ -66,6 +85,7 @@ export type PolicyDetail = {
   state: PolicyState;
   source: string;
   verification: string;
+  rejectionReason: string | null;
   isLead: boolean;
   createdOn: string | null;
   updatedOn: string | null;
@@ -134,6 +154,7 @@ export async function getPolicyDetail(id: string): Promise<PolicyDetail> {
     state: policyState(p.due_date, today),
     source: text("source") ?? "user_added",
     verification: text("verification_status") ?? "unverified",
+    rejectionReason: text("rejection_reason"),
     isLead: p.is_lead_opportunity === true,
     createdOn: dateIST(text("created_at")),
     updatedOn: dateIST(text("updated_at")),

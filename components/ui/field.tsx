@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/cn";
+import { DatePicker } from "@/components/ui/date-picker";
 import { rejectLargeFile } from "@/components/ui/file-guard";
 import type { FieldDef } from "@/lib/module-types";
 
@@ -8,7 +9,17 @@ export const CONTROL =
   "w-full rounded-control border border-divider bg-white/80 px-3 text-sm text-ink outline-none transition-colors placeholder:text-ink-faint focus:border-accent-strong";
 
 /** Labelled input / select / textarea / file / checkbox with an optional error (design.md 4.6). */
-export function Field({ field, error, value }: { field: FieldDef; error?: string; value?: string }) {
+export function Field({
+  field,
+  error,
+  value,
+  onFieldChange,
+}: {
+  field: FieldDef;
+  error?: string;
+  value?: string;
+  onFieldChange?: () => void;
+}) {
   const { name, label, type = "text", options, required, full, suggestions, accept, hint } = field;
   const invalid = Boolean(error);
   const control = cn(CONTROL, invalid && "border-negative focus:border-negative");
@@ -40,15 +51,25 @@ export function Field({ field, error, value }: { field: FieldDef; error?: string
 
       {type === "select" ? (
         <select name={name} defaultValue={value ?? ""} aria-invalid={invalid} className={cn(control, "h-10")}>
-          <option value="" disabled>
-            Select
-          </option>
+          {!options?.some((option) => option.value === "") && (
+            <option value="" disabled>
+              Select
+            </option>
+          )}
           {options?.map((option) => (
             <option key={option.value} value={option.value}>
               {option.label}
             </option>
           ))}
         </select>
+      ) : type === "date" ? (
+        <DatePicker
+          name={name}
+          defaultValue={value ?? ""}
+          invalid={invalid}
+          maxToday={field.maxToday}
+          onValueChange={onFieldChange}
+        />
       ) : type === "textarea" ? (
         <textarea name={name} rows={3} defaultValue={value ?? ""} aria-invalid={invalid} className={cn(control, "py-2.5")} />
       ) : type === "file" ? (
@@ -98,15 +119,31 @@ export function FieldGrid({
   fields,
   errors,
   values,
+  watch,
+  onFieldChange,
 }: {
   fields: FieldDef[];
   errors?: Record<string, string>;
   values?: Record<string, string>;
+  /** Live values of the form, used to show or hide fields that depend on another field. */
+  watch?: Record<string, string>;
+  /** Called when a custom control (such as the date picker) changes a value. */
+  onFieldChange?: () => void;
 }) {
+  const current = { ...values, ...watch };
+  const shown = fields.filter(
+    (field) => !field.showWhen || field.showWhen.equals.includes(current[field.showWhen.field] ?? ""),
+  );
   return (
     <div className="grid gap-4 sm:grid-cols-2">
-      {fields.map((field) => (
-        <Field key={field.name} field={field} error={errors?.[field.name]} value={values?.[field.name]} />
+      {shown.map((field) => (
+        <Field
+          key={field.name}
+          field={field}
+          error={errors?.[field.name]}
+          value={values?.[field.name]}
+          onFieldChange={onFieldChange}
+        />
       ))}
     </div>
   );

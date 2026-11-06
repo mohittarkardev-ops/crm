@@ -1,9 +1,9 @@
 import { Eye, EyeOff, LayoutTemplate, Send } from "lucide-react";
 import { ModulePage } from "@/components/modules/module-page";
 import { MiniStat, StatRow } from "@/components/ui/mini-stat";
-import { sendNotification } from "@/lib/actions/engagement";
+import { previewNotification, sendNotification } from "@/lib/actions/notifications";
 import { getNotifications } from "@/lib/data/engagement";
-import { AUDIENCE_OPTIONS, NOTIFICATION_KIND_OPTIONS, READ_OPTIONS } from "@/lib/options";
+import { AUDIENCE_OPTIONS, CATEGORY_OPTIONS, NOTIFICATION_KIND_OPTIONS, READ_OPTIONS } from "@/lib/options";
 
 export default async function NotificationsPage() {
   const { rows, stats } = await getNotifications();
@@ -37,6 +37,7 @@ export default async function NotificationsPage() {
           label: "New Notification",
           drawerTitle: "New Notification",
           action: sendNotification,
+          preview: previewNotification,
           fields: [
             { name: "title", label: "Title", required: true, full: true },
             { name: "body", label: "Message", type: "textarea", required: true, full: true },
@@ -47,13 +48,38 @@ export default async function NotificationsPage() {
               label: "Mobile number",
               type: "tel",
               full: true,
-              hint: "Only for “One user”. Broadcasts go to everyone who has logged in to the app.",
+              showWhen: { field: "audience", equals: ["user"] },
+            },
+            {
+              name: "expiryFrom",
+              label: "Expiring from",
+              type: "date",
+              required: true,
+              showWhen: { field: "audience", equals: ["expiring"] },
+              hint: "Use the same date in both boxes for one exact day.",
+            },
+            {
+              name: "expiryTo",
+              label: "Expiring until",
+              type: "date",
+              required: true,
+              showWhen: { field: "audience", equals: ["expiring"] },
+            },
+            {
+              name: "category",
+              label: "Category (optional)",
+              type: "select",
+              options: [{ value: "", label: "All categories" }, ...CATEGORY_OPTIONS],
+              full: true,
+              showWhen: { field: "audience", equals: ["expiring"] },
+              hint: "Policies already renewed are skipped. Clients who have not logged in to the app cannot see it.",
             },
             {
               name: "confirm",
               label: "I confirm this will be sent to every selected user (not needed for one user).",
               type: "checkbox",
               full: true,
+              showWhen: { field: "audience", equals: ["everyone", "advisor_clients", "general_users", "expiring"] },
             },
           ],
         }}

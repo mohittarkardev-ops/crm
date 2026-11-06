@@ -8,8 +8,9 @@ import { DocumentsCard } from "@/components/modules/documents-card";
 import { getPolicyDetail } from "@/lib/data/details";
 import { formatDate, formatINR } from "@/lib/format";
 import { StatusButtons } from "@/components/ui/status-buttons";
+import { VerificationControl } from "@/components/modules/verification-control";
 import { setRenewalStatus, setVerification } from "@/lib/actions/policies";
-import { RENEWAL_STATUS_OPTIONS, VERIFICATION_OPTIONS } from "@/lib/options";
+import { RENEWAL_STATUS_OPTIONS } from "@/lib/options";
 import { categoryLabel } from "@/lib/status";
 
 function expiryText(daysLeft: number) {
@@ -89,14 +90,13 @@ export default async function PolicyDetailPage({ params }: { params: Promise<{ i
         <div className="space-y-4">
           <Card index={2}>
             <CardHeader title="Verification" />
-            <StatusButtons
-              label="Verification"
+            <VerificationControl
               current={p.verification}
-              options={VERIFICATION_OPTIONS}
+              reason={p.rejectionReason}
               action={setVerification.bind(null, p.id)}
             />
             {p.source === "user_added" && (
-              <p className="mt-3 text-xs text-ink-muted">Added by the user in the app. Check the documents, then verify or reject.</p>
+              <p className="mt-3 text-xs text-ink-muted">External policy, added by the client in the app. Check the documents, then verify or reject.</p>
             )}
           </Card>
 

@@ -29,6 +29,7 @@ export default async function PoliciesPage() {
         rows={rows}
         emptyLabel="No policies yet"
         rowHref="/policies"
+        dateFilter={{ key: "expiry", label: "Expiry" }}
         search="Search policy number or client…"
         filters={[
           { key: "category", label: "All categories", options: CATEGORY_OPTIONS },
@@ -45,8 +46,6 @@ export default async function PoliciesPage() {
           { key: "expiry", label: "Expiry", type: "date" },
           { key: "status", label: "Status", type: "chip" },
           { key: "source", label: "Source", type: "chip" },
-          { key: "verification", label: "Verification", type: "chip" },
-          { key: "documents", label: "Docs", type: "number" },
         ]}
         primary={{
           label: "Add Policy",

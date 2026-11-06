@@ -119,7 +119,7 @@ export async function storeDocument(
 
   const record = await db
     .from("policy_documents")
-    .insert({ policy_id: args.policyId, file_path: path, document_type: args.type });
+    .insert({ policy_id: args.policyId, file_path: path, document_type: args.type, uploaded_by: "staff" });
   if (record.error) {
     await db.storage.from("DOCUMENTS").remove([path]);
     return dbMessage(record.error);

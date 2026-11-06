@@ -220,18 +220,40 @@ export async function deleteDocument(documentId: string, policyId: string): Prom
 const VERIFICATION = ["unverified", "verified", "rejected"];
 
 /** Verify or reject a policy (mainly for policies added by users in the app). */
-export async function setVerification(policyId: string, status: string): Promise<ActionState> {
+export async function setVerification(policyId: string, status: string, reason?: string): Promise<ActionState> {
   const staff = await requireStaff();
   if (!staff) return fail(NOT_STAFF);
   if (!UUID.test(policyId) || !VERIFICATION.includes(status)) return fail("That change is not allowed.");
+  const note = (reason ?? "").trim();
+  if (status === "rejected" && (note.length < 5 || note.length > 500)) {
+    return fail("Enter a reason for the rejection (5 to 500 characters).");
+  }
 
   const db = await createClient();
-  const result = await db.from("policies").update({ verification_status: status }).eq("id", policyId).select("id");
+  const result = await db
+    .from("policies")
+    .update({ verification_status: status, rejection_reason: status === "rejected" ? note : null })
+    .eq("id", policyId)
+    .select("id, user_id, policy_number");
   if (result.error) return fail(dbMessage(result.error));
   if ((result.data ?? []).length === 0) return fail("That policy could not be found.");
 
   await audit(db, staff.id, `policy.${status}`, "policy", policyId);
-  return done(`Policy marked ${status}.`);
+
+  // Tell the user why, in the app's Updates feed. A failure here never undoes the rejection.
+  if (status === "rejected") {
+    const row = result.data?.[0] as { user_id: string | null; policy_number: string } | undefined;
+    if (row?.user_id) {
+      await db.from("notifications").insert({
+        user_id: row.user_id,
+        policy_id: policyId,
+        kind: "announcement",
+        title: "Policy needs your attention",
+        body: `Your policy ${row.policy_number} could not be verified. Reason: ${note}`,
+      });
+    }
+  }
+  return done(status === "rejected" ? "Policy rejected and the user was notified." : `Policy marked ${status}.`);
 }
 
 const RENEWAL = ["pending", "quote_sent", "renewed", "lapsed"];

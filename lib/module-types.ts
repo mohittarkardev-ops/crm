@@ -24,6 +24,10 @@ export type FieldDef = {
   accept?: string;
   hint?: string;
   required?: boolean;
+  /** Date fields: dates after today cannot be picked (for example a date of birth). */
+  maxToday?: boolean;
+  /** Show this field only when another field has one of these values (for example audience = expiring). */
+  showWhen?: { field: string; equals: string[] };
   /** Spans both columns of the form grid. */
   full?: boolean;
 };
@@ -45,12 +49,24 @@ export type ActionState = {
 
 export type FormAction = (previous: ActionState, formData: FormData) => Promise<ActionState>;
 
+/** Result of a "check before saving" step, for example how many people a notification would reach. */
+export type PreviewResult = {
+  ok: boolean;
+  error?: string;
+  summary?: string;
+  /** Text the staff member can copy (for example mobile numbers to message on WhatsApp). */
+  copyText?: string;
+  copyLabel?: string;
+};
+
 export type PrimaryAction = {
   label: string;
   drawerTitle: string;
   fields: FieldDef[];
   /** Server action that validates and saves the form. */
   action: FormAction;
+  /** Optional "Check recipients" step shown next to Save. */
+  preview?: (formData: FormData) => Promise<PreviewResult>;
 };
 
 /** Per-row button, for example "Remove" or "Turn off". The action receives the row id. */

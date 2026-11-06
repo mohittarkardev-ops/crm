@@ -32,7 +32,7 @@ export async function getQuotes() {
     .order("created_at", { ascending: false })
     .limit(1000);
 
-  const counts: Record<string, number> = { new: 0, in_progress: 0, completed: 0, closed: 0 };
+  const counts: Record<string, number> = { new: 0, pending: 0, in_progress: 0, completed: 0, closed: 0, renewed: 0 };
   const records = rowsOf<QuoteRecord>(res, "Quote requests");
 
   const rows: Row[] = records.map((q) => {
@@ -55,9 +55,11 @@ export async function getQuotes() {
     stats: {
       total: records.length,
       new: counts.new,
+      pending: counts.pending,
       in_progress: counts.in_progress,
       completed: counts.completed,
       closed: counts.closed,
+      renewed: counts.renewed,
     },
   };
 }

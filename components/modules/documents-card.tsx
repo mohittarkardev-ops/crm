@@ -53,6 +53,9 @@ export function DocumentsCard({
                     {name}
                   </p>
                   <p className="text-xs text-ink-muted">
+                    <Chip tone={doc.uploadedBy === "staff" ? "accent" : "neutral"} className="mr-1.5 align-middle">
+                      {doc.uploadedBy === "staff" ? "Agency" : "External"}
+                    </Chip>
                     {doc.type ? `${doc.type} · ` : ""}
                     {doc.uploadedOn ? `Uploaded ${formatDate(doc.uploadedOn)}` : "Upload date unknown"}
                   </p>

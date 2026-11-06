@@ -16,8 +16,8 @@ export const POLICY_STATUS_OPTIONS: Option[] = [
 ];
 
 export const SOURCE_OPTIONS: Option[] = [
-  { value: "advisor_added", label: "Advisor added" },
-  { value: "user_added", label: "User added" },
+  { value: "advisor_added", label: "Insured by agency" },
+  { value: "user_added", label: "External policy" },
 ];
 
 export const VERIFICATION_OPTIONS: Option[] = [
@@ -49,9 +49,11 @@ export const RENEWAL_WINDOW_OPTIONS: Option[] = [
 
 export const QUOTE_STATUS_OPTIONS: Option[] = [
   { value: "new", label: "New" },
+  { value: "pending", label: "Pending" },
   { value: "in_progress", label: "In progress" },
   { value: "completed", label: "Completed" },
   { value: "closed", label: "Closed" },
+  { value: "renewed", label: "Renewed" },
 ];
 
 export const NOTIFICATION_KIND_OPTIONS: Option[] = [
@@ -71,6 +73,7 @@ export const AUDIENCE_OPTIONS: Option[] = [
   { value: "advisor_clients", label: "Advisor clients" },
   { value: "general_users", label: "General users" },
   { value: "user", label: "One user" },
+  { value: "expiring", label: "Policies expiring in a date range" },
 ];
 
 export const PLACEMENT_STATUS_OPTIONS: Option[] = [

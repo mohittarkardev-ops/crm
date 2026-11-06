@@ -7,10 +7,26 @@ import { ArrowUpRight, Plus, Search } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { formatDate, formatINR, formatNumber } from "@/lib/format";
 import { chipFor } from "@/lib/status";
-import type { ActionState, Column, FilterDef, PrimaryAction, Row, RowAction, TabsDef } from "@/lib/module-types";
+import type {
+  ActionState,
+  Column,
+  FilterDef,
+  PreviewResult,
+  PrimaryAction,
+  Row,
+  RowAction,
+  TabsDef,
+} from "@/lib/module-types";
 import { Button, buttonStyles } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Chip } from "@/components/ui/chip";
+import {
+  DEFAULT_DATE_RANGE,
+  DateRangeFilter,
+  rangeOf,
+  todayIST,
+  type DateRangeValue,
+} from "@/components/ui/date-range-filter";
 import { Drawer } from "@/components/ui/drawer";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FieldGrid } from "@/components/ui/field";
@@ -25,6 +41,8 @@ type ModulePageProps = {
   search?: string;
   filters?: FilterDef[];
   tabs?: TabsDef;
+  /** Adds a date selector (presets plus custom date or range) on the date column `key`, soonest first. */
+  dateFilter?: { key: string; label: string };
   primary?: PrimaryAction;
   rowActions?: RowAction[];
   emptyLabel: string;
@@ -76,6 +94,34 @@ function PrimaryForm({ primary, onClose }: { primary: PrimaryAction; onClose: ()
   const router = useRouter();
   const [state, formAction, pending] = useActionState(primary.action, { ok: false } as ActionState);
   const handled = useRef<ActionState | null>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  const [watch, setWatch] = useState<Record<string, string>>({});
+  const [preview, setPreview] = useState<PreviewResult | null>(null);
+  const [checking, setChecking] = useState(false);
+
+  // Track what is typed so fields can appear or disappear depending on other fields.
+  function onFormChange() {
+    if (!formRef.current) return;
+    const next: Record<string, string> = {};
+    for (const [key, value] of new FormData(formRef.current).entries()) {
+      if (typeof value === "string") next[key] = value;
+    }
+    setWatch(next);
+    setPreview(null);
+  }
+
+  async function checkRecipients() {
+    if (!primary.preview || !formRef.current) return;
+    setChecking(true);
+    setPreview(null);
+    try {
+      setPreview(await primary.preview(new FormData(formRef.current)));
+    } catch {
+      setPreview({ ok: false, error: "Could not check the recipients. Please try again." });
+    } finally {
+      setChecking(false);
+    }
+  }
 
   // On success: confirm, close, and optionally go to the new record.
   useEffect(() => {
@@ -90,14 +136,45 @@ function PrimaryForm({ primary, onClose }: { primary: PrimaryAction; onClose: ()
   const errorKey = `${state.error ?? ""}|${Object.keys(state.fieldErrors ?? {}).join(",")}`;
 
   return (
-    <form action={formAction} noValidate>
+    <form ref={formRef} action={formAction} onChange={onFormChange} noValidate>
       {state.error && (
         <p role="alert" className="mb-4 rounded-control bg-negative-soft px-3 py-2 text-xs text-negative">
           {state.error}
         </p>
       )}
-      <FieldGrid key={errorKey} fields={primary.fields} errors={state.fieldErrors} values={state.values} />
+      <FieldGrid key={errorKey} fields={primary.fields} errors={state.fieldErrors} values={state.values} watch={watch} onFieldChange={onFormChange} />
+      {preview && (
+        <div
+          className={cn(
+            "mt-4 rounded-tile p-3 text-sm",
+            preview.ok ? "bg-surface-muted text-ink" : "bg-negative-soft text-negative",
+          )}
+        >
+          <p className="select-text">{preview.ok ? preview.summary : preview.error}</p>
+          {preview.ok && preview.copyText && (
+            <button
+              type="button"
+              className="mt-2 text-xs font-medium underline underline-offset-2"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(preview.copyText ?? "");
+                  toast("Copied to the clipboard.");
+                } catch {
+                  toast("Could not copy. Select the text manually.", "error");
+                }
+              }}
+            >
+              {preview.copyLabel ?? "Copy"}
+            </button>
+          )}
+        </div>
+      )}
       <div className="sticky bottom-0 -mx-6 -mb-5 mt-6 flex justify-end gap-2 border-t border-divider bg-surface-strong px-6 py-4">
+        {primary.preview && (
+          <Button variant="secondary" className="mr-auto" onClick={checkRecipients} disabled={pending || checking}>
+            {checking ? "Checking…" : "Check recipients"}
+          </Button>
+        )}
         <Button variant="secondary" onClick={onClose} disabled={pending}>
           Cancel
         </Button>
@@ -160,6 +237,7 @@ export function ModulePage({
   search,
   filters = [],
   tabs,
+  dateFilter,
   primary,
   rowActions,
   emptyLabel,
@@ -170,10 +248,12 @@ export function ModulePage({
   const [filterValues, setFilterValues] = useState<Record<string, string>>({});
   const [tab, setTab] = useState(tabs?.options[0]?.value ?? "all");
   const [open, setOpen] = useState(false);
+  const [dateRange, setDateRange] = useState<DateRangeValue>(DEFAULT_DATE_RANGE);
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return rows.filter((row) => {
+    const bounds = dateFilter ? rangeOf(dateRange, todayIST()) : null;
+    const result = rows.filter((row) => {
       if (tabs && tab !== "all" && String(row[tabs.key]) !== tab) return false;
       for (const [key, value] of Object.entries(filterValues)) {
         if (value !== "all" && String(row[key]) !== value) return false;
@@ -181,9 +261,20 @@ export function ModulePage({
       if (q && !Object.values(row).some((v) => typeof v === "string" && v.toLowerCase().includes(q))) {
         return false;
       }
+      if (bounds && dateFilter) {
+        const date = String(row[dateFilter.key] ?? "");
+        if (!date || (bounds.from && date < bounds.from) || (bounds.to && date > bounds.to)) return false;
+      }
       return true;
     });
-  }, [rows, query, filterValues, tab, tabs]);
+    if (bounds && dateFilter) {
+      // Soonest first, so the policies that need action next are on top. Expired: most recent first.
+      const key = dateFilter.key;
+      const direction = dateRange.mode === "expired" ? -1 : 1;
+      result.sort((a, b) => direction * String(a[key]).localeCompare(String(b[key])));
+    }
+    return result;
+  }, [rows, query, filterValues, tab, tabs, dateFilter, dateRange]);
 
   const hasLastCell = Boolean(rowHref) || (rowActions?.length ?? 0) > 0;
 
@@ -226,6 +317,7 @@ export function ModulePage({
                 ))}
               </select>
             ))}
+            {dateFilter && <DateRangeFilter label={dateFilter.label} value={dateRange} onChange={setDateRange} />}
             {primary && (
               <Button onClick={() => setOpen(true)}>
                 <Plus size={16} strokeWidth={1.75} aria-hidden="true" />

@@ -46,7 +46,7 @@ export default async function ClientsPage() {
             },
             { name: "email", label: "Email", type: "email" },
             { name: "type", label: "Client type", type: "select", options: CLIENT_TYPE_OPTIONS, required: true },
-            { name: "dob", label: "Date of birth", type: "date" },
+            { name: "dob", label: "Date of birth", type: "date", maxToday: true },
           ],
         }}
       />

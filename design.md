@@ -78,6 +78,7 @@ Spacing: 4, 8, 12, 16, 20, 24. Card padding 20px (16px for stat tiles). Grid gap
 - **Segmented control:** 1px dark border, 4px radius, active segment near-black with white text, inactive transparent. Used for Week/Month/Year and tab filters.
 - **Buttons:** Primary = near-black, white text, radius 6, height 40. Secondary = white with hairline border. Ghost and icon = transparent, hover `accent-soft`. Danger = negative-soft. Yellow is never a button colour (white text is unreadable on it).
 - **Inputs:** height 40, radius 6, white 80%, hairline border, dark-yellow focus border (`accent-strong`) plus focus ring.
+- **Date picker and calendar:** one custom calendar everywhere (never the browser's native date input). Field shows the date as `20 Nov 2026` with a calendar icon; the panel opens in a floating layer with Monday-first weeks. Selected day = near-black square, range days = soft-yellow band, today = small yellow dot. Click the title for a month grid, again for a year grid. Footer: Today and Clear. Filters offer a Single day / Date range toggle.
 - **Chips:** 3px radius, 10px UPPERCASE bold. Soft background plus coloured text, except `Renewed`, which is solid yellow with dark text.
 - **Tables:** inside a card. Header = 10px UPPERCASE muted labels with a hairline under it. Rows 56px with hairline dividers, hover `accent-soft` at 40%. Avatars are grey circles with initials.
 - **Charts:** Recharts. Bars use yellow on a pale grey track, rounded tops. Donut and legend use the grey scale plus yellow. White tooltip card.
