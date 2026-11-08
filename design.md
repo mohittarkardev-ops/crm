@@ -79,6 +79,12 @@ Spacing: 4, 8, 12, 16, 20, 24. Card padding 20px (16px for stat tiles). Grid gap
 - **Buttons:** Primary = near-black, white text, radius 6, height 40. Secondary = white with hairline border. Ghost and icon = transparent, hover `accent-soft`. Danger = negative-soft. Yellow is never a button colour (white text is unreadable on it).
 - **Inputs:** height 40, radius 6, white 80%, hairline border, dark-yellow focus border (`accent-strong`) plus focus ring.
 - **Date picker and calendar:** one custom calendar everywhere (never the browser's native date input). Field shows the date as `20 Nov 2026` with a calendar icon; the panel opens in a floating layer with Monday-first weeks. Selected day = near-black square, range days = soft-yellow band, today = small yellow dot. Click the title for a month grid, again for a year grid. Footer: Today and Clear. Filters offer a Single day / Date range toggle.
+- **Loaders (by how long the wait is):**
+  - Under about 1 second: no loader. Status buttons show the new choice at once (optimistic) and the clicked button carries a small spinner only while it saves.
+  - 1 to 3 seconds (saving a form, a row action): `Button loading` puts a spinner in front of the label and blocks double clicks; form fields are dimmed and locked; a table row being changed is dimmed.
+  - Longer or unmeasurable (uploads, sending to many users): `PendingBar`, a thin moving bar that appears only after 0.4 s, so quick saves never flash. No percentage bars unless real progress is known.
+  - Page changes: the top progress bar plus skeleton screens (`loading.tsx`). Never a full-page spinner.
+  - Components: `Spinner`, `Button loading`, `PendingBar`, `useDelayedFlag`, `Skeleton`.
 - **Chips:** 3px radius, 10px UPPERCASE bold. Soft background plus coloured text, except `Renewed`, which is solid yellow with dark text.
 - **Tables:** inside a card. Header = 10px UPPERCASE muted labels with a hairline under it. Rows 56px with hairline dividers, hover `accent-soft` at 40%. Avatars are grey circles with initials.
 - **Charts:** Recharts. Bars use yellow on a pale grey track, rounded tops. Donut and legend use the grey scale plus yellow. White tooltip card.

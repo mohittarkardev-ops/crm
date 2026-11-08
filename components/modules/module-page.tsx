@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useMemo, useRef, useState } from "react";
+import { useActionState, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowUpRight, Plus, Search } from "lucide-react";
@@ -10,6 +10,7 @@ import { chipFor } from "@/lib/status";
 import type {
   ActionState,
   Column,
+  EditAction,
   FilterDef,
   PreviewResult,
   PrimaryAction,
@@ -30,7 +31,9 @@ import {
 import { Drawer } from "@/components/ui/drawer";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FieldGrid } from "@/components/ui/field";
+import { PendingBar } from "@/components/ui/pending-bar";
 import { Segmented } from "@/components/ui/segmented";
+import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toaster";
 
 type ModulePageProps = {
@@ -44,6 +47,8 @@ type ModulePageProps = {
   /** Adds a date selector (presets plus custom date or range) on the date column `key`, soonest first. */
   dateFilter?: { key: string; label: string };
   primary?: PrimaryAction;
+  /** Adds an Edit button to every row. */
+  edit?: EditAction;
   rowActions?: RowAction[];
   emptyLabel: string;
   /** When set, each row gets a View button linking to `${rowHref}/${row.id}`. */
@@ -89,8 +94,19 @@ function renderCell(column: Column, row: Row) {
   }
 }
 
-/** The form inside the drawer. Mounted only while the drawer is open, so every open starts clean. */
-function PrimaryForm({ primary, onClose }: { primary: PrimaryAction; onClose: () => void }) {
+/**
+ * The form inside a drawer. Mounted only while the drawer is open, so every open starts clean.
+ * While saving: a spinner in the Save button, the fields dimmed and locked, and (after 0.4 s) a moving bar.
+ */
+function PrimaryForm({
+  primary,
+  initialValues,
+  onClose,
+}: {
+  primary: PrimaryAction;
+  initialValues?: Record<string, string>;
+  onClose: () => void;
+}) {
   const router = useRouter();
   const [state, formAction, pending] = useActionState(primary.action, { ok: false } as ActionState);
   const handled = useRef<ActionState | null>(null);
@@ -136,13 +152,23 @@ function PrimaryForm({ primary, onClose }: { primary: PrimaryAction; onClose: ()
   const errorKey = `${state.error ?? ""}|${Object.keys(state.fieldErrors ?? {}).join(",")}`;
 
   return (
-    <form ref={formRef} action={formAction} onChange={onFormChange} noValidate>
+    <form ref={formRef} action={formAction} onChange={onFormChange} noValidate aria-busy={pending}>
+      <PendingBar active={pending || checking} className="-mt-2 mb-3" />
       {state.error && (
         <p role="alert" className="mb-4 rounded-control bg-negative-soft px-3 py-2 text-xs text-negative">
           {state.error}
         </p>
       )}
-      <FieldGrid key={errorKey} fields={primary.fields} errors={state.fieldErrors} values={state.values} watch={watch} onFieldChange={onFormChange} />
+      <fieldset disabled={pending} className={cn("m-0 min-w-0 border-0 p-0 transition-opacity", pending && "opacity-60")}>
+        <FieldGrid
+          key={errorKey}
+          fields={primary.fields}
+          errors={state.fieldErrors}
+          values={state.values ?? initialValues}
+          watch={watch}
+          onFieldChange={onFormChange}
+        />
+      </fieldset>
       {preview && (
         <div
           className={cn(
@@ -171,28 +197,61 @@ function PrimaryForm({ primary, onClose }: { primary: PrimaryAction; onClose: ()
       )}
       <div className="sticky bottom-0 -mx-6 -mb-5 mt-6 flex justify-end gap-2 border-t border-divider bg-surface-strong px-6 py-4">
         {primary.preview && (
-          <Button variant="secondary" className="mr-auto" onClick={checkRecipients} disabled={pending || checking}>
-            {checking ? "Checking…" : "Check recipients"}
+          <Button variant="secondary" className="mr-auto" onClick={checkRecipients} loading={checking} disabled={pending}>
+            Check recipients
           </Button>
         )}
         <Button variant="secondary" onClick={onClose} disabled={pending}>
           Cancel
         </Button>
-        <Button type="submit" disabled={pending}>
-          {pending ? "Saving…" : "Save"}
+        <Button type="submit" loading={pending}>
+          Save
         </Button>
       </div>
     </form>
   );
 }
 
-function RowActionButtons({ row, actions }: { row: Row; actions: RowAction[] }) {
+/** Opens the edit form for one row, pre-filled from the row's values. */
+function EditForm({ edit, row, onClose }: { edit: EditAction; row: Row; onClose: () => void }) {
+  const action = useCallback(
+    (previous: ActionState, formData: FormData) => edit.action(row.id, previous, formData),
+    [edit, row.id],
+  );
+  const initialValues = useMemo(() => {
+    const out: Record<string, string> = {};
+    for (const field of edit.fields) {
+      const value = row[field.name];
+      out[field.name] = value === null || value === undefined ? "" : String(value);
+    }
+    return out;
+  }, [edit.fields, row]);
+
+  return (
+    <PrimaryForm
+      primary={{ label: "Save", drawerTitle: edit.drawerTitle, fields: edit.fields, action }}
+      initialValues={initialValues}
+      onClose={onClose}
+    />
+  );
+}
+
+function RowActionButtons({
+  row,
+  actions,
+  onBusy,
+}: {
+  row: Row;
+  actions: RowAction[];
+  onBusy: (busy: boolean) => void;
+}) {
   const [busy, setBusy] = useState<string | null>(null);
 
   async function run(action: RowAction) {
     if (busy) return;
     if (action.confirm && !window.confirm(action.confirm)) return;
     setBusy(action.label);
+    onBusy(true);
     try {
       const result = await action.action(row.id);
       if (result.ok) toast(result.message ?? "Done.");
@@ -201,6 +260,7 @@ function RowActionButtons({ row, actions }: { row: Row; actions: RowAction[] }) 
       toast("Something went wrong. Please try again.", "error");
     } finally {
       setBusy(null);
+      onBusy(false);
     }
   }
 
@@ -213,13 +273,15 @@ function RowActionButtons({ row, actions }: { row: Row; actions: RowAction[] }) 
             key={action.label}
             type="button"
             disabled={busy !== null}
+            aria-busy={busy === action.label}
             onClick={() => run(action)}
             className={buttonStyles(
               "ghost",
               cn("h-8 px-3 text-xs", action.danger && "text-negative hover:bg-negative-soft"),
             )}
           >
-            {busy === action.label ? "…" : action.label}
+            {busy === action.label && <Spinner size={12} />}
+            {action.label}
           </button>
         ))}
     </>
@@ -228,7 +290,7 @@ function RowActionButtons({ row, actions }: { row: Row; actions: RowAction[] }) 
 
 /**
  * One reusable list screen: toolbar (search, filters, primary action) + table + empty state.
- * Rows come from Supabase; forms save through server actions passed in `primary` and `rowActions`.
+ * Rows come from Supabase; forms save through server actions passed in `primary`, `edit` and `rowActions`.
  */
 export function ModulePage({
   title,
@@ -239,6 +301,7 @@ export function ModulePage({
   tabs,
   dateFilter,
   primary,
+  edit,
   rowActions,
   emptyLabel,
   rowHref,
@@ -248,6 +311,9 @@ export function ModulePage({
   const [filterValues, setFilterValues] = useState<Record<string, string>>({});
   const [tab, setTab] = useState(tabs?.options[0]?.value ?? "all");
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<Row | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const [busyRowId, setBusyRowId] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState<DateRangeValue>(DEFAULT_DATE_RANGE);
 
   const visible = useMemo(() => {
@@ -276,7 +342,7 @@ export function ModulePage({
     return result;
   }, [rows, query, filterValues, tab, tabs, dateFilter, dateRange]);
 
-  const hasLastCell = Boolean(rowHref) || (rowActions?.length ?? 0) > 0;
+  const hasLastCell = Boolean(rowHref) || Boolean(edit) || (rowActions?.length ?? 0) > 0;
 
   return (
     <>
@@ -347,7 +413,14 @@ export function ModulePage({
             </thead>
             <tbody>
               {visible.map((row) => (
-                <tr key={row.id} className="h-14 border-t border-divider transition-colors hover:bg-accent-soft/40">
+                <tr
+                  key={row.id}
+                  aria-busy={busyRowId === row.id}
+                  className={cn(
+                    "h-14 border-t border-divider transition-[opacity,background-color] hover:bg-accent-soft/40",
+                    busyRowId === row.id && "opacity-50",
+                  )}
+                >
                   {columns.map((column) => (
                     <td
                       key={column.key}
@@ -358,7 +431,25 @@ export function ModulePage({
                   ))}
                   {hasLastCell && (
                     <td className="whitespace-nowrap text-right">
-                      {rowActions && <RowActionButtons row={row} actions={rowActions} />}
+                      {edit && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditing(row);
+                            setEditOpen(true);
+                          }}
+                          className={buttonStyles("ghost", "h-8 px-3 text-xs")}
+                        >
+                          Edit
+                        </button>
+                      )}
+                      {rowActions && (
+                        <RowActionButtons
+                          row={row}
+                          actions={rowActions}
+                          onBusy={(busy) => setBusyRowId(busy ? row.id : null)}
+                        />
+                      )}
                       {rowHref && (
                         <Link href={`${rowHref}/${row.id}`} className={buttonStyles("ghost", "h-8 px-3 text-xs")}>
                           View
@@ -378,6 +469,12 @@ export function ModulePage({
       {primary && (
         <Drawer open={open} title={primary.drawerTitle} onClose={() => setOpen(false)}>
           <PrimaryForm primary={primary} onClose={() => setOpen(false)} />
+        </Drawer>
+      )}
+
+      {edit && (
+        <Drawer open={editOpen} title={edit.drawerTitle} onClose={() => setEditOpen(false)}>
+          {editing && <EditForm key={editing.id} edit={edit} row={editing} onClose={() => setEditOpen(false)} />}
         </Drawer>
       )}
     </>

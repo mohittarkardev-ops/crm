@@ -1,12 +1,36 @@
 import { CalendarClock, CalendarX2, Megaphone, ToggleRight } from "lucide-react";
 import { ModulePage } from "@/components/modules/module-page";
 import { MiniStat, StatRow } from "@/components/ui/mini-stat";
-import { activatePlacement, createPlacement, deactivatePlacement, deletePlacement } from "@/lib/actions/engagement";
+import {
+  activatePlacement,
+  createPlacement,
+  deactivatePlacement,
+  deletePlacement,
+  updatePlacement,
+} from "@/lib/actions/engagement";
 import { getPlacements } from "@/lib/data/engagement";
+import type { FieldDef } from "@/lib/module-types";
 import { PLACEMENT_STATUS_OPTIONS } from "@/lib/options";
 
 export default async function PlacementsPage() {
   const { rows, stats, slotOptions } = await getPlacements();
+
+  // The same fields are used to create and to edit. When editing, each field is pre-filled from the row key of the same name.
+  const fields: FieldDef[] = [
+    {
+      name: "slot",
+      label: "Slot name",
+      required: true,
+      suggestions: slotOptions.map((s) => s.value),
+      hint: "Must match a slot the app reads, for example home_banner.",
+    },
+    { name: "title", label: "Title", required: true },
+    { name: "body", label: "Message", type: "textarea", full: true },
+    { name: "ctaLabel", label: "Button label" },
+    { name: "actionUrl", label: "Button link", hint: "Starts with https://" },
+    { name: "startsOn", label: "Starts on", type: "date", hint: "Leave empty to start now." },
+    { name: "endsOn", label: "Ends on", type: "date", hint: "Leave empty to run until switched off." },
+  ];
 
   return (
     <div className="space-y-4">
@@ -33,6 +57,7 @@ export default async function PlacementsPage() {
           { key: "endsOn", label: "Ends", type: "date" },
           { key: "status", label: "Status", type: "chip" },
         ]}
+        edit={{ drawerTitle: "Edit Placement", fields, action: updatePlacement }}
         rowActions={[
           {
             label: "Turn off",
@@ -47,26 +72,7 @@ export default async function PlacementsPage() {
             confirm: "Delete this placement? The app stops showing it immediately.",
           },
         ]}
-        primary={{
-          label: "New Placement",
-          drawerTitle: "New Placement",
-          action: createPlacement,
-          fields: [
-            {
-              name: "slot",
-              label: "Slot name",
-              required: true,
-              suggestions: slotOptions.map((s) => s.value),
-              hint: "Must match a slot the app reads, for example home_banner.",
-            },
-            { name: "title", label: "Title", required: true },
-            { name: "body", label: "Message", type: "textarea", full: true },
-            { name: "ctaLabel", label: "Button label" },
-            { name: "actionUrl", label: "Button link", hint: "Starts with https://" },
-            { name: "startsOn", label: "Starts on", type: "date", hint: "Leave empty to start now." },
-            { name: "endsOn", label: "Ends on", type: "date", hint: "Leave empty to run until switched off." },
-          ],
-        }}
+        primary={{ label: "New Placement", drawerTitle: "New Placement", action: createPlacement, fields }}
       />
     </div>
   );

@@ -1,5 +1,6 @@
 import type { ComponentProps } from "react";
 import { cn } from "@/lib/cn";
+import { Spinner } from "@/components/ui/spinner";
 
 export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger" | "icon";
 
@@ -21,8 +22,31 @@ export function buttonStyles(variant: ButtonVariant = "primary", className?: str
   );
 }
 
-type ButtonProps = ComponentProps<"button"> & { variant?: ButtonVariant };
+type ButtonProps = ComponentProps<"button"> & {
+  variant?: ButtonVariant;
+  /** Shows a spinner before the label and blocks further clicks while a save or request is running. */
+  loading?: boolean;
+};
 
-export function Button({ variant = "primary", className, type = "button", ...props }: ButtonProps) {
-  return <button type={type} className={buttonStyles(variant, className)} {...props} />;
+export function Button({
+  variant = "primary",
+  className,
+  type = "button",
+  loading = false,
+  disabled,
+  children,
+  ...props
+}: ButtonProps) {
+  return (
+    <button
+      type={type}
+      className={cn(buttonStyles(variant, className), loading && "disabled:opacity-100")}
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
+      {...props}
+    >
+      {loading && <Spinner />}
+      {children}
+    </button>
+  );
 }

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { CONTROL } from "@/components/ui/field";
+import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toaster";
 import { cn } from "@/lib/cn";
 import type { ActionState } from "@/lib/module-types";
@@ -75,6 +76,7 @@ export function VerificationControl({
                 selected ? "bg-ink text-white" : "bg-transparent text-ink hover:bg-surface-muted",
               )}
             >
+              {busy === option.value && <Spinner size={12} className="mr-1.5 inline-block align-[-2px]" />}
               {option.label}
             </button>
           );
@@ -106,8 +108,8 @@ export function VerificationControl({
             <Button variant="secondary" onClick={() => setRejecting(false)} disabled={busy !== null}>
               Cancel
             </Button>
-            <Button onClick={() => save("rejected", note)} disabled={busy !== null}>
-              {busy === "rejected" ? "Saving…" : "Reject policy"}
+            <Button onClick={() => save("rejected", note)} loading={busy === "rejected"} disabled={busy !== null}>
+              Reject policy
             </Button>
           </div>
         </div>

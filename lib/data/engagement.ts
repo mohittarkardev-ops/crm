@@ -119,13 +119,16 @@ type PlacementRecord = {
   is_active: boolean;
   starts_at: string | null;
   ends_at: string | null;
+  body: string | null;
+  cta_label: string | null;
+  action_url: string | null;
 };
 
 export async function getPlacements() {
   const db = await createClient();
   const res = await db
     .from("placements")
-    .select("id, slot_name, title, is_active, starts_at, ends_at")
+    .select("id, slot_name, title, is_active, starts_at, ends_at, body, cta_label, action_url")
     .order("sort_order", { ascending: true })
     .limit(1000);
 
@@ -147,6 +150,9 @@ export async function getPlacements() {
       id: p.id,
       slot: p.slot_name,
       title: p.title,
+      body: p.body,
+      ctaLabel: p.cta_label,
+      actionUrl: p.action_url,
       startsOn: dateIST(p.starts_at),
       endsOn: dateIST(p.ends_at),
       status,

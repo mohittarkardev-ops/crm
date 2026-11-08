@@ -57,7 +57,7 @@ export async function getAdControls() {
 
 /* ------------------------------------ Staff --------------------------------- */
 
-export async function getStaffList() {
+export async function getStaffList(currentStaffId?: string) {
   const db = await createClient();
   const res = await db
     .from("staff_users")
@@ -76,6 +76,7 @@ export async function getStaffList() {
     email: s.email,
     role: s.role,
     joined: dateIST(s.created_at),
+    isSelf: s.id === currentStaffId ? "yes" : "no",
   }));
 
   return { rows };

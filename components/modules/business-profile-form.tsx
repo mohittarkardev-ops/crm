@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
+import { PendingBar } from "@/components/ui/pending-bar";
 import { FieldGrid } from "@/components/ui/field";
 import { toast } from "@/components/ui/toaster";
 import { saveBusinessProfile } from "@/lib/actions/settings";
@@ -38,6 +39,7 @@ export function BusinessProfileForm({ profile }: { profile: BusinessProfile }) {
 
   return (
     <form action={formAction} noValidate>
+      <PendingBar active={pending} className="mb-3" />
       {state.error && (
         <p role="alert" className="mb-4 rounded-control bg-negative-soft px-3 py-2 text-xs text-negative">
           {state.error}
@@ -45,8 +47,8 @@ export function BusinessProfileForm({ profile }: { profile: BusinessProfile }) {
       )}
       <FieldGrid key={errorKey} fields={FIELDS} errors={state.fieldErrors} values={state.values ?? stored} />
       <div className="mt-5 flex justify-end">
-        <Button type="submit" disabled={pending}>
-          {pending ? "Saving…" : "Save"}
+        <Button type="submit" loading={pending}>
+          Save
         </Button>
       </div>
     </form>

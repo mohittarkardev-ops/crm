@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { cn } from "@/lib/cn";
 import type { ActionState, Option } from "@/lib/module-types";
+import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toaster";
 
 /**
@@ -53,6 +54,7 @@ export function StatusButtons({
               selected ? "bg-ink text-white" : "bg-transparent text-ink hover:bg-surface-muted",
             )}
           >
+            {busy === option.value && <Spinner size={12} className="mr-1.5 inline-block align-[-2px]" />}
             {option.label}
           </button>
         );

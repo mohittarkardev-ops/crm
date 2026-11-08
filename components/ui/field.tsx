@@ -90,6 +90,7 @@ export function Field({
             name={name}
             type={type}
             list={listId}
+            autoComplete={type === "password" ? "new-password" : undefined}
             defaultValue={value ?? ""}
             aria-invalid={invalid}
             className={cn(control, "h-10")}

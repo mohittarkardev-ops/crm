@@ -3,6 +3,8 @@
 import { useActionState, useEffect, useRef, useState } from "react";
 import { Trash2 } from "lucide-react";
 import { Button, buttonStyles } from "@/components/ui/button";
+import { PendingBar } from "@/components/ui/pending-bar";
+import { Spinner } from "@/components/ui/spinner";
 import { CONTROL } from "@/components/ui/field";
 import { rejectLargeFile } from "@/components/ui/file-guard";
 import { toast } from "@/components/ui/toaster";
@@ -27,6 +29,7 @@ export function DocumentUpload({ policyId }: { policyId: string }) {
   return (
     <form ref={formRef} action={formAction} className="mt-4 space-y-3 border-t border-divider pt-4">
       <input type="hidden" name="policyId" value={policyId} />
+      <PendingBar active={pending} />
       <p className="text-xs font-medium text-ink-muted">Upload a document (up to 4 MB)</p>
       <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_9rem]">
         <input
@@ -53,8 +56,8 @@ export function DocumentUpload({ policyId }: { policyId: string }) {
         </p>
       )}
       <div className="flex justify-end">
-        <Button type="submit" disabled={pending}>
-          {pending ? "Uploading…" : "Upload"}
+        <Button type="submit" loading={pending}>
+          Upload
         </Button>
       </div>
     </form>
@@ -94,7 +97,7 @@ export function DeleteDocumentButton({
       aria-label={`Delete ${name}`}
       className={buttonStyles("icon", "size-8 text-ink-faint hover:bg-negative-soft hover:text-negative")}
     >
-      <Trash2 size={16} strokeWidth={1.75} aria-hidden="true" />
+      {busy ? <Spinner size={16} /> : <Trash2 size={16} strokeWidth={1.75} aria-hidden="true" />}
     </button>
   );
 }

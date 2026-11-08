@@ -16,7 +16,7 @@ export type FilterDef = { key: string; label: string; options: Option[] };
 export type FieldDef = {
   name: string;
   label: string;
-  type?: "text" | "tel" | "email" | "date" | "datetime-local" | "number" | "select" | "textarea" | "file" | "checkbox";
+  type?: "text" | "tel" | "email" | "password" | "date" | "datetime-local" | "number" | "select" | "textarea" | "file" | "checkbox";
   options?: Option[];
   /** Autocomplete suggestions for a text input (existing values from the database). */
   suggestions?: string[];
@@ -77,6 +77,16 @@ export type RowAction = {
   danger?: boolean;
   /** Only show the button for rows where row[key] is one of these values. */
   showWhen?: { key: string; in: string[] };
+};
+
+/**
+ * Edit button on every row. The form opens filled with the row's values: each field is pre-filled from the row key
+ * with the same name as the field, so rows must carry the editable values.
+ */
+export type EditAction = {
+  drawerTitle: string;
+  fields: FieldDef[];
+  action: (id: string, previous: ActionState, formData: FormData) => Promise<ActionState>;
 };
 
 export type TabsDef = { key: string; label: string; options: Option[] };
