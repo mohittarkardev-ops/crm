@@ -10,7 +10,7 @@ export function BarChartCard({ data, seriesName = "Renewals" }: { data: Datum[];
   return (
     <ResponsiveContainer width="100%" height="100%">
       <BarChart data={data} margin={{ top: 8, right: 0, left: -16, bottom: 0 }} barCategoryGap="26%">
-        <CartesianGrid vertical={false} stroke="rgba(27, 34, 56, 0.06)" />
+        <CartesianGrid vertical={false} stroke="var(--divider)" />
         <XAxis
           dataKey="label"
           axisLine={false}

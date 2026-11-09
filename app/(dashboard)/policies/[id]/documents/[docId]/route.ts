@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getStaff } from "@/lib/auth";
+import { can } from "@/lib/rbac/permissions";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -11,7 +12,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string; docId: string }> },
 ) {
   const { staff } = await getStaff();
-  if (!staff) return new NextResponse("Not allowed", { status: 403 });
+  if (!staff || !can(staff, "policies.view")) return new NextResponse("Not allowed", { status: 403 });
 
   const { id, docId } = await params;
   const db = await createClient();

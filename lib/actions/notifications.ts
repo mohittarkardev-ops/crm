@@ -5,7 +5,7 @@ import { one } from "@/lib/data/helpers";
 import { formatDate } from "@/lib/format";
 import type { ActionState, PreviewResult } from "@/lib/module-types";
 import {
-  NOT_STAFF,
+  authorize,
   allIds,
   audit,
   dbMessage,
@@ -14,7 +14,7 @@ import {
   formValues,
   normalizeMobile,
   parseDate,
-  requireStaff,
+
   text,
   type Db,
 } from "@/lib/actions/shared";
@@ -146,8 +146,8 @@ function describeExpiry(input: AudienceInput) {
 
 /** "How many people will this reach?" Nothing is sent. */
 export async function previewNotification(formData: FormData): Promise<PreviewResult> {
-  const staff = await requireStaff();
-  if (!staff) return { ok: false, error: NOT_STAFF };
+  const auth = await authorize("notifications.send");
+  if (!auth.staff) return { ok: false, error: auth.error.error ?? "You do not have permission to do this." };
 
   const { input, fieldErrors } = readAudience(formData);
   const problem = Object.values(fieldErrors)[0];
@@ -187,8 +187,9 @@ export async function previewNotification(formData: FormData): Promise<PreviewRe
  * Push alerts are not sent yet: that needs a device-token sender (Edge Function), which is a later step.
  */
 export async function sendNotification(_previous: ActionState, formData: FormData): Promise<ActionState> {
-  const staff = await requireStaff();
-  if (!staff) return fail(NOT_STAFF);
+  const auth = await authorize("notifications.send");
+  if (!auth.staff) return auth.error;
+  const staff = auth.staff;
   const values = formValues(formData);
 
   const title = text(formData, "title");

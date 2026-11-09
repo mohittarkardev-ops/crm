@@ -4,8 +4,11 @@ import { MiniStat, StatRow } from "@/components/ui/mini-stat";
 import { previewNotification, sendNotification } from "@/lib/actions/notifications";
 import { getNotifications } from "@/lib/data/engagement";
 import { AUDIENCE_OPTIONS, CATEGORY_OPTIONS, NOTIFICATION_KIND_OPTIONS, READ_OPTIONS } from "@/lib/options";
+import { can } from "@/lib/rbac/permissions";
+import { requirePermission } from "@/lib/rbac/server";
 
 export default async function NotificationsPage() {
+  const staff = await requirePermission("notifications.view");
   const { rows, stats } = await getNotifications();
 
   return (
@@ -33,7 +36,7 @@ export default async function NotificationsPage() {
           { key: "sentOn", label: "Sent", type: "date" },
           { key: "read", label: "Read", type: "chip" },
         ]}
-        primary={{
+        primary={!can(staff, "notifications.send") ? undefined : {
           label: "New Notification",
           drawerTitle: "New Notification",
           action: sendNotification,

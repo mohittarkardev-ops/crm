@@ -15,17 +15,20 @@ export function StatusButtons({
   options,
   action,
   label,
+  readOnly = false,
 }: {
   current: string | null;
   options: Option[];
   action: (value: string) => Promise<ActionState>;
   label: string;
+  /** Shows the current choice but does not let it be changed (no permission). */
+  readOnly?: boolean;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
   const active = busy ?? current;
 
   async function pick(value: string) {
-    if (busy || value === current) return;
+    if (readOnly || busy || value === current) return;
     setBusy(value);
     try {
       const result = await action(value);
@@ -47,10 +50,12 @@ export function StatusButtons({
             key={option.value}
             type="button"
             aria-pressed={selected}
-            disabled={busy !== null}
+            disabled={busy !== null || readOnly}
             onClick={() => pick(option.value)}
             className={cn(
-              "h-8 px-3 text-xs font-medium transition-colors duration-150 disabled:cursor-wait",
+              "h-8 px-3 text-xs font-medium transition-colors duration-150",
+              busy !== null && "cursor-wait",
+              readOnly && "cursor-default",
               selected ? "bg-ink text-white" : "bg-transparent text-ink hover:bg-surface-muted",
             )}
           >

@@ -3,8 +3,10 @@ import { ModulePage } from "@/components/modules/module-page";
 import { MiniStat, StatRow } from "@/components/ui/mini-stat";
 import { getSupport } from "@/lib/data/engagement";
 import { SUPPORT_STATUS_OPTIONS } from "@/lib/options";
+import { requirePermission } from "@/lib/rbac/server";
 
 export default async function SupportPage() {
+  await requirePermission("support.view");
   const { rows, stats } = await getSupport();
 
   return (

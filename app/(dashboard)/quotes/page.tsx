@@ -3,8 +3,10 @@ import { ModulePage } from "@/components/modules/module-page";
 import { MiniStat, StatRow } from "@/components/ui/mini-stat";
 import { getQuotes } from "@/lib/data/engagement";
 import { CATEGORY_OPTIONS, CLIENT_TYPE_OPTIONS, QUOTE_STATUS_OPTIONS } from "@/lib/options";
+import { requirePermission } from "@/lib/rbac/server";
 
 export default async function QuotesPage() {
+  await requirePermission("quotes.view");
   const { rows, stats } = await getQuotes();
 
   return (

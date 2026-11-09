@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import type { ActionState } from "@/lib/module-types";
-import { NOT_STAFF, audit, dbMessage, done, fail, formValues, isEmail, normalizeMobile, parseDate, requireStaff, text } from "@/lib/actions/shared";
+import { audit, authorize, dbMessage, done, fail, formValues, isEmail, normalizeMobile, parseDate, text } from "@/lib/actions/shared";
 
 /**
  * Adds a client. The mobile number is stored in the same +91XXXXXXXXXX format the app uses, with no auth
@@ -10,8 +10,9 @@ import { NOT_STAFF, audit, dbMessage, done, fail, formValues, isEmail, normalize
  * mobile number and attaches their login, so their policies appear automatically.
  */
 export async function addClient(_previous: ActionState, formData: FormData): Promise<ActionState> {
-  const staff = await requireStaff();
-  if (!staff) return fail(NOT_STAFF);
+  const auth = await authorize("clients.create");
+  if (!auth.staff) return auth.error;
+  const staff = auth.staff;
   const values = formValues(formData);
 
   const name = text(formData, "name");

@@ -3,6 +3,7 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { MiniStat, StatRow } from "@/components/ui/mini-stat";
 import { getReportStats } from "@/lib/data/admin";
+import { requirePermission } from "@/lib/rbac/server";
 
 const REPORTS = [
   { title: "Renewals by month", icon: BarChart3 },
@@ -12,6 +13,7 @@ const REPORTS = [
 ];
 
 export default async function ReportsPage() {
+  await requirePermission("reports.view");
   const stats = await getReportStats();
 
   return (

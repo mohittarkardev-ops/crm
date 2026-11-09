@@ -2,12 +2,13 @@
 
 import { createClient } from "@/lib/supabase/server";
 import type { ActionState } from "@/lib/module-types";
-import { NOT_STAFF, audit, dbMessage, done, fail, formValues, normalizeMobile, requireStaff, text } from "@/lib/actions/shared";
+import { audit, authorize, dbMessage, done, fail, formValues, normalizeMobile, text } from "@/lib/actions/shared";
 
 /** Saves the business profile shown in the app (support card and IRDAI disclaimer) into app_settings. */
 export async function saveBusinessProfile(_previous: ActionState, formData: FormData): Promise<ActionState> {
-  const staff = await requireStaff();
-  if (!staff) return fail(NOT_STAFF);
+  const auth = await authorize("settings.edit");
+  if (!auth.staff) return auth.error;
+  const staff = auth.staff;
   const values = formValues(formData);
 
   const businessName = text(formData, "businessName");

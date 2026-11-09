@@ -25,11 +25,14 @@ function iconFor(name: string) {
 export function DocumentsCard({
   policyId,
   documents,
+  canEdit = true,
   index,
 }: {
   policyId: string;
   documents: DocumentItem[];
   index?: number;
+  /** False hides upload and delete (no permission). */
+  canEdit?: boolean;
 }) {
   return (
     <Card index={index}>
@@ -77,13 +80,13 @@ export function DocumentsCard({
                 >
                   <Download size={16} strokeWidth={1.75} aria-hidden="true" />
                 </a>
-                <DeleteDocumentButton policyId={policyId} documentId={doc.id} name={name} />
+                {canEdit && <DeleteDocumentButton policyId={policyId} documentId={doc.id} name={name} />}
               </li>
             );
           })}
         </ul>
       )}
-      <DocumentUpload policyId={policyId} />
+      {canEdit && <DocumentUpload policyId={policyId} />}
     </Card>
   );
 }

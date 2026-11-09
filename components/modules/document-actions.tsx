@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useRef, useState } from "react";
 import { Trash2 } from "lucide-react";
 import { Button, buttonStyles } from "@/components/ui/button";
+import { CustomSelect } from "@/components/ui/custom-select";
 import { PendingBar } from "@/components/ui/pending-bar";
 import { Spinner } from "@/components/ui/spinner";
 import { CONTROL } from "@/components/ui/field";
@@ -42,13 +43,12 @@ export function DocumentUpload({ policyId }: { policyId: string }) {
             "h-10 cursor-pointer py-1.5 file:mr-3 file:rounded-[4px] file:border-0 file:bg-ink file:px-3 file:py-1 file:text-xs file:font-medium file:text-white",
           )}
         />
-        <select name="documentType" defaultValue="Policy copy" className={cn(CONTROL, "h-10")}>
-          {DOCUMENT_TYPE_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
+        <CustomSelect
+          name="documentType"
+          defaultValue="Policy copy"
+          options={DOCUMENT_TYPE_OPTIONS}
+          className="h-10 text-xs"
+        />
       </div>
       {state.error && (
         <p role="alert" className="rounded-control bg-negative-soft px-3 py-2 text-xs text-negative">

@@ -11,8 +11,12 @@ import {
 import { getPlacements } from "@/lib/data/engagement";
 import type { FieldDef } from "@/lib/module-types";
 import { PLACEMENT_STATUS_OPTIONS } from "@/lib/options";
+import { can } from "@/lib/rbac/permissions";
+import { requirePermission } from "@/lib/rbac/server";
 
 export default async function PlacementsPage() {
+  const staff = await requirePermission("placements.view");
+  const canManage = can(staff, "placements.manage");
   const { rows, stats, slotOptions } = await getPlacements();
 
   // The same fields are used to create and to edit. When editing, each field is pre-filled from the row key of the same name.
@@ -57,22 +61,26 @@ export default async function PlacementsPage() {
           { key: "endsOn", label: "Ends", type: "date" },
           { key: "status", label: "Status", type: "chip" },
         ]}
-        edit={{ drawerTitle: "Edit Placement", fields, action: updatePlacement }}
-        rowActions={[
-          {
-            label: "Turn off",
-            action: deactivatePlacement,
-            showWhen: { key: "status", in: ["live", "scheduled"] },
-          },
-          { label: "Turn on", action: activatePlacement, showWhen: { key: "status", in: ["off"] } },
-          {
-            label: "Delete",
-            action: deletePlacement,
-            danger: true,
-            confirm: "Delete this placement? The app stops showing it immediately.",
-          },
-        ]}
-        primary={{ label: "New Placement", drawerTitle: "New Placement", action: createPlacement, fields }}
+        edit={canManage ? { drawerTitle: "Edit Placement", fields, action: updatePlacement } : undefined}
+        rowActions={
+          canManage
+            ? [
+                {
+                  label: "Turn off",
+                  action: deactivatePlacement,
+                  showWhen: { key: "status", in: ["live", "scheduled"] },
+                },
+                { label: "Turn on", action: activatePlacement, showWhen: { key: "status", in: ["off"] } },
+                {
+                  label: "Delete",
+                  action: deletePlacement,
+                  danger: true,
+                  confirm: "Delete this placement? The app stops showing it immediately.",
+                },
+              ]
+            : undefined
+        }
+        primary={canManage ? { label: "New Placement", drawerTitle: "New Placement", action: createPlacement, fields } : undefined}
       />
     </div>
   );

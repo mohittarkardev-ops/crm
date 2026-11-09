@@ -23,7 +23,7 @@ function initials(name: string) {
 /** Page title on the left; search, bell and account menu on the right (design.md section 3). */
 export function Topbar({ account }: { account: Account }) {
   const pathname = usePathname();
-  const title = findNavItem(pathname)?.label ?? "Dashboard";
+  const title = findNavItem(pathname)?.label ?? (pathname.startsWith("/no-access") ? "No access" : "Dashboard");
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const roleLabel = account.role === "admin" ? "Admin" : "Staff";

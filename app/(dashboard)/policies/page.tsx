@@ -11,8 +11,12 @@ import {
   SOURCE_OPTIONS,
   VERIFICATION_OPTIONS,
 } from "@/lib/options";
+import { can } from "@/lib/rbac/permissions";
+import { vehicleFields } from "@/lib/policy-fields";
+import { requirePermission } from "@/lib/rbac/server";
 
 export default async function PoliciesPage() {
+  const staff = await requirePermission("policies.view");
   const [{ rows, stats }, insurers] = await Promise.all([getPolicies(), getInsurerNames()]);
 
   return (
@@ -47,7 +51,7 @@ export default async function PoliciesPage() {
           { key: "status", label: "Status", type: "chip" },
           { key: "source", label: "Source", type: "chip" },
         ]}
-        primary={{
+        primary={!can(staff, "policies.create") ? undefined : {
           label: "Add Policy",
           drawerTitle: "Add Policy",
           action: addPolicy,
@@ -65,12 +69,13 @@ export default async function PoliciesPage() {
             { name: "policyNumber", label: "Policy number", required: true },
             { name: "premium", label: "Premium (₹)", type: "number" },
             { name: "startDate", label: "Start date", type: "date" },
-            { name: "endDate", label: "End date", type: "date", required: true },
+            { name: "endDate", label: "End date", type: "date", required: true, hint: "For vehicles, use the earlier of the own-damage and third-party dates." },
             { name: "planType", label: "Plan type" },
             { name: "holderName", label: "Policy holder name" },
-            { name: "vehicleRegNo", label: "Vehicle registration no.", hint: "Car and two wheeler only." },
-            { name: "vehicleMake", label: "Vehicle make" },
-            { name: "vehicleModel", label: "Vehicle model", full: true },
+            { name: "holderAddress", label: "Holder address", full: true },
+            ...vehicleFields(true),
+
+
             {
               name: "document",
               label: "Policy document",

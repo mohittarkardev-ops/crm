@@ -5,12 +5,18 @@ import { DetailList } from "@/components/ui/detail-list";
 import { EmptyState } from "@/components/ui/empty-state";
 import { DetailHeader } from "@/components/layout/detail-header";
 import { DocumentsCard } from "@/components/modules/documents-card";
+import { DeletePolicyButton, EditPolicyButton } from "@/components/modules/policy-actions";
+import { getInsurerNames } from "@/lib/data/lookups";
+import type { FieldDef } from "@/lib/module-types";
+import { vehicleFields } from "@/lib/policy-fields";
 import { getPolicyDetail } from "@/lib/data/details";
 import { formatDate, formatINR } from "@/lib/format";
 import { StatusButtons } from "@/components/ui/status-buttons";
 import { VerificationControl } from "@/components/modules/verification-control";
-import { setRenewalStatus, setVerification } from "@/lib/actions/policies";
+import { deletePolicy, setRenewalStatus, setVerification, updatePolicy } from "@/lib/actions/policies";
 import { RENEWAL_STATUS_OPTIONS } from "@/lib/options";
+import { can } from "@/lib/rbac/permissions";
+import { requirePermission } from "@/lib/rbac/server";
 import { categoryLabel } from "@/lib/status";
 
 function expiryText(daysLeft: number) {
@@ -21,7 +27,20 @@ function expiryText(daysLeft: number) {
 
 export default async function PolicyDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const p = await getPolicyDetail(id);
+  const staff = await requirePermission("policies.view");
+  const [p, insurers] = await Promise.all([getPolicyDetail(id), getInsurerNames()]);
+
+  const editFields: FieldDef[] = [
+    { name: "policyNumber", label: "Policy number", required: true },
+    { name: "insurer", label: "Insurer", required: true, suggestions: insurers },
+    { name: "premium", label: "Premium (₹)", type: "number" },
+    { name: "planType", label: "Plan type" },
+    { name: "startDate", label: "Start date", type: "date" },
+    { name: "endDate", label: "End date", type: "date", required: true },
+    { name: "holderName", label: "Policy holder name" },
+    { name: "holderAddress", label: "Holder address", full: true },
+    ...(p.isVehicle ? vehicleFields(false) : []),
+  ];
 
   return (
     <div className="space-y-4">
@@ -30,6 +49,14 @@ export default async function PolicyDetailPage({ params }: { params: Promise<{ i
         backLabel="All policies"
         title={p.policyNumber}
         subtitle={`${categoryLabel(p.category)}${p.insurer ? ` · ${p.insurer}` : ""}`}
+        actions={
+          <>
+            {can(staff, "policies.edit") && (
+              <EditPolicyButton fields={editFields} values={p.edit} action={updatePolicy.bind(null, p.id)} />
+            )}
+            {can(staff, "policies.delete") && <DeletePolicyButton action={deletePolicy.bind(null, p.id)} />}
+          </>
+        }
         chips={
           <>
             <ValueChip value={p.state} />
@@ -93,6 +120,7 @@ export default async function PolicyDetailPage({ params }: { params: Promise<{ i
             <VerificationControl
               current={p.verification}
               reason={p.rejectionReason}
+              readOnly={!can(staff, "policies.verify")}
               action={setVerification.bind(null, p.id)}
             />
             {p.source === "user_added" && (
@@ -106,11 +134,12 @@ export default async function PolicyDetailPage({ params }: { params: Promise<{ i
               label="Renewal status"
               current={p.renewals[0]?.status ?? null}
               options={RENEWAL_STATUS_OPTIONS}
+              readOnly={!can(staff, "renewals.update")}
               action={setRenewalStatus.bind(null, p.id)}
             />
           </Card>
 
-          <DocumentsCard index={4} policyId={p.id} documents={p.documents} />
+          <DocumentsCard index={4} policyId={p.id} documents={p.documents} canEdit={can(staff, "policies.edit")} />
 
           <Card index={4}>
             <CardHeader title="Renewal history" />

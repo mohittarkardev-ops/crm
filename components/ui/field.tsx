@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/cn";
+import { CustomSelect } from "@/components/ui/custom-select";
 import { DatePicker } from "@/components/ui/date-picker";
 import { rejectLargeFile } from "@/components/ui/file-guard";
 import type { FieldDef } from "@/lib/module-types";
@@ -50,18 +51,14 @@ export function Field({
       </span>
 
       {type === "select" ? (
-        <select name={name} defaultValue={value ?? ""} aria-invalid={invalid} className={cn(control, "h-10")}>
-          {!options?.some((option) => option.value === "") && (
-            <option value="" disabled>
-              Select
-            </option>
-          )}
-          {options?.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
+        <CustomSelect
+          name={name}
+          defaultValue={value ?? ""}
+          options={options ?? []}
+          placeholder="Select an option"
+          invalid={invalid}
+          onChange={() => onFieldChange?.()}
+        />
       ) : type === "date" ? (
         <DatePicker
           name={name}

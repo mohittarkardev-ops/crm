@@ -64,10 +64,15 @@ Spacing: 4, 8, 12, 16, 20, 24. Card padding 20px (16px for stat tiles). Grid gap
 
 ## 3. Layout
 
-- **Sidebar:** 240px, rounded panel in `--sidebar`, floating 16px from the edge. Top: dark logo square plus "SecureDrive" and "CRM". Then text nav (icon + label, 13px) in three groups separated by hairlines: [Dashboard, Clients, Policies, Renewals, Quote Requests], [Notifications, Placements, Support, Ad Controls, Reports], [Settings]. Active item: `--sidebar-active` background, bold text. Sign out at the bottom.
+- **Sidebar:** 240px, rounded panel in `--sidebar`, floating 16px from the edge. Top: dark logo square plus "SecureDrive" and "CRM". Text navigation (icon + label, 13px) organized into four logical groups separated by hairlines:
+  1. *Core Operations:* Dashboard, Clients, Policies, Renewals, Claims, Quote Requests
+  2. *Tools & Analytics:* Data Grid, Data Transfer, Reports
+  3. *Platform & Communications:* Notifications, Placements, Support, Ad Controls
+  4. *Settings:* Staff Accounts & RBAC
+  Active item: `--sidebar-active` background, bold text. Sign out at the bottom.
 - **Top bar:** page title (24px, bold) on the left; search, bell and account menu on the right; a full-width 1.5px dark rule underneath.
 - **Content:** max width 1440px, 12-column feel, 16px gaps. Dashboard: row of 4 stat cards, then chart and category cards, then the upcoming list.
-- **Responsive:** below 1024px the sidebar becomes a bottom bar; cards stack below 640px.
+- **Responsive:** below 1024px the sidebar becomes a bottom bar showing 5 primary shortcuts (Dashboard, Clients, Policies, Renewals, Claims); cards stack below 640px.
 
 ---
 
@@ -77,8 +82,13 @@ Spacing: 4, 8, 12, 16, 20, 24. Card padding 20px (16px for stat tiles). Grid gap
 - **Stat tile:** 3px left bar (yellow on even tiles, grey on odd), big bold number, UPPERCASE label below, optional trend line (green up, red down), small muted icon top-right.
 - **Segmented control:** 1px dark border, 4px radius, active segment near-black with white text, inactive transparent. Used for Week/Month/Year and tab filters.
 - **Buttons:** Primary = near-black, white text, radius 6, height 40. Secondary = white with hairline border. Ghost and icon = transparent, hover `accent-soft`. Danger = negative-soft. Yellow is never a button colour (white text is unreadable on it).
-- **Inputs:** height 40, radius 6, white 80%, hairline border, dark-yellow focus border (`accent-strong`) plus focus ring.
-- **Date picker and calendar:** one custom calendar everywhere (never the browser's native date input). Field shows the date as `20 Nov 2026` with a calendar icon; the panel opens in a floating layer with Monday-first weeks. Selected day = near-black square, range days = soft-yellow band, today = small yellow dot. Click the title for a month grid, again for a year grid. Footer: Today and Clear. Filters offer a Single day / Date range toggle.
+- **Inputs:** height 40, radius 6, white 80%, hairline border, dark-yellow focus border (`accent-strong`) plus focus ring. Touch-focused public portals (`/claim`) use `h-11` (44px) touch targets for high ergonomics.
+- **Dropdowns (`CustomSelect`):** one custom dropdown everywhere across the CRM (zero unstyled native `<select>` tags). Height 40 (or 44 for touch), radius 6, white background, hairline border, dark-yellow focus ring (`accent-strong`). Includes live filter search (when options $\ge 6$ or `searchable`), universal typeahead jump on closed or compact selects, portal-rendered to `document.body` with automatic viewport flip (opens upwards when below space < 260px). Form-transparent via hidden input for native Server Actions `FormData` compatibility.
+- **Date picker and calendar (`DatePicker`):** one custom calendar everywhere (never the browser's native date input). Field shows the date as `20 Nov 2026` with a calendar icon; the panel opens in a floating layer with Monday-first weeks. Selected day = near-black square, range days = soft-yellow band, today = small yellow dot. Click the title for a month grid, again for a year grid. Footer: Today and Clear. Filters offer a Single day / Date range toggle.
+- **Virtual Data Grid (`/data-grid`):** high-volume spreadsheet-like interface. Keyset pagination, virtual scrolling, inline cell editing with instant keyboard navigation (Tab/Shift-Tab/Enter), sticky smart-headers with sorting/filtering, multi-row selection, CSV/XLSX export.
+- **Bulk Data Transfer (`/import`):** multi-format ingestion (Excel .xlsx, CSV, JSON), auto-matching column mapper with sample previews, client-side batch chunking (Vercel serverless-safe), import audit history.
+- **Role-Based Access Control (`/settings`):** tabbed administration (Staff Accounts & Roles/Permissions). Granular module permission checkboxes, 3-state per-staff overrides (Inherit, Grant [+], Revoke [-]), dynamic RLS function integration.
+- **Public Claim Portal (`/claim`):** standalone public agent portal outside the dashboard shell. Protected by shared access code gate, Indian license plate lookup with instant policy match, touch-friendly `h-11` inputs, positive/warning verification flow.
 - **Loaders (by how long the wait is):**
   - Under about 1 second: no loader. Status buttons show the new choice at once (optimistic) and the clicked button carries a small spinner only while it saves.
   - 1 to 3 seconds (saving a form, a row action): `Button loading` puts a spinner in front of the label and blocks double clicks; form fields are dimmed and locked; a table row being changed is dimmed.
@@ -87,7 +97,7 @@ Spacing: 4, 8, 12, 16, 20, 24. Card padding 20px (16px for stat tiles). Grid gap
   - Components: `Spinner`, `Button loading`, `PendingBar`, `useDelayedFlag`, `Skeleton`.
 - **Chips:** 3px radius, 10px UPPERCASE bold. Soft background plus coloured text, except `Renewed`, which is solid yellow with dark text.
 - **Tables:** inside a card. Header = 10px UPPERCASE muted labels with a hairline under it. Rows 56px with hairline dividers, hover `accent-soft` at 40%. Avatars are grey circles with initials.
-- **Charts:** Recharts. Bars use yellow on a pale grey track, rounded tops. Donut and legend use the grey scale plus yellow. White tooltip card.
+- **Charts:** Recharts. Bars use yellow on a pale grey track, rounded tops, grid lines use `var(--divider)`. Donut and legend use the grey scale plus yellow. White tooltip card.
 - **Drawer / modal:** white, radius 12, overlay `rgba(28,28,28,0.35)`, forms in a right-side 480px drawer.
 - **Empty state:** muted icon in a grey circle plus one short label. Loading uses skeleton blocks.
 - **Icons:** Lucide, outlined, 1.75px stroke, 16–18px.
@@ -100,7 +110,13 @@ Entry fade plus 8px slide (250ms, 40ms stagger), number count-up once. Nothing e
 ---
 
 ## 6. SecureDrive content mapping
-Sidebar modules: Dashboard, Clients, Policies, Renewals, Quote Requests, Notifications, Placements, Support, Ad Controls, Reports, Settings.
+Sidebar modules:
+- **Core Operations:** Dashboard, Clients, Policies, Renewals, Claims, Quote Requests
+- **Tools & Analytics:** Data Grid, Data Transfer, Reports
+- **Platform & Communications:** Notifications, Placements, Support, Ad Controls
+- **System Settings:** Settings (Staff Accounts & Roles & Permissions tabs)
+- **Public Agent Portal:** `/claim` (access code gated claim submission)
+
 Dashboard: Active Policies, New Clients, Renewal Revenue, Renewal Rate; Renewals due (bar); Policies by Category (donut); Upcoming Renewals (list).
 
 ---

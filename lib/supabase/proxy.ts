@@ -24,7 +24,10 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user && !request.nextUrl.pathname.startsWith("/login")) {
+  const path = request.nextUrl.pathname;
+  // /login and the agents' public claim form (exactly /claim, not /claims) are open to signed-out visitors.
+  const isPublic = path.startsWith("/login") || path === "/claim";
+  if (!user && !isPublic) {
     const redirect = NextResponse.redirect(new URL("/login", request.url));
     response.cookies.getAll().forEach((cookie) => redirect.cookies.set(cookie));
     return redirect;

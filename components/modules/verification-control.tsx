@@ -16,10 +16,13 @@ import { VERIFICATION_OPTIONS } from "@/lib/options";
 export function VerificationControl({
   current,
   reason,
+  readOnly = false,
   action,
 }: {
   current: string;
   reason: string | null;
+  /** Shows the current choice but does not let it be changed (no permission). */
+  readOnly?: boolean;
   action: (status: string, reason?: string) => Promise<ActionState>;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
@@ -50,6 +53,7 @@ export function VerificationControl({
   }
 
   function pick(status: string) {
+    if (readOnly) return;
     if (status === "rejected") {
       setNote(reason ?? note);
       setRejecting(true);
@@ -69,10 +73,12 @@ export function VerificationControl({
               key={option.value}
               type="button"
               aria-pressed={selected}
-              disabled={busy !== null}
+              disabled={busy !== null || readOnly}
               onClick={() => pick(option.value)}
               className={cn(
-                "h-8 px-3 text-xs font-medium transition-colors duration-150 disabled:cursor-wait",
+                "h-8 px-3 text-xs font-medium transition-colors duration-150",
+                busy !== null && "cursor-wait",
+                readOnly && "cursor-default",
                 selected ? "bg-ink text-white" : "bg-transparent text-ink hover:bg-surface-muted",
               )}
             >

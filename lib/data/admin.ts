@@ -59,25 +59,52 @@ export async function getAdControls() {
 
 export async function getStaffList(currentStaffId?: string) {
   const db = await createClient();
-  const res = await db
+  let res: any = await db
     .from("staff_users")
-    .select("id, full_name, email, role, created_at")
+    .select("id, full_name, email, role, role_id, created_at, auth_user_id, employee_code, mobile_number, designation, is_active, roles(name)")
     .order("created_at", { ascending: true });
+
+  if (res.error) {
+    // Fallback if migration 0010 hasn't been executed yet (roles table / role_id column not present)
+    res = await db
+      .from("staff_users")
+      .select("id, full_name, email, role, created_at, auth_user_id, employee_code, mobile_number, designation, is_active")
+      .order("created_at", { ascending: true });
+  }
 
   const rows: Row[] = rowsOf<{
     id: string;
     full_name: string;
-    email: string;
+    email: string | null;
+    auth_user_id: string | null;
+    employee_code: string | null;
+    mobile_number: string | null;
+    designation: string | null;
+    is_active: boolean | null;
     role: string | null;
+    role_id: string | null;
+    roles: { name: string } | { name: string }[] | null;
     created_at: string;
-  }>(res, "Staff").map((s) => ({
-    id: s.id,
-    name: s.full_name,
-    email: s.email,
-    role: s.role,
-    joined: dateIST(s.created_at),
-    isSelf: s.id === currentStaffId ? "yes" : "no",
-  }));
+  }>(res, "Staff").map((s) => {
+    const roleObj = one(s.roles);
+    const displayRole = roleObj?.name || (s.role ? s.role.toUpperCase() : "Staff");
+
+    return {
+      id: s.id,
+      name: s.full_name,
+      email: s.email,
+      employeeCode: s.employee_code,
+      mobile: s.mobile_number,
+      designation: s.designation,
+      signIn: s.auth_user_id ? "Can sign in" : "No login",
+      agentState: s.auth_user_id ? "login" : s.is_active === false ? "inactive" : "active",
+      role: displayRole,
+      roleId: s.role_id,
+      rawRole: s.role,
+      joined: dateIST(s.created_at),
+      isSelf: s.id === currentStaffId ? "yes" : "no",
+    };
+  });
 
   return { rows };
 }

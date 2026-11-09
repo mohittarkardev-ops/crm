@@ -12,10 +12,13 @@ import { formatDate, formatINR } from "@/lib/format";
 import { StatusButtons } from "@/components/ui/status-buttons";
 import { setQuoteStatus } from "@/lib/actions/status";
 import { QUOTE_STATUS_OPTIONS } from "@/lib/options";
+import { can } from "@/lib/rbac/permissions";
+import { requirePermission } from "@/lib/rbac/server";
 import { categoryLabel } from "@/lib/status";
 
 export default async function QuoteDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const staff = await requirePermission("quotes.view");
   const q = await getQuoteDetail(id);
   const who = q.client?.name ?? q.client?.mobile ?? "Unknown user";
   const whatsapp = q.client ? `https://wa.me/${q.client.mobile.replace(/\D/g, "")}` : null;
@@ -54,6 +57,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
               label="Quote status"
               current={q.status}
               options={QUOTE_STATUS_OPTIONS}
+              readOnly={!can(staff, "quotes.update")}
               action={setQuoteStatus.bind(null, q.id)}
             />
           </Card>
@@ -133,7 +137,7 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
             )}
           </Card>
 
-          {q.policy && <DocumentsCard index={3} policyId={q.policy.id} documents={q.documents} />}
+          {q.policy && <DocumentsCard index={3} policyId={q.policy.id} documents={q.documents} canEdit={can(staff, "policies.edit")} />}
         </div>
       </div>
     </div>

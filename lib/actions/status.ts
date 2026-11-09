@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import type { ActionState } from "@/lib/module-types";
-import { NOT_STAFF, audit, dbMessage, done, fail, requireStaff } from "@/lib/actions/shared";
+import { audit, authorize, dbMessage, done, fail } from "@/lib/actions/shared";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -11,8 +11,9 @@ const QUOTE_STATUSES = ["new", "pending", "in_progress", "completed", "closed", 
 const TICKET_STATUSES = ["open", "in_progress", "resolved"];
 
 export async function setQuoteStatus(id: string, status: string): Promise<ActionState> {
-  const staff = await requireStaff();
-  if (!staff) return fail(NOT_STAFF);
+  const auth = await authorize("quotes.update");
+  if (!auth.staff) return auth.error;
+  const staff = auth.staff;
   if (!UUID.test(id) || !QUOTE_STATUSES.includes(status)) return fail("That change is not allowed.");
 
   const db = await createClient();
@@ -25,8 +26,9 @@ export async function setQuoteStatus(id: string, status: string): Promise<Action
 }
 
 export async function setTicketStatus(id: string, status: string): Promise<ActionState> {
-  const staff = await requireStaff();
-  if (!staff) return fail(NOT_STAFF);
+  const auth = await authorize("support.update");
+  if (!auth.staff) return auth.error;
+  const staff = auth.staff;
   if (!UUID.test(id) || !TICKET_STATUSES.includes(status)) return fail("That change is not allowed.");
 
   const db = await createClient();

@@ -1,5 +1,6 @@
 import { revalidatePath } from "next/cache";
-import { getStaff } from "@/lib/auth";
+import { getStaff, type StaffProfile } from "@/lib/auth";
+import { can, type PermissionKey } from "@/lib/rbac/permissions";
 import { createClient } from "@/lib/supabase/server";
 import type { ActionState } from "@/lib/module-types";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL } from "@/lib/upload-limits";
@@ -18,6 +19,24 @@ export async function requireStaff() {
 }
 
 export const NOT_STAFF = "You are not signed in as CRM staff. Sign in again.";
+export const NOT_ALLOWED = "You do not have permission to do this.";
+
+type Authorized = { staff: StaffProfile; error?: undefined } | { staff?: undefined; error: ActionState };
+
+/**
+ * Every server action starts with this. It checks that the person is signed-in CRM staff AND allowed to do this
+ * specific thing (see lib/rbac/permissions.ts). Use it like this:
+ *
+ *   const auth = await authorize("placements.manage");
+ *   if (!auth.staff) return auth.error;
+ *   const staff = auth.staff;
+ */
+export async function authorize(permission: PermissionKey, deniedMessage: string = NOT_ALLOWED): Promise<Authorized> {
+  const { staff } = await getStaff();
+  if (!staff) return { error: { ok: false, error: NOT_STAFF } };
+  if (!can(staff, permission)) return { error: { ok: false, error: deniedMessage } };
+  return { staff };
+}
 
 export function fail(
   error: string,

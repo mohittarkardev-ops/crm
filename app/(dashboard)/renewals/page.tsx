@@ -3,8 +3,10 @@ import { ModulePage } from "@/components/modules/module-page";
 import { MiniStat, StatRow } from "@/components/ui/mini-stat";
 import { getRenewals } from "@/lib/data/policies";
 import { CATEGORY_OPTIONS, RENEWAL_STATUS_OPTIONS, RENEWAL_WINDOW_OPTIONS } from "@/lib/options";
+import { requirePermission } from "@/lib/rbac/server";
 
 export default async function RenewalsPage() {
+  await requirePermission("renewals.view");
   const { rows, stats } = await getRenewals();
 
   return (

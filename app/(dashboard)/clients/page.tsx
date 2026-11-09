@@ -4,8 +4,11 @@ import { MiniStat, StatRow } from "@/components/ui/mini-stat";
 import { addClient } from "@/lib/actions/clients";
 import { getClients } from "@/lib/data/clients";
 import { CLIENT_TYPE_OPTIONS } from "@/lib/options";
+import { can } from "@/lib/rbac/permissions";
+import { requirePermission } from "@/lib/rbac/server";
 
 export default async function ClientsPage() {
+  const staff = await requirePermission("clients.view");
   const { rows, stats } = await getClients();
 
   return (
@@ -31,7 +34,7 @@ export default async function ClientsPage() {
           { key: "policies", label: "Policies", type: "number" },
           { key: "joined", label: "Joined", type: "date" },
         ]}
-        primary={{
+        primary={!can(staff, "clients.create") ? undefined : {
           label: "Add Client",
           drawerTitle: "Add Client",
           action: addClient,

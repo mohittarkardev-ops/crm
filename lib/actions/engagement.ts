@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import type { ActionState } from "@/lib/module-types";
-import { NOT_STAFF, audit, dbMessage, done, fail, formValues, parseDate, requireStaff, text } from "@/lib/actions/shared";
+import { audit, authorize, dbMessage, done, fail, formValues, parseDate, text } from "@/lib/actions/shared";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -56,8 +56,9 @@ function readPlacement(formData: FormData) {
 }
 
 export async function createPlacement(_previous: ActionState, formData: FormData): Promise<ActionState> {
-  const staff = await requireStaff();
-  if (!staff) return fail(NOT_STAFF);
+  const auth = await authorize("placements.manage");
+  if (!auth.staff) return auth.error;
+  const staff = auth.staff;
   const values = formValues(formData);
 
   const { fieldErrors, data } = readPlacement(formData);
@@ -73,8 +74,9 @@ export async function createPlacement(_previous: ActionState, formData: FormData
 
 /** Saves changes to an existing placement. Whether it is on or off is not changed here (use Turn on / Turn off). */
 export async function updatePlacement(id: string, _previous: ActionState, formData: FormData): Promise<ActionState> {
-  const staff = await requireStaff();
-  if (!staff) return fail(NOT_STAFF);
+  const auth = await authorize("placements.manage");
+  if (!auth.staff) return auth.error;
+  const staff = auth.staff;
   if (!UUID.test(id)) return fail("That placement could not be found.");
   const values = formValues(formData);
 
@@ -91,8 +93,9 @@ export async function updatePlacement(id: string, _previous: ActionState, formDa
 }
 
 async function setPlacementActive(id: string, active: boolean): Promise<ActionState> {
-  const staff = await requireStaff();
-  if (!staff) return fail(NOT_STAFF);
+  const auth = await authorize("placements.manage");
+  if (!auth.staff) return auth.error;
+  const staff = auth.staff;
   if (!UUID.test(id)) return fail("That placement could not be found.");
 
   const db = await createClient();
@@ -113,8 +116,9 @@ export async function deactivatePlacement(id: string) {
 }
 
 export async function deletePlacement(id: string): Promise<ActionState> {
-  const staff = await requireStaff();
-  if (!staff) return fail(NOT_STAFF);
+  const auth = await authorize("placements.manage");
+  if (!auth.staff) return auth.error;
+  const staff = auth.staff;
   if (!UUID.test(id)) return fail("That placement could not be found.");
 
   const db = await createClient();

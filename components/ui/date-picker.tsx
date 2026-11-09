@@ -14,13 +14,16 @@ const POPOVER_HEIGHT = 372;
 type DatePickerProps = {
   /** Form field name. The chosen date is submitted as YYYY-MM-DD through a hidden input. */
   name?: string;
+  value?: string;
   defaultValue?: string;
   placeholder?: string;
   invalid?: boolean;
   /** Dates after today cannot be picked (for example a date of birth). */
   maxToday?: boolean;
+  onChange?: (value: string) => void;
   /** Called after the value has changed and the form has the new value. */
   onValueChange?: () => void;
+  className?: string;
 };
 
 /**
@@ -29,13 +32,18 @@ type DatePickerProps = {
  */
 export function DatePicker({
   name,
+  value: propValue,
   defaultValue = "",
   placeholder = "Select date",
   invalid,
   maxToday,
+  onChange,
   onValueChange,
+  className,
 }: DatePickerProps) {
-  const [value, setValue] = useState(defaultValue);
+  const isControlled = propValue !== undefined;
+  const [internalValue, setInternalValue] = useState(defaultValue);
+  const value = isControlled ? propValue : internalValue;
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ left: number; top?: number; bottom?: number } | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -98,7 +106,10 @@ export function DatePicker({
   const max = maxToday ? todayIST() : undefined;
 
   function choose(iso: string) {
-    setValue(iso);
+    if (!isControlled) {
+      setInternalValue(iso);
+    }
+    onChange?.(iso);
     setOpen(false);
     triggerRef.current?.focus();
   }
@@ -116,6 +127,7 @@ export function DatePicker({
         className={cn(
           "flex h-10 w-full items-center justify-between gap-2 rounded-control border bg-white/80 px-3 text-left text-sm outline-none transition-colors focus-visible:border-accent-strong",
           invalid ? "border-negative" : open ? "border-accent-strong" : "border-divider",
+          className,
         )}
       >
         <span className={cn("truncate tabular-nums", value ? "text-ink" : "text-ink-faint")}>

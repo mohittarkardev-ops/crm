@@ -21,6 +21,7 @@ import type {
 import { Button, buttonStyles } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Chip } from "@/components/ui/chip";
+import { CustomSelect } from "@/components/ui/custom-select";
 import {
   DEFAULT_DATE_RANGE,
   DateRangeFilter,
@@ -98,7 +99,7 @@ function renderCell(column: Column, row: Row) {
  * The form inside a drawer. Mounted only while the drawer is open, so every open starts clean.
  * While saving: a spinner in the Save button, the fields dimmed and locked, and (after 0.4 s) a moving bar.
  */
-function PrimaryForm({
+export function PrimaryForm({
   primary,
   initialValues,
   onClose,
@@ -254,8 +255,11 @@ function RowActionButtons({
     onBusy(true);
     try {
       const result = await action.action(row.id);
-      if (result.ok) toast(result.message ?? "Done.");
-      else toast(result.error ?? "Could not complete this action.", "error");
+      if (result.ok) {
+        if (result.message) toast(result.message);
+      } else {
+        toast(result.error ?? "Could not complete this action.", "error");
+      }
     } catch {
       toast("Something went wrong. Please try again.", "error");
     } finally {
@@ -367,22 +371,22 @@ export function ModulePage({
                 />
               </label>
             )}
-            {filters.map((filter) => (
-              <select
-                key={filter.key}
-                aria-label={filter.label}
-                value={filterValues[filter.key] ?? "all"}
-                onChange={(event) => setFilterValues((prev) => ({ ...prev, [filter.key]: event.target.value }))}
-                className="h-10 rounded-control border border-divider bg-white/80 px-3 text-sm text-ink outline-none focus:border-accent-strong"
-              >
-                <option value="all">{filter.label}</option>
-                {filter.options.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            ))}
+            {filters.map((filter) => {
+              const options = [
+                { value: "all", label: filter.label },
+                ...filter.options,
+              ];
+              return (
+                <div key={filter.key} className="w-auto min-w-[130px]">
+                  <CustomSelect
+                    value={filterValues[filter.key] ?? "all"}
+                    onChange={(val) => setFilterValues((prev) => ({ ...prev, [filter.key]: val }))}
+                    options={options}
+                    className="h-10 text-xs font-medium"
+                  />
+                </div>
+              );
+            })}
             {dateFilter && <DateRangeFilter label={dateFilter.label} value={dateRange} onChange={setDateRange} />}
             {primary && (
               <Button onClick={() => setOpen(true)}>

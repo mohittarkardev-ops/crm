@@ -1,18 +1,19 @@
 import { TriangleAlert } from "lucide-react";
 import { BusinessProfileForm } from "@/components/modules/business-profile-form";
-import { ModulePage } from "@/components/modules/module-page";
 import { Card, CardHeader } from "@/components/ui/card";
-import { addStaff, removeStaff, updateStaff } from "@/lib/actions/staff";
-import { getStaff } from "@/lib/auth";
+import { can } from "@/lib/rbac/permissions";
+import { requirePermission } from "@/lib/rbac/server";
 import { getStaffList } from "@/lib/data/admin";
 import { getBusinessProfile } from "@/lib/data/lookups";
-import { STAFF_ROLE_OPTIONS } from "@/lib/options";
+import { getRoles } from "@/lib/data/rbac";
+import { RbacSettingsShell } from "@/components/modules/rbac/rbac-settings-shell";
 
 export default async function SettingsPage() {
-  const { staff } = await getStaff();
-  const isAdmin = staff?.role === "admin";
-  const [staffList, { profile, missing }] = await Promise.all([
+  const staff = await requirePermission("settings.view");
+  const isAdmin = can(staff, "staff.manage");
+  const [staffList, roles, { profile, missing }] = await Promise.all([
     isAdmin && staff ? getStaffList(staff.id) : Promise.resolve({ rows: [] }),
+    isAdmin ? getRoles() : Promise.resolve([]),
     getBusinessProfile(),
   ]);
 
@@ -33,71 +34,11 @@ export default async function SettingsPage() {
       </Card>
 
       {isAdmin ? (
-        <ModulePage
-          index={1}
-          title="Staff and roles"
-          rows={staffList.rows}
-          emptyLabel="No staff yet"
-          search="Search name or email…"
-          columns={[
-            { key: "name", label: "Name", type: "person" },
-            { key: "email", label: "Email" },
-            { key: "role", label: "Role", type: "chip" },
-            { key: "joined", label: "Joined", type: "date" },
-          ]}
-          primary={{
-            label: "Add Staff",
-            drawerTitle: "Add Staff",
-            action: addStaff,
-            fields: [
-              { name: "name", label: "Full name", required: true },
-              { name: "email", label: "Email (their login)", type: "email", required: true },
-              {
-                name: "role",
-                label: "Role",
-                type: "select",
-                options: STAFF_ROLE_OPTIONS,
-                required: true,
-                hint: "Admins manage staff and settings. Fine-grained permissions come later.",
-              },
-              {
-                name: "password",
-                label: "Temporary password",
-                type: "password",
-                required: true,
-                hint: "At least 8 characters. Share it with them; they can sign in right away.",
-              },
-            ],
-          }}
-          edit={{
-            drawerTitle: "Edit Staff",
-            action: updateStaff,
-            fields: [
-              { name: "name", label: "Full name", required: true },
-              { name: "role", label: "Role", type: "select", options: STAFF_ROLE_OPTIONS, required: true },
-              {
-                name: "newPassword",
-                label: "New password (optional)",
-                type: "password",
-                full: true,
-                hint: "Leave empty to keep the current password.",
-              },
-            ],
-          }}
-          rowActions={[
-            {
-              label: "Remove",
-              action: removeStaff,
-              danger: true,
-              showWhen: { key: "isSelf", in: ["no"] },
-              confirm: "Remove this person? Their login stops working immediately.",
-            },
-          ]}
-        />
+        <RbacSettingsShell staffRows={staffList.rows} roles={roles} />
       ) : (
         <Card index={1}>
           <CardHeader title="Staff and roles" />
-          <p className="text-sm text-ink-muted">Only admins can add or manage staff accounts.</p>
+          <p className="text-sm text-ink-muted">Only admins can add or manage staff accounts and roles.</p>
         </Card>
       )}
     </div>

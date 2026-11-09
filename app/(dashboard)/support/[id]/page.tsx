@@ -10,9 +10,12 @@ import { setTicketStatus } from "@/lib/actions/status";
 import { getTicketDetail } from "@/lib/data/ticket";
 import { formatDate } from "@/lib/format";
 import { SUPPORT_STATUS_OPTIONS } from "@/lib/options";
+import { can } from "@/lib/rbac/permissions";
+import { requirePermission } from "@/lib/rbac/server";
 
 export default async function TicketDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const staff = await requirePermission("support.view");
   const t = await getTicketDetail(id);
   const who = t.client?.name ?? t.client?.mobile ?? "Unknown user";
   const whatsapp = t.client ? `https://wa.me/${t.client.mobile.replace(/\D/g, "")}` : null;
@@ -51,6 +54,7 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ i
               label="Ticket status"
               current={t.status}
               options={SUPPORT_STATUS_OPTIONS.filter((o) => o.value !== "all")}
+              readOnly={!can(staff, "support.update")}
               action={setTicketStatus.bind(null, t.id)}
             />
           </Card>

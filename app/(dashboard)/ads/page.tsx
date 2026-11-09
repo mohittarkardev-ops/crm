@@ -3,8 +3,12 @@ import { ModulePage } from "@/components/modules/module-page";
 import { MiniStat, StatRow } from "@/components/ui/mini-stat";
 import { addAdFreeUser, disableAdSlot, enableAdSlot, removeAdFreeUser } from "@/lib/actions/ads";
 import { getAdControls } from "@/lib/data/admin";
+import { can } from "@/lib/rbac/permissions";
+import { requirePermission } from "@/lib/rbac/server";
 
 export default async function AdControlsPage() {
+  const staff = await requirePermission("ads.view");
+  const canManage = can(staff, "ads.manage");
   const { slotRows, freeRows, stats } = await getAdControls();
 
   return (
@@ -25,10 +29,14 @@ export default async function AdControlsPage() {
           { key: "status", label: "Status", type: "chip" },
           { key: "updatedOn", label: "Last changed", type: "date" },
         ]}
-        rowActions={[
-          { label: "Turn off", action: disableAdSlot, showWhen: { key: "status", in: ["on"] } },
-          { label: "Turn on", action: enableAdSlot, showWhen: { key: "status", in: ["off"] } },
-        ]}
+        rowActions={
+          canManage
+            ? [
+                { label: "Turn off", action: disableAdSlot, showWhen: { key: "status", in: ["on"] } },
+                { label: "Turn on", action: enableAdSlot, showWhen: { key: "status", in: ["off"] } },
+              ]
+            : undefined
+        }
       />
 
       <ModulePage
@@ -42,29 +50,37 @@ export default async function AdControlsPage() {
           { key: "mobile", label: "Mobile" },
           { key: "addedOn", label: "Added", type: "date" },
         ]}
-        rowActions={[
-          {
-            label: "Remove",
-            action: removeAdFreeUser,
-            danger: true,
-            confirm: "This user will see ads again. Continue?",
-          },
-        ]}
-        primary={{
-          label: "Add User",
-          drawerTitle: "Add Ad-free User",
-          action: addAdFreeUser,
-          fields: [
-            {
-              name: "mobile",
-              label: "Mobile number",
-              type: "tel",
-              required: true,
-              full: true,
-              hint: "The person must already be in Clients.",
-            },
-          ],
-        }}
+        rowActions={
+          canManage
+            ? [
+                {
+                  label: "Remove",
+                  action: removeAdFreeUser,
+                  danger: true,
+                  confirm: "This user will see ads again. Continue?",
+                },
+              ]
+            : undefined
+        }
+        primary={
+          canManage
+            ? {
+                label: "Add User",
+                drawerTitle: "Add Ad-free User",
+                action: addAdFreeUser,
+                fields: [
+                  {
+                    name: "mobile",
+                    label: "Mobile number",
+                    type: "tel",
+                    required: true,
+                    full: true,
+                    hint: "The person must already be in Clients.",
+                  },
+                ],
+              }
+            : undefined
+        }
       />
     </div>
   );

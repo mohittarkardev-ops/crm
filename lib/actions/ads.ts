@@ -2,11 +2,12 @@
 
 import { createClient } from "@/lib/supabase/server";
 import type { ActionState } from "@/lib/module-types";
-import { NOT_STAFF, audit, dbMessage, done, fail, formValues, normalizeMobile, requireStaff, text } from "@/lib/actions/shared";
+import { audit, authorize, dbMessage, done, fail, formValues, normalizeMobile, text } from "@/lib/actions/shared";
 
 async function setSlot(slotName: string, enabled: boolean): Promise<ActionState> {
-  const staff = await requireStaff();
-  if (!staff) return fail(NOT_STAFF);
+  const auth = await authorize("ads.manage");
+  if (!auth.staff) return auth.error;
+  const staff = auth.staff;
 
   const db = await createClient();
   const result = await db.from("ad_slots").update({ is_enabled: enabled }).eq("slot_name", slotName).select("slot_name");
@@ -27,8 +28,9 @@ export async function disableAdSlot(slotName: string) {
 
 /** Marks an existing user as ad-free. The app reads ad_settings.show_ads. */
 export async function addAdFreeUser(_previous: ActionState, formData: FormData): Promise<ActionState> {
-  const staff = await requireStaff();
-  if (!staff) return fail(NOT_STAFF);
+  const auth = await authorize("ads.manage");
+  if (!auth.staff) return auth.error;
+  const staff = auth.staff;
   const values = formValues(formData);
 
   const mobile = normalizeMobile(text(formData, "mobile"));
@@ -59,8 +61,9 @@ export async function addAdFreeUser(_previous: ActionState, formData: FormData):
 }
 
 export async function removeAdFreeUser(userId: string): Promise<ActionState> {
-  const staff = await requireStaff();
-  if (!staff) return fail(NOT_STAFF);
+  const auth = await authorize("ads.manage");
+  if (!auth.staff) return auth.error;
+  const staff = auth.staff;
 
   const db = await createClient();
   const result = await db.from("ad_settings").update({ show_ads: true }).eq("user_id", userId).select("user_id");

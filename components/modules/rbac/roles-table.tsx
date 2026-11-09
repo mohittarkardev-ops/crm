@@ -1,0 +1,164 @@
+"use client";
+
+import React, { useState } from "react";
+import { Plus, Edit2, Trash2, ShieldCheck, Users, KeyRound, ShieldAlert } from "lucide-react";
+import { Card, CardHeader } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Chip } from "@/components/ui/chip";
+import { toast } from "@/components/ui/toaster";
+import { type RoleItem } from "@/lib/data/rbac";
+import { RoleEditorDrawer } from "./role-editor-drawer";
+import { deleteRoleAction } from "@/lib/actions/rbac";
+
+interface RolesTableProps {
+  roles: RoleItem[];
+}
+
+export function RolesTable({ roles }: RolesTableProps) {
+  const [editingRole, setEditingRole] = useState<RoleItem | null>(null);
+  const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const handleOpenAdd = () => {
+    setEditingRole(null);
+    setIsEditorOpen(true);
+  };
+
+  const handleOpenEdit = (role: RoleItem) => {
+    setEditingRole(role);
+    setIsEditorOpen(true);
+  };
+
+  const handleDelete = async (role: RoleItem) => {
+    if (role.isSystem) {
+      toast(`System role "${role.name}" cannot be deleted.`, "error");
+      return;
+    }
+
+    if (!window.confirm(`Delete role "${role.name}"? Staff currently assigned to this role will lose their custom role permissions.`)) {
+      return;
+    }
+
+    setDeletingId(role.id);
+    try {
+      const res = await deleteRoleAction(role.id);
+      if (!res.ok) {
+        toast(res.error || "Failed to delete role.", "error");
+      } else {
+        toast(`Role "${role.name}" deleted.`);
+      }
+    } catch (err: any) {
+      toast(err.message || "An error occurred.", "error");
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  return (
+    <Card className="p-5">
+      <CardHeader
+        title="Role Definitions & Permissions"
+        action={
+          <Button onClick={handleOpenAdd}>
+            <Plus size={16} strokeWidth={1.75} aria-hidden="true" />
+            Add Role
+          </Button>
+        }
+      />
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-left text-xs whitespace-nowrap">
+          <thead>
+            <tr className="border-b border-divider text-[10px] font-semibold text-ink-muted uppercase tracking-[0.06em]">
+              <th className="px-4 pb-2.5">Role Name</th>
+              <th className="px-4 pb-2.5">Description</th>
+              <th className="px-4 pb-2.5 text-center">Type</th>
+              <th className="px-4 pb-2.5 text-center">Staff Count</th>
+              <th className="px-4 pb-2.5 text-center">Permissions</th>
+              <th className="px-4 pb-2.5 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-divider/60">
+            {roles.map((r) => {
+              const isAdmin = r.name === "Admin";
+              return (
+                <tr key={r.id} className="h-14 border-t border-divider transition-colors hover:bg-accent-soft/40">
+                  <td className="px-4 py-3 font-semibold text-ink">
+                    <div className="flex items-center gap-2">
+                      {r.isSystem ? (
+                        <ShieldCheck size={15} className="text-ink shrink-0" />
+                      ) : (
+                        <KeyRound size={15} className="text-ink-muted shrink-0" />
+                      )}
+                      <span>{r.name}</span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-ink-muted max-w-sm truncate">
+                    {r.description || <span className="text-ink-faint italic">—</span>}
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <Chip tone={r.isSystem ? "accent" : "neutral"}>
+                      {r.isSystem ? "System" : "Custom"}
+                    </Chip>
+                  </td>
+                  <td className="px-4 py-3 text-center font-medium text-ink tabular-nums">
+                    <span className="inline-flex items-center gap-1">
+                      <Users size={12} className="text-ink-muted" />
+                      {r.staffCount}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    {isAdmin ? (
+                      <Chip tone="positive">All Access</Chip>
+                    ) : (
+                      <span className="font-semibold text-ink tabular-nums">
+                        {r.permissions.length} modules/actions
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        onClick={() => handleOpenEdit(r)}
+                        className="h-7 px-2 text-xs"
+                      >
+                        <Edit2 size={12} className="mr-1" />
+                        Edit
+                      </Button>
+                      {!r.isSystem && (
+                        <Button
+                          variant="ghost"
+                          onClick={() => handleDelete(r)}
+                          loading={deletingId === r.id}
+                          className="h-7 px-2 text-xs text-negative hover:bg-negative-soft hover:text-negative"
+                        >
+                          <Trash2 size={12} className="mr-1" />
+                          Delete
+                        </Button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+
+            {roles.length === 0 && (
+              <tr>
+                <td colSpan={6} className="py-8 text-center text-xs text-ink-muted">
+                  No roles found. Please run migration 0010 in Supabase.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <RoleEditorDrawer
+        isOpen={isEditorOpen}
+        onClose={() => setIsEditorOpen(false)}
+        role={editingRole}
+      />
+    </Card>
+  );
+}

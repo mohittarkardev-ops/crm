@@ -106,6 +106,12 @@ html {
   color-scheme: light;
 }
 
+/* Native checkboxes and radios use the CRM ink colour instead of the browser blue. */
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--text);
+}
+
 body {
   min-height: 100vh;
   color: var(--text);

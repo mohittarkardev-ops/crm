@@ -90,6 +90,10 @@ export type PolicyDetail = {
   createdOn: string | null;
   updatedOn: string | null;
   holder: { name: string | null; mobile: string | null; address: string | null };
+  /** Cars and two wheelers: the Edit form includes the vehicle fields. */
+  isVehicle: boolean;
+  /** Current values for the Edit Policy form, keyed by form field name. */
+  edit: Record<string, string>;
   vehicle: { label: string; value: string }[];
   client: ClientInfo | null;
   documents: DocumentItem[];
@@ -126,6 +130,7 @@ export async function getPolicyDetail(id: string): Promise<PolicyDetail> {
     quote_requests: { id: string; status: string; created_at: string }[] | null;
   };
   const text = (key: string) => (p[key] === null || p[key] === undefined || p[key] === "" ? null : String(p[key]));
+  const category = one(p.policy_types)?.code ?? "other";
 
   const vehicle = [
     ["Registration no.", text("vehicle_reg_no")],
@@ -137,6 +142,14 @@ export async function getPolicyDetail(id: string): Promise<PolicyDetail> {
     ["Chassis no.", text("vehicle_chassis_no")],
     ["Engine no.", text("vehicle_engine_no")],
     ["Engine cc", text("vehicle_cc")],
+    ["Vehicle group", text("vehicle_category")],
+    ["Seating capacity", text("seating_capacity")],
+    ["IDV", text("idv")],
+    ["Own-damage (SAOD) due date", text("saod_due_date")],
+    ["Third-party (TP) due date", text("tp_due_date")],
+    ["RTO location", text("rto_location")],
+    ["PIN", text("pin")],
+    ["Second PIN", text("pin_2")],
   ]
     .filter((row): row is [string, string] => row[1] !== null)
     .map(([label, value]) => ({ label, value }));
@@ -159,6 +172,34 @@ export async function getPolicyDetail(id: string): Promise<PolicyDetail> {
     createdOn: dateIST(text("created_at")),
     updatedOn: dateIST(text("updated_at")),
     holder: { name: text("holder_name"), mobile: text("holder_mobile"), address: text("holder_address") },
+    isVehicle: category === "car" || category === "bike",
+    edit: {
+      policyNumber: text("policy_number") ?? "",
+      insurer: one(p.insurers)?.name ?? text("insurer_name") ?? "",
+      premium: text("premium_amount") ?? "",
+      planType: text("plan_type") ?? "",
+      startDate: text("start_date") ?? "",
+      endDate: p.due_date,
+      holderName: text("holder_name") ?? "",
+      holderAddress: text("holder_address") ?? "",
+      vehicleRegNo: text("vehicle_reg_no") ?? "",
+      vehicleGroup: text("vehicle_category") ?? "",
+      vehicleMake: text("vehicle_make") ?? "",
+      vehicleModel: text("vehicle_model") ?? "",
+      vehicleFuel: text("vehicle_fuel_type") ?? "",
+      vehicleMfy: text("vehicle_mfy") ?? "",
+      vehicleRegnDate: text("vehicle_regn_date") ?? "",
+      vehicleChassis: text("vehicle_chassis_no") ?? "",
+      vehicleEngine: text("vehicle_engine_no") ?? "",
+      vehicleCc: text("vehicle_cc") ?? "",
+      seatingCapacity: text("seating_capacity") ?? "",
+      idv: text("idv") ?? "",
+      saodDueDate: text("saod_due_date") ?? "",
+      tpDueDate: text("tp_due_date") ?? "",
+      rtoLocation: text("rto_location") ?? "",
+      pin: text("pin") ?? "",
+      pin2: text("pin_2") ?? "",
+    },
     vehicle,
     client: toClient(p.users),
     documents: toDocuments(p.policy_documents),

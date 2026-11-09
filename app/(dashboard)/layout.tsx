@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Topbar } from "@/components/layout/topbar";
 import { WelcomeSplash } from "@/components/layout/welcome-splash";
 import { getStaff } from "@/lib/auth";
+import { allowedPermissions } from "@/lib/rbac/permissions";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, staff } = await getStaff();
@@ -16,7 +17,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <WelcomeSplash name={staff.full_name} />
       <NavProgress />
       <Toaster />
-      <Sidebar />
+      <Sidebar allowed={allowedPermissions(staff)} />
       <div className="flex min-w-0 flex-1 flex-col gap-4 pb-24 lg:pb-0">
         <Topbar account={{ id: staff.id, name: staff.full_name, email: staff.email, role: staff.role }} />
         <main className="mx-auto w-full max-w-[1440px] flex-1">{children}</main>

@@ -1,0 +1,98 @@
+import { CircleCheck, CircleX, Clock, IndianRupee } from "lucide-react";
+import { ModulePage } from "@/components/modules/module-page";
+import { MiniStat, StatRow } from "@/components/ui/mini-stat";
+import { approveClaim, createClaim, rejectClaim } from "@/lib/actions/claims";
+import { getAgentOptions, getClaims } from "@/lib/data/claims";
+import type { FieldDef, Option } from "@/lib/module-types";
+import { can } from "@/lib/rbac/permissions";
+import { requirePermission } from "@/lib/rbac/server";
+
+const STATUS_OPTIONS: Option[] = [
+  { value: "pending", label: "Pending" },
+  { value: "approved", label: "Approved" },
+  { value: "rejected", label: "Rejected" },
+];
+
+const MODE_OPTIONS: Option[] = [
+  { value: "Online", label: "Online" },
+  { value: "NEFT", label: "NEFT" },
+  { value: "Cheque", label: "Cheque" },
+  { value: "GPay(UPI)", label: "GPay (UPI)" },
+  { value: "Cash", label: "Cash" },
+];
+
+const GROUP_OPTIONS: Option[] = [
+  { value: "", label: "Not needed (vehicle is in Policies)" },
+  { value: "2W", label: "Two wheeler (2W)" },
+  { value: "4W", label: "Four wheeler (4W)" },
+  { value: "CV", label: "Commercial vehicle (CV)" },
+];
+
+export default async function ClaimsPage() {
+  const staff = await requirePermission("claims.view");
+  const canCreate = can(staff, "claims.create");
+  const canReview = can(staff, "claims.approve");
+  const [{ rows, stats }, agents] = await Promise.all([getClaims(), canCreate ? getAgentOptions() : Promise.resolve([])]);
+
+  const fields: FieldDef[] = [
+    { name: "agent", label: "Agent", type: "select", options: agents, required: true, full: true },
+    { name: "vehicleRegNo", label: "Vehicle registration no.", required: true },
+    { name: "paymentDate", label: "Payment date", type: "date", required: true, maxToday: true },
+    { name: "paymentMode", label: "Paid by", type: "select", options: MODE_OPTIONS, required: true },
+    { name: "amount", label: "Amount (₹)", type: "number" },
+    { name: "remarks", label: "Remarks", type: "textarea", full: true },
+    // Only needed when the vehicle is not already in Policies.
+    { name: "customerName", label: "Customer name", hint: "Only if the vehicle is not in Policies yet." },
+    { name: "customerMobile", label: "Customer mobile", type: "tel" },
+    { name: "vehicleGroup", label: "Vehicle group", type: "select", options: GROUP_OPTIONS },
+    { name: "saodDueDate", label: "Own-damage (SAOD) due date", type: "date" },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <StatRow>
+        <MiniStat index={0} title="Waiting for review" icon={Clock} value={stats.pending} />
+        <MiniStat index={1} title="Approved this month" icon={CircleCheck} value={stats.approvedThisMonth} />
+        <MiniStat index={2} title="Rejected this month" icon={CircleX} value={stats.rejectedThisMonth} />
+        <MiniStat index={3} title="Approved value this month" icon={IndianRupee} value={stats.valueThisMonth} kind="inr" />
+      </StatRow>
+
+      <ModulePage
+        index={4}
+        rows={rows}
+        emptyLabel="No claims yet"
+        search="Search vehicle, agent or customer…"
+        filters={[
+          { key: "status", label: "All statuses", options: STATUS_OPTIONS },
+          { key: "mode", label: "All payment modes", options: MODE_OPTIONS },
+        ]}
+        columns={[
+          { key: "vehicle", label: "Vehicle" },
+          { key: "agent", label: "Agent" },
+          { key: "paymentDate", label: "Paid on", type: "date" },
+          { key: "mode", label: "Paid by" },
+          { key: "amount", label: "Amount", type: "inr", align: "right" },
+          { key: "customer", label: "Customer" },
+          { key: "vehicleKind", label: "Policy" },
+          { key: "status", label: "Status", type: "chip" },
+          { key: "submitted", label: "Added", type: "date" },
+        ]}
+        rowActions={
+          canReview
+            ? [
+                { label: "Approve", action: approveClaim, showWhen: { key: "status", in: ["pending"] } },
+                {
+                  label: "Reject",
+                  action: rejectClaim,
+                  danger: true,
+                  showWhen: { key: "status", in: ["pending"] },
+                  confirm: "Reject this claim? The vehicle can be claimed again afterwards.",
+                },
+              ]
+            : undefined
+        }
+        primary={canCreate ? { label: "Add Claim", drawerTitle: "Add Claim", action: createClaim, fields } : undefined}
+      />
+    </div>
+  );
+}

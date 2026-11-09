@@ -4,8 +4,10 @@ import { RenewalsCard } from "@/components/dashboard/renewals-card";
 import { UpcomingRenewals } from "@/components/dashboard/upcoming-renewals";
 import { StatCard } from "@/components/ui/stat-card";
 import { getDashboard } from "@/lib/data/dashboard";
+import { requirePermission } from "@/lib/rbac/server";
 
 export default async function DashboardPage() {
+  await requirePermission("dashboard.view");
   const data = await getDashboard();
 
   return (
