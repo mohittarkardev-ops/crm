@@ -17,7 +17,17 @@ function initials(name: string) {
 }
 
 /** "Upcoming Renewals" list (design.md 4.9). */
-export function UpcomingRenewals({ index, items }: { index?: number; items: UpcomingRenewal[] }) {
+export function UpcomingRenewals({
+  index,
+  items,
+  canViewPolicies = true,
+  canViewRenewals = true,
+}: {
+  index?: number;
+  items: UpcomingRenewal[];
+  canViewPolicies?: boolean;
+  canViewRenewals?: boolean;
+}) {
   if (items.length === 0) {
     return (
       <Card index={index}>
@@ -32,12 +42,14 @@ export function UpcomingRenewals({ index, items }: { index?: number; items: Upco
       <CardHeader
         title="Upcoming Renewals"
         action={
-          <div className="flex items-center gap-1">
-            <Link href="/renewals" className={buttonStyles("ghost", "h-8 px-3 text-xs")}>
-              View all
-              <ArrowUpRight size={14} strokeWidth={1.75} aria-hidden="true" />
-            </Link>
-          </div>
+          canViewRenewals ? (
+            <div className="flex items-center gap-1">
+              <Link href="/renewals" className={buttonStyles("ghost", "h-8 px-3 text-xs")}>
+                View all
+                <ArrowUpRight size={14} strokeWidth={1.75} aria-hidden="true" />
+              </Link>
+            </div>
+          ) : undefined
         }
       />
 
@@ -49,9 +61,13 @@ export function UpcomingRenewals({ index, items }: { index?: number; items: Upco
                 {initials(item.client)}
               </span>
               <div className="min-w-0">
-                <Link href={`/policies/${item.id}`} className="block truncate text-sm font-semibold text-ink hover:underline">
-                  {item.client}
-                </Link>
+                {canViewPolicies ? (
+                  <Link href={`/policies/${item.id}`} className="block truncate text-sm font-semibold text-ink hover:underline">
+                    {item.client}
+                  </Link>
+                ) : (
+                  <p className="truncate text-sm font-semibold text-ink">{item.client}</p>
+                )}
                 <p className="truncate text-xs text-ink-muted">
                   {item.policy} · {item.insurer}
                 </p>

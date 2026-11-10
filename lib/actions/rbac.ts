@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { audit, authorize } from "@/lib/actions/shared";
-import { isValidPermissionKey } from "@/lib/rbac/permissions";
+import { can, isAdminOnlyPermission, isValidPermissionKey, type PermissionKey } from "@/lib/rbac/permissions";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -31,6 +31,7 @@ export async function createRoleAction(
   const auth = await authorize("staff.manage");
   if (!auth.staff) return { ok: false, error: auth.error.error ?? "Not authorized." };
   const staff = auth.staff;
+  if (staff.role !== "admin") return { ok: false, error: "Only admins can manage role definitions." };
 
   const cleanName = name.trim();
   if (!cleanName || cleanName.length < 2 || cleanName.length > 60) {
@@ -88,6 +89,7 @@ export async function updateRoleAction(
   const auth = await authorize("staff.manage");
   if (!auth.staff) return { ok: false, error: auth.error.error ?? "Not authorized." };
   const staff = auth.staff;
+  if (staff.role !== "admin") return { ok: false, error: "Only admins can manage role definitions." };
 
   if (!UUID.test(roleId)) return { ok: false, error: "Role not found." };
 
@@ -180,6 +182,7 @@ export async function deleteRoleAction(roleId: string): Promise<RbacActionState>
   const auth = await authorize("staff.manage");
   if (!auth.staff) return { ok: false, error: auth.error.error ?? "Not authorized." };
   const staff = auth.staff;
+  if (staff.role !== "admin") return { ok: false, error: "Only admins can manage role definitions." };
 
   if (!UUID.test(roleId)) return { ok: false, error: "Role not found." };
 
@@ -238,14 +241,25 @@ export async function saveStaffPermissionsAction(
   const actor = auth.staff;
 
   if (!UUID.test(staffId)) return { ok: false, error: "Staff member not found." };
+  if (staffId === actor.id) return { ok: false, error: "You cannot modify your own role or permissions." };
   if (roleId && !UUID.test(roleId)) return { ok: false, error: "Invalid role selected." };
 
+  const isActorAdmin = actor.role === "admin";
   const dedupedOverrides = new Map<string, boolean>();
   for (const item of overrides) {
     if (!isValidPermissionKey(item.permission)) {
       return { ok: false, error: "One or more permission keys are invalid." };
     }
-    dedupedOverrides.set(item.permission, Boolean(item.granted));
+    const granted = Boolean(item.granted);
+    if (!isActorAdmin && granted) {
+      if (isAdminOnlyPermission(item.permission)) {
+        return { ok: false, error: "Only admins can grant restricted permissions." };
+      }
+      if (!can(actor, item.permission as PermissionKey)) {
+        return { ok: false, error: "You cannot grant permissions you do not hold." };
+      }
+    }
+    dedupedOverrides.set(item.permission, granted);
   }
 
   const db = await createClient();
@@ -262,6 +276,9 @@ export async function saveStaffPermissionsAction(
   if (!target.auth_user_id) {
     return { ok: false, error: "Agents without a CRM login cannot be assigned roles or permissions." };
   }
+  if (!isActorAdmin && target.role === "admin") {
+    return { ok: false, error: "Only admins can modify an admin account." };
+  }
 
   let targetRoleText: "admin" | "staff" = "staff";
   if (roleId) {
@@ -274,14 +291,28 @@ export async function saveStaffPermissionsAction(
       return { ok: false, error: "Selected role could not be found." };
     }
     if (roleData.name === "Admin") {
+      if (!isActorAdmin) {
+        return { ok: false, error: "Only admins can assign the Admin role." };
+      }
       targetRoleText = "admin";
+    } else if (!isActorAdmin) {
+      const { data: rolePerms, error: rpErr } = await db
+        .from("role_permissions")
+        .select("permission")
+        .eq("role_id", roleId);
+      if (rpErr) {
+        return { ok: false, error: `Could not verify role permissions: ${rpErr.message}` };
+      }
+      for (const rp of (rolePerms ?? []) as { permission: string }[]) {
+        const key = rp.permission;
+        if (dedupedOverrides.get(key) === false) continue;
+        if (isAdminOnlyPermission(key) || !can(actor, key as PermissionKey)) {
+          return { ok: false, error: "You cannot assign a role containing permissions you cannot grant." };
+        }
+      }
     }
   } else {
     return { ok: false, error: "Choose a primary role for this staff member." };
-  }
-
-  if (staffId === actor.id && targetRoleText !== target.role) {
-    return { ok: false, error: "You cannot change your own admin role." };
   }
 
   if (target.role === "admin" && targetRoleText !== "admin") {

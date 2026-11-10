@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { PendingBar } from "@/components/ui/pending-bar";
 import { FieldGrid } from "@/components/ui/field";
 import { toast } from "@/components/ui/toaster";
+import { cn } from "@/lib/cn";
 import { saveBusinessProfile } from "@/lib/actions/settings";
 import type { BusinessProfile } from "@/lib/data/lookups";
 import type { ActionState, FieldDef } from "@/lib/module-types";
@@ -18,7 +19,13 @@ const FIELDS: FieldDef[] = [
 ];
 
 /** Business profile saved to app_settings. Shows the stored values and keeps typed text after an error. */
-export function BusinessProfileForm({ profile }: { profile: BusinessProfile }) {
+export function BusinessProfileForm({
+  profile,
+  readOnly = false,
+}: {
+  profile: BusinessProfile;
+  readOnly?: boolean;
+}) {
   const [state, formAction, pending] = useActionState(saveBusinessProfile, { ok: false } as ActionState);
   const handled = useRef<ActionState | null>(null);
   const [savedFlash, setSavedFlash] = useState(false);
@@ -47,19 +54,25 @@ export function BusinessProfileForm({ profile }: { profile: BusinessProfile }) {
   const errorKey = `${state.error ?? ""}|${Object.keys(state.fieldErrors ?? {}).join(",")}`;
 
   return (
-    <form action={formAction} noValidate>
-      <PendingBar active={pending} className="mb-3" />
+    <form action={readOnly ? undefined : formAction} noValidate>
+      {!readOnly && <PendingBar active={pending} className="mb-3" />}
       {state.error && (
         <p key={errorPulse} role="alert" className="micro-shake mb-4 rounded-control bg-negative-soft px-3 py-2 text-xs text-negative">
           {state.error}
         </p>
       )}
-      <FieldGrid key={errorKey} fields={FIELDS} errors={state.fieldErrors} values={state.values ?? stored} />
-      <div className="mt-5 flex justify-end">
-        <Button type="submit" loading={pending} saved={savedFlash} savedLabel="Saved">
-          Save
-        </Button>
-      </div>
+      <fieldset disabled={readOnly || pending} className={cn("m-0 min-w-0 border-0 p-0", readOnly && "opacity-80")}>
+        <FieldGrid key={errorKey} fields={FIELDS} errors={state.fieldErrors} values={state.values ?? stored} />
+      </fieldset>
+      {readOnly ? (
+        <p className="mt-4 text-xs text-ink-muted">View-only access — ask an admin for Settings Edit permission to update this profile.</p>
+      ) : (
+        <div className="mt-5 flex justify-end">
+          <Button type="submit" loading={pending} saved={savedFlash} savedLabel="Saved">
+            Save
+          </Button>
+        </div>
+      )}
     </form>
   );
 }

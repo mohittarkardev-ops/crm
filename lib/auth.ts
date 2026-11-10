@@ -7,6 +7,7 @@ export type StaffProfile = {
   email: string;
   role: "admin" | "staff" | null;
   role_id?: string | null;
+  role_name?: string | null;
   permissions?: string[];
 };
 
@@ -24,13 +25,36 @@ export const getStaff = cache(async () => {
 
   if (!user) return { user: null, staff: null };
 
-  const { data } = await supabase
+  let data: {
+    id: string;
+    full_name: string;
+    email: string;
+    role: string | null;
+    role_id?: string | null;
+    roles?: { name: string } | { name: string }[] | null;
+  } | null = null;
+
+  const res = await supabase
     .from("staff_users")
-    .select("id, full_name, email, role, role_id")
+    .select("id, full_name, email, role, role_id, roles(name)")
     .eq("auth_user_id", user.id)
     .maybeSingle();
 
+  if (res.error) {
+    const fallbackRes = await supabase
+      .from("staff_users")
+      .select("id, full_name, email, role")
+      .eq("auth_user_id", user.id)
+      .maybeSingle();
+    data = fallbackRes.data;
+  } else {
+    data = res.data;
+  }
+
   if (!data) return { user, staff: null };
+
+  const joinedRole = Array.isArray(data.roles) ? data.roles[0] : data.roles;
+  const roleName = joinedRole?.name ?? null;
 
   let permissions: string[] | undefined = undefined;
 
@@ -75,7 +99,8 @@ export const getStaff = cache(async () => {
     full_name: data.full_name,
     email: data.email,
     role: data.role as "admin" | "staff" | null,
-    role_id: (data as { role_id?: string | null }).role_id ?? null,
+    role_id: data.role_id ?? null,
+    role_name: roleName,
     permissions,
   };
 

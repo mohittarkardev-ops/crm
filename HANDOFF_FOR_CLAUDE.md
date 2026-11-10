@@ -1,5 +1,5 @@
 # SecureDrive CRM — Comprehensive Handoff & Claude Code Guide
-*Updated on 10 Nov 2026 (through RBAC H2.1–H2.8 Security Hardening; commit `afe9eb0` on `main`; SQL migrations `0011` + `0012` applied in Supabase; mobile backlog separated to `docs/mobile-sync-todo.md`). For Antigravity, Claude Code CLI or any next LLM session.*
+*Updated on 10 Nov 2026 (through RBAC H2 + Anti-Escalation / UX Consistency Hardening; apply SQL migration `0013_rbac_anti_escalation.sql` in Supabase; mobile backlog in `docs/mobile-sync-todo.md`). For Antigravity, Claude Code CLI or any next LLM session.*
 
 ---
 
@@ -157,7 +157,7 @@ UI-3 leftovers and all requested module bug fixes (H3, H4, H5, H6, H7, and cross
 ### F. Setup checklist (do once per environment)
 1. `npm install` in `crm/` (includes `tailwind-merge`).
 2. Environment variables: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (server only, never `NEXT_PUBLIC_`), `CLAIM_PORTAL_CODE` (8+ characters), optional `EXPO_ACCESS_TOKEN`. Set them in `.env.local` and in Vercel.
-3. Supabase migrations, in order: `0008_crm_integration_fixes.sql`, `0009_revoke_anon_app_settings.sql`, `0010_rbac_roles_permissions.sql`, `0011_placements_db_now.sql`, `0012_rbac_rls_hardening.sql` (✅ applied on production Supabase). Check afterwards that `select table_name, privilege_type from information_schema.role_table_grants where grantee = 'anon' and table_schema = 'public';` returns no rows.
+3. Supabase migrations, in order: `0008_crm_integration_fixes.sql`, `0009_revoke_anon_app_settings.sql`, `0010_rbac_roles_permissions.sql`, `0011_placements_db_now.sql`, `0012_rbac_rls_hardening.sql` (✅ applied), `0013_rbac_anti_escalation.sql` (apply in Supabase SQL Editor). Check afterwards that `select table_name, privilege_type from information_schema.role_table_grants where grantee = 'anon' and table_schema = 'public';` returns no rows.
 
 ### G. Working agreements (to save effort)
 - Read `design.md` and the component you are about to change before editing. Prefer small, exact edits over rewriting whole files.
@@ -322,13 +322,15 @@ Read `crm/HANDOFF_FOR_CLAUDE.md` (or root `HANDOFF_FOR_CLAUDE.md`) and `crm/desi
 - **Explicitly Dropped (do NOT build):** `S9` Duplicate scanner, `S10` Policy summary PDF, `S11` Command palette (`Ctrl+K`), `S12` Custom fields manager UI.
 
 ### Priority Next Steps (Finish CRM-Only Work First; Mobile Is Deferred):
-1. **🟠 P2 — CRM First:**
+1. **🟢 SQL Deploy (New Migration):**
+   - Apply `0013_rbac_anti_escalation.sql` in Supabase SQL Editor (`clients.edit` + Postgres non-escalation locks for `staff.manage`, `roles`, and `save_role_permissions`).
+2. **🟠 P2 — CRM First:**
    - Build `/reports` charts (4 chart cards) & Commission calculation (`H8.1–H8.2`, plus verify `H10.3`).
    - Deploy Edge Function `supabase/functions/send-push/index.ts` (if not yet deployed).
-2. **🟡 P3 — CRM Polish:**
+3. **🟡 P3 — CRM Polish:**
    - Populate `public.insurers.logo_url` links whenever brand assets are ready (CRM UI is already pre-wired).
    - Optional polish: Ad slot create UI (`H9`), Quote completed/closed tiles (`H9`), deduplicate `crm/supabase` vs root `supabase`.
-3. **🔵 Mobile Sprint (DEFERRED — Only start after CRM-only work above is finished):**
+4. **🔵 Mobile Sprint (DEFERRED — Only start after CRM-only work above is finished):**
    - Follow `docs/mobile-sync-todo.md` (`mobile/` syncs, `expo-notifications` -> `device_tokens`, `daily-reminders`, WhatsApp OTP, native AdMob, device QA, store release).
    - After mobile build finishes, lock `placements.slot_name` list (`H7.2`).
 

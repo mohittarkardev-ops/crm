@@ -4,10 +4,11 @@ import { RenewalsCard } from "@/components/dashboard/renewals-card";
 import { UpcomingRenewals } from "@/components/dashboard/upcoming-renewals";
 import { StatCard } from "@/components/ui/stat-card";
 import { getDashboard } from "@/lib/data/dashboard";
+import { can } from "@/lib/rbac/permissions";
 import { requirePermission } from "@/lib/rbac/server";
 
 export default async function DashboardPage() {
-  await requirePermission("dashboard.view");
+  const staff = await requirePermission("dashboard.view");
   const data = await getDashboard();
 
   return (
@@ -24,7 +25,12 @@ export default async function DashboardPage() {
         <CategoryCard index={5} slices={data.categories} />
       </div>
 
-      <UpcomingRenewals index={6} items={data.upcoming} />
+      <UpcomingRenewals
+        index={6}
+        items={data.upcoming}
+        canViewPolicies={can(staff, "policies.view")}
+        canViewRenewals={can(staff, "renewals.view")}
+      />
     </div>
   );
 }

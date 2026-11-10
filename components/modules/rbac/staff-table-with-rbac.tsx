@@ -12,9 +12,12 @@ import { KeyRound, Shield } from "lucide-react";
 interface StaffTableWithRbacProps {
   rows: any[];
   roles: RoleItem[];
+  isSuperAdmin: boolean;
 }
 
 const LOGIN_ONLY = { field: "access", equals: [""] };
+const EDIT_LOGIN_ONLY = { field: "hasLogin", equals: ["yes"] };
+const EDIT_ROLE_ONLY = { field: "editableRole", equals: ["yes"] };
 
 const PROFILE_FIELDS: FieldDef[] = [
   { name: "employeeCode", label: "Employee code", hint: "Optional, for example EMP-001." },
@@ -22,16 +25,18 @@ const PROFILE_FIELDS: FieldDef[] = [
   { name: "designation", label: "Designation", full: true },
 ];
 
-export function StaffTableWithRbac({ rows, roles }: StaffTableWithRbacProps) {
+export function StaffTableWithRbac({ rows, roles, isSuperAdmin }: StaffTableWithRbacProps) {
   const [selectedStaff, setSelectedStaff] = useState<any | null>(null);
   const [staffOverrides, setStaffOverrides] = useState<StaffOverride[]>([]);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [loadingOverrides, setLoadingOverrides] = useState(false);
 
-  const roleOptions = [
-    { value: "admin", label: "Admin" },
-    { value: "staff", label: "Staff" },
-  ];
+  const roleOptions = isSuperAdmin
+    ? [
+        { value: "admin", label: "Admin" },
+        { value: "staff", label: "Staff" },
+      ]
+    : [{ value: "staff", label: "Staff" }];
 
   const handleOpenPermissions = async (row: any) => {
     setSelectedStaff({
@@ -41,6 +46,7 @@ export function StaffTableWithRbac({ rows, roles }: StaffTableWithRbacProps) {
       roleId: row.roleId,
       role: row.rawRole || row.role,
     });
+    setStaffOverrides([]);
     setLoadingOverrides(true);
     setIsDrawerOpen(true);
 
@@ -68,14 +74,14 @@ export function StaffTableWithRbac({ rows, roles }: StaffTableWithRbacProps) {
           { key: "designation", label: "Designation" },
           { key: "mobile", label: "Mobile" },
           { key: "email", label: "Email" },
-          { key: "role", label: "Role / Category", type: "chip" },
+          { key: "roleLabel", label: "Role / Category", type: "chip" },
           { key: "signIn", label: "Sign-in" },
           { key: "joined", label: "Joined", type: "date" },
         ]}
         rowActions={[
           {
             label: "Permissions",
-            showWhen: { key: "agentState", in: ["login"] },
+            showWhen: { key: "canPermRow", in: ["yes"] },
             action: async (id: string) => {
               const row = rows.find((r) => r.id === id);
               if (row) void handleOpenPermissions(row);
@@ -88,7 +94,7 @@ export function StaffTableWithRbac({ rows, roles }: StaffTableWithRbacProps) {
             label: "Remove",
             action: removeStaff,
             danger: true,
-            showWhen: { key: "isSelf", in: ["no"] },
+            showWhen: { key: "canRemoveRow", in: ["yes"] },
             confirm: "Remove this person? If they sign in, their login stops working immediately.",
           },
         ]}
@@ -114,10 +120,7 @@ export function StaffTableWithRbac({ rows, roles }: StaffTableWithRbacProps) {
               name: "role",
               label: "Role",
               type: "select",
-              options: roleOptions.length > 0 ? roleOptions : [
-                { value: "admin", label: "Admin" },
-                { value: "staff", label: "Staff" },
-              ],
+              options: roleOptions,
               required: true,
               showWhen: LOGIN_ONLY,
               hint: "Fine-grained permissions can be customized via the Permissions button.",
@@ -136,6 +139,7 @@ export function StaffTableWithRbac({ rows, roles }: StaffTableWithRbacProps) {
         }}
         edit={{
           drawerTitle: "Edit Staff Account",
+          showWhen: { key: "canEditRow", in: ["yes"] },
           action: updateStaff,
           fields: [
             { name: "name", label: "Full name", required: true },
@@ -143,11 +147,9 @@ export function StaffTableWithRbac({ rows, roles }: StaffTableWithRbacProps) {
               name: "role",
               label: "Role",
               type: "select",
-              options: roleOptions.length > 0 ? roleOptions : [
-                { value: "admin", label: "Admin" },
-                { value: "staff", label: "Staff" },
-              ],
-              hint: "Ignored for agents without a login.",
+              options: roleOptions,
+              showWhen: EDIT_ROLE_ONLY,
+              hint: "Admin vs Staff level. Custom roles & fine-grained permissions are in Permissions.",
             },
             ...PROFILE_FIELDS,
             {
@@ -155,6 +157,7 @@ export function StaffTableWithRbac({ rows, roles }: StaffTableWithRbacProps) {
               label: "New password (optional)",
               type: "password",
               full: true,
+              showWhen: EDIT_LOGIN_ONLY,
               hint: "Leave empty to keep the current password.",
             },
           ],
@@ -167,6 +170,8 @@ export function StaffTableWithRbac({ rows, roles }: StaffTableWithRbacProps) {
         staff={selectedStaff}
         roles={roles}
         initialOverrides={staffOverrides}
+        loading={loadingOverrides}
+        isActorAdmin={isSuperAdmin}
       />
     </>
   );

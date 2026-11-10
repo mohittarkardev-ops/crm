@@ -1,14 +1,15 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Drawer } from "@/components/ui/drawer";
 import { Button } from "@/components/ui/button";
 import { CustomSelect } from "@/components/ui/custom-select";
-import { CONTROL } from "@/components/ui/field";
-import { MODULES, type PermissionKey } from "@/lib/rbac/permissions";
+import { Spinner } from "@/components/ui/spinner";
+import { toast } from "@/components/ui/toaster";
+import { isAdminOnlyPermission, MODULES } from "@/lib/rbac/permissions";
 import { saveStaffPermissionsAction } from "@/lib/actions/rbac";
 import type { RoleItem, StaffOverride } from "@/lib/data/rbac";
-import { Check, ShieldCheck, AlertCircle, Plus, Minus, RotateCcw } from "lucide-react";
+import { ShieldCheck, AlertCircle, Plus, Minus } from "lucide-react";
 import { cn } from "@/lib/cn";
 
 interface StaffPermissionsDrawerProps {
@@ -23,6 +24,8 @@ interface StaffPermissionsDrawerProps {
   } | null;
   roles: RoleItem[];
   initialOverrides: StaffOverride[];
+  loading?: boolean;
+  isActorAdmin?: boolean;
 }
 
 export function StaffPermissionsDrawer({
@@ -31,6 +34,8 @@ export function StaffPermissionsDrawer({
   staff,
   roles,
   initialOverrides,
+  loading: fetching = false,
+  isActorAdmin = true,
 }: StaffPermissionsDrawerProps) {
   const [selectedRoleId, setSelectedRoleId] = useState<string>("");
   // Overrides map: { [permissionKey]: boolean (true = granted, false = revoked) }
@@ -38,9 +43,14 @@ export function StaffPermissionsDrawer({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const initialRoleId = useMemo(() => {
+    if (!staff) return "";
+    return staff.roleId || roles.find((r) => r.name.toLowerCase() === (staff.role || "staff"))?.id || "";
+  }, [staff, roles]);
+
   useEffect(() => {
     if (isOpen && staff) {
-      setSelectedRoleId(staff.roleId || roles.find((r) => r.name.toLowerCase() === (staff.role || "staff"))?.id || "");
+      setSelectedRoleId(initialRoleId);
       const map: Record<string, boolean> = {};
       initialOverrides.forEach((o) => {
         map[o.permission] = o.granted;
@@ -48,7 +58,23 @@ export function StaffPermissionsDrawer({
       setOverrides(map);
       setError(null);
     }
-  }, [isOpen, staff, roles, initialOverrides]);
+  }, [isOpen, staff, initialRoleId, initialOverrides]);
+
+  const assignableRoles = useMemo(() => {
+    if (isActorAdmin) return roles;
+    return roles.filter((r) => r.name !== "Admin" && !r.permissions.some((p) => isAdminOnlyPermission(p)));
+  }, [roles, isActorAdmin]);
+
+  const isDirty = useMemo(() => {
+    if (!isOpen || !staff || fetching) return false;
+    if (selectedRoleId !== initialRoleId) return true;
+    const initMap: Record<string, boolean> = {};
+    for (const o of initialOverrides) initMap[o.permission] = o.granted;
+    const keysA = Object.keys(overrides);
+    const keysB = Object.keys(initMap);
+    if (keysA.length !== keysB.length) return true;
+    return keysA.some((k) => overrides[k] !== initMap[k]);
+  }, [isOpen, staff, fetching, selectedRoleId, initialRoleId, overrides, initialOverrides]);
 
   const activeRole = roles.find((r) => r.id === selectedRoleId);
   const isSelectedRoleAdmin = activeRole?.name === "Admin";
@@ -69,7 +95,7 @@ export function StaffPermissionsDrawer({
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!staff) return;
+    if (!staff || fetching) return;
 
     setLoading(true);
     setError(null);
@@ -87,6 +113,7 @@ export function StaffPermissionsDrawer({
       );
 
       if (res.ok) {
+        toast(res.message ?? "Permissions updated.");
         onClose();
       } else {
         setError(res.error || "Failed to update permissions.");
@@ -102,6 +129,7 @@ export function StaffPermissionsDrawer({
     <Drawer
       open={isOpen}
       onClose={onClose}
+      dirty={isDirty}
       title={`Permissions: ${staff?.name || "Staff"}`}
     >
       <form onSubmit={handleSave} className="space-y-5">
@@ -119,7 +147,8 @@ export function StaffPermissionsDrawer({
           <CustomSelect
             value={selectedRoleId}
             onChange={(val) => setSelectedRoleId(val)}
-            options={roles.map((r) => ({
+            disabled={fetching}
+            options={assignableRoles.map((r) => ({
               value: r.id,
               label: `${r.name}${r.isSystem ? " (System)" : ""}`,
               hint: r.description || undefined,
@@ -132,7 +161,12 @@ export function StaffPermissionsDrawer({
           </p>
         </div>
 
-        {isSelectedRoleAdmin ? (
+        {fetching ? (
+          <div className="flex items-center justify-center gap-2 rounded-tile border border-divider p-6 text-xs text-ink-muted">
+            <Spinner size={14} />
+            <span>Loading staff overrides…</span>
+          </div>
+        ) : isSelectedRoleAdmin ? (
           <div className="flex items-center gap-2 rounded-tile bg-accent-soft p-3 text-xs text-ink font-medium">
             <ShieldCheck size={16} className="text-ink shrink-0" />
             <span>Admins inherently have full access to all features. Individual overrides are not required.</span>
@@ -173,9 +207,7 @@ export function StaffPermissionsDrawer({
                         const inRole = activeRole?.permissions.includes(p.key) || false;
                         const hasOverride = overrides[p.key] !== undefined;
                         const overrideVal = overrides[p.key];
-
-                        // Effective state
-                        const isEffective = hasOverride ? overrideVal : inRole;
+                        const lockedAdmin = !isActorAdmin && isAdminOnlyPermission(p.key);
 
                         return (
                           <div
@@ -187,15 +219,22 @@ export function StaffPermissionsDrawer({
                               <div className="flex items-center gap-1.5 mt-0.5">
                                 <span className="text-[10px] text-ink-faint">{p.key}</span>
                                 <span className="text-[10px] text-ink-muted">
-                                  (Role: {inRole ? "Allowed" : "Denied"})
+                                  (Role: {inRole ? "Allowed" : "Denied"}
+                                  {lockedAdmin ? " · Admin only" : ""})
                                 </span>
                               </div>
                             </div>
 
                             {/* 3-State Toggle Segment */}
-                            <div className="flex items-center rounded-control border border-divider p-0.5 bg-surface-muted shrink-0 text-[11px]">
+                            <div
+                              className={cn(
+                                "flex items-center rounded-control border border-divider p-0.5 bg-surface-muted shrink-0 text-[11px]",
+                                lockedAdmin && "opacity-45 pointer-events-none",
+                              )}
+                            >
                               <button
                                 type="button"
+                                disabled={lockedAdmin}
                                 title="Inherit from role"
                                 onClick={() => setOverrideState(p.key, "inherit")}
                                 className={cn(
@@ -209,6 +248,7 @@ export function StaffPermissionsDrawer({
                               </button>
                               <button
                                 type="button"
+                                disabled={lockedAdmin}
                                 title="Explicitly Grant"
                                 onClick={() => setOverrideState(p.key, "grant")}
                                 className={cn(
@@ -222,6 +262,7 @@ export function StaffPermissionsDrawer({
                               </button>
                               <button
                                 type="button"
+                                disabled={lockedAdmin}
                                 title="Explicitly Revoke"
                                 onClick={() => setOverrideState(p.key, "revoke")}
                                 className={cn(
@@ -256,7 +297,7 @@ export function StaffPermissionsDrawer({
           <Button variant="secondary" onClick={onClose} disabled={loading}>
             Cancel
           </Button>
-          <Button type="submit" loading={loading}>
+          <Button type="submit" loading={loading} disabled={fetching}>
             Save Permissions
           </Button>
         </div>

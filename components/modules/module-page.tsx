@@ -148,12 +148,14 @@ function renderCell(column: Column, row: Row) {
 export function PrimaryForm({
   primary,
   initialValues,
+  contextValues,
   onClose,
   onSaved,
   onDirtyChange,
 }: {
   primary: PrimaryAction;
   initialValues?: Record<string, string>;
+  contextValues?: Record<string, string>;
   onClose: () => void;
   onSaved?: () => void;
   onDirtyChange?: (dirty: boolean) => void;
@@ -246,6 +248,7 @@ export function PrimaryForm({
           fields={primary.fields}
           errors={state.fieldErrors}
           values={state.values ?? initialValues}
+          contextValues={contextValues}
           watch={watch}
           onFieldChange={onFormChange}
         />
@@ -313,11 +316,19 @@ function EditForm({
     }
     return out;
   }, [edit.fields, row]);
+  const contextValues = useMemo(() => {
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(row)) {
+      if (v !== null && v !== undefined) out[k] = String(v);
+    }
+    return out;
+  }, [row]);
 
   return (
     <PrimaryForm
       primary={{ label: "Save", drawerTitle: edit.drawerTitle, fields: edit.fields, action }}
       initialValues={initialValues}
+      contextValues={contextValues}
       onClose={onClose}
       onSaved={onSaved}
       onDirtyChange={onDirtyChange}

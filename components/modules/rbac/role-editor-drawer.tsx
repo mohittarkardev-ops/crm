@@ -27,6 +27,17 @@ export function RoleEditorDrawer({ isOpen, onClose, role }: RoleEditorDrawerProp
   const isSystem = role?.isSystem || false;
   const isAdminRole = role?.name === "Admin";
 
+  const isDirty = (() => {
+    if (!isOpen || isAdminRole) return false;
+    const initName = role?.name ?? "";
+    const initDesc = role?.description ?? "";
+    const initPerms = new Set(role?.permissions ?? []);
+    if (name !== initName || description !== initDesc) return true;
+    if (selectedPerms.size !== initPerms.size) return true;
+    for (const p of selectedPerms) if (!initPerms.has(p)) return true;
+    return false;
+  })();
+
   useEffect(() => {
     if (isOpen) {
       if (role) {
@@ -72,6 +83,10 @@ export function RoleEditorDrawer({ isOpen, onClose, role }: RoleEditorDrawerProp
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isAdminRole) {
+      onClose();
+      return;
+    }
     setLoading(true);
     setError(null);
 
@@ -100,7 +115,8 @@ export function RoleEditorDrawer({ isOpen, onClose, role }: RoleEditorDrawerProp
     <Drawer
       open={isOpen}
       onClose={onClose}
-      title={isEdit ? `Edit Role: ${role?.name}` : "Create New Role"}
+      dirty={isDirty}
+      title={isAdminRole ? "View Role: Admin" : isEdit ? `Edit Role: ${role?.name}` : "Create New Role"}
     >
       <form onSubmit={handleSave} className="space-y-5">
         {isAdminRole && (
@@ -120,7 +136,7 @@ export function RoleEditorDrawer({ isOpen, onClose, role }: RoleEditorDrawerProp
             onChange={(e) => setName(e.target.value)}
             disabled={isSystem}
             placeholder="e.g. Claims Specialist, Operations"
-            className={cn(CONTROL, "h-10")}
+            className={cn(CONTROL, "h-10", isSystem && "opacity-70 bg-surface-muted")}
             required
           />
           <span className="text-xs text-ink-muted">
@@ -134,8 +150,9 @@ export function RoleEditorDrawer({ isOpen, onClose, role }: RoleEditorDrawerProp
             type="text"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
+            disabled={isAdminRole}
             placeholder="Explain what this role is responsible for."
-            className={cn(CONTROL, "h-10")}
+            className={cn(CONTROL, "h-10", isAdminRole && "opacity-70 bg-surface-muted")}
           />
         </label>
 
@@ -205,12 +222,20 @@ export function RoleEditorDrawer({ isOpen, onClose, role }: RoleEditorDrawerProp
         )}
 
         <div className="sticky bottom-0 -mx-6 -mb-5 mt-6 flex items-center justify-end gap-2 border-t border-divider bg-surface-strong px-6 py-4">
-          <Button variant="secondary" onClick={onClose} disabled={loading}>
-            Cancel
-          </Button>
-          <Button type="submit" loading={loading}>
-            Save Role
-          </Button>
+          {isAdminRole ? (
+            <Button variant="secondary" onClick={onClose}>
+              Close
+            </Button>
+          ) : (
+            <>
+              <Button variant="secondary" onClick={onClose} disabled={loading}>
+                Cancel
+              </Button>
+              <Button type="submit" loading={loading}>
+                Save Role
+              </Button>
+            </>
+          )}
         </div>
       </form>
     </Drawer>

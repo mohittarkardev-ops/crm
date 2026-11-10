@@ -10,10 +10,12 @@ import { RbacSettingsShell } from "@/components/modules/rbac/rbac-settings-shell
 
 export default async function SettingsPage() {
   const staff = await requirePermission("settings.view");
-  const isAdmin = can(staff, "staff.manage");
+  const canEditProfile = can(staff, "settings.edit");
+  const canManageStaff = can(staff, "staff.manage");
+  const isSuperAdmin = staff.role === "admin";
   const [staffList, roles, { profile, missing }] = await Promise.all([
-    isAdmin && staff ? getStaffList(staff.id) : Promise.resolve({ rows: [] }),
-    isAdmin ? getRoles() : Promise.resolve([]),
+    canManageStaff ? getStaffList(staff.id, isSuperAdmin) : Promise.resolve({ rows: [] }),
+    canManageStaff ? getRoles() : Promise.resolve([]),
     getBusinessProfile(),
   ]);
 
@@ -30,16 +32,11 @@ export default async function SettingsPage() {
             </span>
           </p>
         )}
-        <BusinessProfileForm profile={profile} />
+        <BusinessProfileForm profile={profile} readOnly={!canEditProfile} />
       </Card>
 
-      {isAdmin ? (
-        <RbacSettingsShell staffRows={staffList.rows} roles={roles} />
-      ) : (
-        <Card index={1}>
-          <CardHeader title="Staff and roles" />
-          <p className="text-sm text-ink-muted">Only admins can add or manage staff accounts and roles.</p>
-        </Card>
+      {canManageStaff && (
+        <RbacSettingsShell staffRows={staffList.rows} roles={roles} isSuperAdmin={isSuperAdmin} />
       )}
     </div>
   );

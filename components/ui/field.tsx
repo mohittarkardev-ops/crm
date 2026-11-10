@@ -123,18 +123,21 @@ export function FieldGrid({
   fields,
   errors,
   values,
+  contextValues,
   watch,
   onFieldChange,
 }: {
   fields: FieldDef[];
   errors?: Record<string, string>;
   values?: Record<string, string>;
+  /** Extra non-submitted row context (e.g. `agentState`, `isSelf`) used only for `showWhen` evaluation. */
+  contextValues?: Record<string, string>;
   /** Live values of the form, used to show or hide fields that depend on another field. */
   watch?: Record<string, string>;
   /** Called when a custom control (such as CustomSelect or DatePicker) commits a changed value. */
   onFieldChange?: (name?: string, value?: string) => void;
 }) {
-  const current = { ...values, ...watch };
+  const current = { ...contextValues, ...values, ...watch };
   const shown = fields.filter(
     (field) => !field.showWhen || field.showWhen.equals.includes(current[field.showWhen.field] ?? ""),
   );

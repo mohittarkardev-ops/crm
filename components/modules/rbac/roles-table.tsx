@@ -121,12 +121,12 @@ export function RolesTable({ roles }: RolesTableProps) {
                         className="h-7 px-2 text-xs"
                       >
                         <Edit2 size={12} />
-                        Edit
+                        {isAdmin ? "View" : "Edit"}
                       </Button>
-                      {!r.isSystem && (
+                      {!r.isSystem && r.staffCount === 0 && (
                         <ConfirmButton
                           title={`Delete role "${r.name}"?`}
-                          description="Staff currently assigned to this role will lose these custom role permissions."
+                          description="No staff are assigned to this role. Deleting it removes the role permanently."
                           confirmLabel="Delete role"
                           loading={deletingId === r.id}
                           disabled={deletingId !== null}
@@ -136,6 +136,14 @@ export function RolesTable({ roles }: RolesTableProps) {
                           {deletingId !== r.id && <Trash2 size={12} />}
                           Delete
                         </ConfirmButton>
+                      )}
+                      {!r.isSystem && r.staffCount > 0 && (
+                        <span
+                          title={`Reassign ${r.staffCount} assigned staff before deleting`}
+                          className="px-2 text-[11px] text-ink-faint select-none"
+                        >
+                          In use
+                        </span>
                       )}
                     </div>
                   </td>

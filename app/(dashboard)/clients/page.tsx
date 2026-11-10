@@ -1,11 +1,26 @@
 import { User, UserPlus, UserRoundCheck, Users } from "lucide-react";
 import { ModulePage } from "@/components/modules/module-page";
 import { MiniStat, StatRow } from "@/components/ui/mini-stat";
-import { addClient } from "@/lib/actions/clients";
+import { addClient, updateClient } from "@/lib/actions/clients";
 import { getClients } from "@/lib/data/clients";
+import type { FieldDef } from "@/lib/module-types";
 import { CLIENT_TYPE_OPTIONS } from "@/lib/options";
 import { can } from "@/lib/rbac/permissions";
 import { requirePermission } from "@/lib/rbac/server";
+
+const CLIENT_FIELDS: FieldDef[] = [
+  { name: "name", label: "Full name", required: true },
+  {
+    name: "mobile",
+    label: "Mobile number",
+    type: "tel",
+    required: true,
+    hint: "10 digits. They are linked automatically when they log in to the app.",
+  },
+  { name: "email", label: "Email", type: "email" },
+  { name: "type", label: "Client type", type: "select", options: CLIENT_TYPE_OPTIONS, required: true },
+  { name: "dob", label: "Date of birth", type: "date", maxToday: true },
+];
 
 export default async function ClientsPage() {
   const staff = await requirePermission("clients.view");
@@ -36,23 +51,16 @@ export default async function ClientsPage() {
           { key: "policies", label: "Policies", type: "number" },
           { key: "joined", label: "Joined", type: "date" },
         ]}
+        edit={!can(staff, "clients.edit") ? undefined : {
+          drawerTitle: "Edit Client",
+          action: updateClient,
+          fields: CLIENT_FIELDS,
+        }}
         primary={!can(staff, "clients.create") ? undefined : {
           label: "Add Client",
           drawerTitle: "Add Client",
           action: addClient,
-          fields: [
-            { name: "name", label: "Full name", required: true },
-            {
-              name: "mobile",
-              label: "Mobile number",
-              type: "tel",
-              required: true,
-              hint: "10 digits. They are linked automatically when they log in to the app.",
-            },
-            { name: "email", label: "Email", type: "email" },
-            { name: "type", label: "Client type", type: "select", options: CLIENT_TYPE_OPTIONS, required: true },
-            { name: "dob", label: "Date of birth", type: "date", maxToday: true },
-          ],
+          fields: CLIENT_FIELDS,
         }}
       />
     </div>

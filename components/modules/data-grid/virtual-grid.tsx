@@ -41,6 +41,7 @@ interface VirtualGridProps {
   customFields: CustomField[];
   canEdit: boolean;
   canExport: boolean;
+  canViewPolicies?: boolean;
 }
 
 export function VirtualGrid({
@@ -50,6 +51,7 @@ export function VirtualGrid({
   customFields,
   canEdit,
   canExport,
+  canViewPolicies = true,
 }: VirtualGridProps) {
   const [rows, setRows] = useState<GridRow[]>(initialRows);
   const [nextCursor, setNextCursor] = useState<GridCursor | null>(
@@ -475,13 +477,15 @@ export function VirtualGrid({
               </>
             )}
 
-            <Link
-              href="/policies"
-              className={buttonStyles("secondary")}
-            >
-              <FileText size={14} />
-              Policies List
-            </Link>
+            {canViewPolicies && (
+              <Link
+                href="/policies"
+                className={buttonStyles("secondary")}
+              >
+                <FileText size={14} />
+                Policies List
+              </Link>
+            )}
           </div>
         </div>
 
@@ -492,7 +496,7 @@ export function VirtualGrid({
               {rows.length.toLocaleString("en-IN")} loaded
             </span>
             <span>of {totalCount.toLocaleString("en-IN")} total</span>
-            {selectedIds.size > 0 && (
+            {canExport && selectedIds.size > 0 && (
               <Chip tone="accent">
                 {selectedIds.size} selected
               </Chip>
@@ -516,16 +520,18 @@ export function VirtualGrid({
           <table className="w-full border-collapse text-left text-xs whitespace-nowrap">
             <thead className="sticky top-0 z-20 border-b border-divider bg-surface-muted/95 backdrop-blur">
               <tr>
-                {/* Select All Checkbox */}
-                <th className="w-10 px-3 py-2.5 text-center border-b border-divider bg-surface-muted/95">
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.size === rows.length && rows.length > 0}
-                    onChange={handleToggleSelectAll}
-                    aria-label="Select all"
-                    className="rounded border-divider text-ink focus:ring-0 cursor-pointer accent-[var(--text)]"
-                  />
-                </th>
+                {/* Select All Checkbox (only useful when export is permitted) */}
+                {canExport && (
+                  <th className="w-10 px-3 py-2.5 text-center border-b border-divider bg-surface-muted/95">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.size === rows.length && rows.length > 0}
+                      onChange={handleToggleSelectAll}
+                      aria-label="Select all"
+                      className="rounded border-divider text-ink focus:ring-0 cursor-pointer accent-[var(--text)]"
+                    />
+                  </th>
+                )}
 
                 {/* Fixed standard headers */}
                 <SmartHeader
@@ -641,9 +647,11 @@ export function VirtualGrid({
                 />
 
                 {/* Actions column */}
-                <th className="sticky right-0 z-30 px-3 py-2.5 text-right text-[10px] font-semibold tracking-wider text-ink-muted uppercase border-b border-l border-divider bg-surface-muted/95 backdrop-blur">
-                  Action
-                </th>
+                {canViewPolicies && (
+                  <th className="sticky right-0 z-30 px-3 py-2.5 text-right text-[10px] font-semibold tracking-wider text-ink-muted uppercase border-b border-l border-divider bg-surface-muted/95 backdrop-blur">
+                    Action
+                  </th>
+                )}
               </tr>
             </thead>
 
@@ -662,7 +670,7 @@ export function VirtualGrid({
                   return (
                     <tr key="loader-row" className="bg-surface-muted/30">
                       <td
-                        colSpan={16 + customFields.length}
+                        colSpan={14 + (canExport ? 1 : 0) + (canViewPolicies ? 1 : 0) + customFields.length}
                         className="py-4 text-center text-xs text-ink-muted"
                       >
                         <div className="inline-flex items-center gap-2">
@@ -676,7 +684,7 @@ export function VirtualGrid({
 
                 if (!record) return null;
 
-                const isSelected = selectedIds.has(record.id);
+                const isSelected = canExport && selectedIds.has(record.id);
 
                 return (
                   <tr
@@ -687,15 +695,17 @@ export function VirtualGrid({
                     )}
                   >
                     {/* Checkbox */}
-                    <td className="px-3 py-2 text-center w-10">
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => handleToggleSelect(record.id)}
-                        aria-label={`Select ${record.vehicleRegNo || record.id}`}
-                        className="rounded border-divider text-ink focus:ring-0 cursor-pointer accent-[var(--text)]"
-                      />
-                    </td>
+                    {canExport && (
+                      <td className="px-3 py-2 text-center w-10">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => handleToggleSelect(record.id)}
+                          aria-label={`Select ${record.vehicleRegNo || record.id}`}
+                          className="rounded border-divider text-ink focus:ring-0 cursor-pointer accent-[var(--text)]"
+                        />
+                      </td>
+                    )}
 
                     {/* Reg No */}
                     <td className="px-3 py-2 font-semibold text-ink">
@@ -872,27 +882,29 @@ export function VirtualGrid({
                     </td>
 
                     {/* Open Detail Action */}
-                    <td
-                      className={cn(
-                        "sticky right-0 border-l border-divider px-3 py-2 text-right",
-                        isSelected
-                          ? "bg-[color-mix(in_srgb,var(--accent-soft)_30%,var(--surface))]"
-                          : "bg-surface",
-                        "group-hover:bg-[color-mix(in_srgb,var(--accent-soft)_40%,var(--surface))]",
-                      )}
-                    >
-                      <Link
-                        href={`/policies/${record.id}`}
-                        title="View policy details"
-                        className="group/link inline-flex size-7 items-center justify-center rounded-[4px] text-ink-muted hover:bg-surface-strong hover:text-ink transition-colors"
+                    {canViewPolicies && (
+                      <td
+                        className={cn(
+                          "sticky right-0 border-l border-divider px-3 py-2 text-right",
+                          isSelected
+                            ? "bg-[color-mix(in_srgb,var(--accent-soft)_30%,var(--surface))]"
+                            : "bg-surface",
+                          "group-hover:bg-[color-mix(in_srgb,var(--accent-soft)_40%,var(--surface))]",
+                        )}
                       >
-                        <ExternalLink
-                          size={13}
-                          strokeWidth={1.75}
-                          className="transition-transform duration-150 group-hover/link:translate-x-0.5 group-hover/link:-translate-y-0.5"
-                        />
-                      </Link>
-                    </td>
+                        <Link
+                          href={`/policies/${record.id}`}
+                          title="View policy details"
+                          className="group/link inline-flex size-7 items-center justify-center rounded-[4px] text-ink-muted hover:bg-surface-strong hover:text-ink transition-colors"
+                        >
+                          <ExternalLink
+                            size={13}
+                            strokeWidth={1.75}
+                            className="transition-transform duration-150 group-hover/link:translate-x-0.5 group-hover/link:-translate-y-0.5"
+                          />
+                        </Link>
+                      </td>
+                    )}
                   </tr>
                 );
               })}
@@ -926,7 +938,7 @@ export function VirtualGrid({
         </div>
       </div>
 
-      {selectedIds.size > 0 && (
+      {canExport && selectedIds.size > 0 && (
         <div
           role="region"
           aria-label="Selected rows actions"
@@ -936,28 +948,26 @@ export function VirtualGrid({
             <span className="size-2 rounded-full bg-accent" aria-hidden="true" />
             {selectedIds.size.toLocaleString("en-IN")} selected
           </span>
-          {canExport && (
-            <div className="flex items-center gap-1.5 border-l border-white/15 pl-3">
-              <button
-                type="button"
-                disabled={isExporting !== null}
-                onClick={handleExportCsv}
-                className="inline-flex h-7 items-center gap-1.5 rounded-control bg-white/10 px-2.5 text-xs font-medium text-white transition-[background-color,transform] duration-150 hover:bg-white/20 active:scale-[0.98] disabled:opacity-50"
-              >
-                {isExporting === "csv" ? <Spinner size={12} /> : exportSaved === "csv" ? <Check size={12} className="text-accent" /> : <Download size={12} />}
-                CSV
-              </button>
-              <button
-                type="button"
-                disabled={isExporting !== null}
-                onClick={handleExportExcel}
-                className="inline-flex h-7 items-center gap-1.5 rounded-control bg-white px-2.5 text-xs font-semibold text-ink transition-[background-color,transform] duration-150 hover:bg-surface-muted active:scale-[0.98] disabled:opacity-50"
-              >
-                {isExporting === "excel" ? <Spinner size={12} /> : exportSaved === "excel" ? <Check size={12} /> : <FileSpreadsheet size={12} />}
-                Excel
-              </button>
-            </div>
-          )}
+          <div className="flex items-center gap-1.5 border-l border-white/15 pl-3">
+            <button
+              type="button"
+              disabled={isExporting !== null}
+              onClick={handleExportCsv}
+              className="inline-flex h-7 items-center gap-1.5 rounded-control bg-white/10 px-2.5 text-xs font-medium text-white transition-[background-color,transform] duration-150 hover:bg-white/20 active:scale-[0.98] disabled:opacity-50"
+            >
+              {isExporting === "csv" ? <Spinner size={12} /> : exportSaved === "csv" ? <Check size={12} className="text-accent" /> : <Download size={12} />}
+              CSV
+            </button>
+            <button
+              type="button"
+              disabled={isExporting !== null}
+              onClick={handleExportExcel}
+              className="inline-flex h-7 items-center gap-1.5 rounded-control bg-white px-2.5 text-xs font-semibold text-ink transition-[background-color,transform] duration-150 hover:bg-surface-muted active:scale-[0.98] disabled:opacity-50"
+            >
+              {isExporting === "excel" ? <Spinner size={12} /> : exportSaved === "excel" ? <Check size={12} /> : <FileSpreadsheet size={12} />}
+              Excel
+            </button>
+          </div>
           <button
             type="button"
             onClick={() => setSelectedIds(new Set())}

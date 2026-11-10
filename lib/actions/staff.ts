@@ -77,6 +77,7 @@ export async function addStaff(_previous: ActionState, formData: FormData): Prom
   if (withLogin) {
     if (!isEmail(email)) fieldErrors.email = "Enter a valid email address.";
     if (!ROLES.includes(role)) fieldErrors.role = "Choose a role.";
+    else if (role === "admin" && admin.role !== "admin") fieldErrors.role = "Only admins can create admin accounts.";
     if (password.length < 8 || password.length > 72) fieldErrors.password = "Use 8 to 72 characters.";
   }
   if (Object.keys(fieldErrors).length > 0) return fail("Please fix the highlighted fields.", { fieldErrors, values });
@@ -174,15 +175,22 @@ export async function updateStaff(id: string, _previous: ActionState, formData: 
   const target = await db.from("staff_users").select("id, role, auth_user_id").eq("id", id).maybeSingle();
   if (target.error) return fail(dbMessage(target.error), { values });
   if (!target.data) return fail("That staff member could not be found.", { values });
+  const isActorAdmin = admin.role === "admin";
+  if (!isActorAdmin && target.data.role === "admin") {
+    return fail("Only admins can edit admin accounts.", { values });
+  }
   const hasLogin = Boolean(target.data.auth_user_id);
+  const canEditTargetRole = isActorAdmin && id !== admin.id;
+  const effectiveRole = hasLogin && !role && !canEditTargetRole ? (target.data.role as string) : role;
 
   const fieldErrors: Record<string, string> = {};
   if (name.length < 2 || name.length > 120) fieldErrors.name = "Enter their full name.";
   const profile = readProfile(formData, fieldErrors);
   if (hasLogin) {
-    if (!ROLES.includes(role)) fieldErrors.role = "Choose a role.";
+    if (!ROLES.includes(effectiveRole)) fieldErrors.role = "Choose a role.";
     if (newPassword && (newPassword.length < 8 || newPassword.length > 72)) fieldErrors.newPassword = "Use 8 to 72 characters.";
-    if (id === admin.id && role !== target.data.role) fieldErrors.role = "You cannot change your own role.";
+    if (id === admin.id && effectiveRole !== target.data.role) fieldErrors.role = "You cannot change your own role.";
+    else if (!isActorAdmin && effectiveRole === "admin") fieldErrors.role = "Only admins can assign the Admin role.";
   }
   if (Object.keys(fieldErrors).length > 0) return fail("Please fix the highlighted fields.", { fieldErrors, values });
 
@@ -194,7 +202,7 @@ export async function updateStaff(id: string, _previous: ActionState, formData: 
     }
   }
 
-  if (hasLogin && target.data.role === "admin" && role !== "admin" && (await adminCount(db)) <= 1) {
+  if (hasLogin && target.data.role === "admin" && effectiveRole !== "admin" && (await adminCount(db)) <= 1) {
     return fail("At least one admin is required.", { fieldErrors: { role: "This is the only admin." }, values });
   }
 
@@ -203,9 +211,9 @@ export async function updateStaff(id: string, _previous: ActionState, formData: 
 
   let rolePatch: { role?: string; role_id?: string } = {};
   if (hasLogin) {
-    rolePatch.role = role;
-    if (role !== target.data.role) {
-      const nextRoleId = await resolveSystemRoleId(db, role as "admin" | "staff");
+    rolePatch.role = effectiveRole;
+    if (effectiveRole !== target.data.role) {
+      const nextRoleId = await resolveSystemRoleId(db, effectiveRole as "admin" | "staff");
       if (nextRoleId) rolePatch.role_id = nextRoleId;
     }
   }
@@ -264,6 +272,7 @@ export async function removeStaff(id: string): Promise<ActionState> {
   const target = await db.from("staff_users").select("id, role, auth_user_id").eq("id", id).maybeSingle();
   if (target.error) return fail(dbMessage(target.error));
   if (!target.data) return fail("That staff member could not be found.");
+  if (admin.role !== "admin" && target.data.role === "admin") return fail("Only admins can remove admin accounts.");
   if (target.data.role === "admin" && (await adminCount(db)) <= 1) return fail("At least one admin is required.");
 
   const removed = await db.from("staff_users").delete().eq("id", id);

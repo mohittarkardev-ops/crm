@@ -25,6 +25,7 @@ export const MODULES = [
     permissions: [
       { key: "clients.view", label: "View clients" },
       { key: "clients.create", label: "Add clients" },
+      { key: "clients.edit", label: "Edit client details" },
     ],
   },
   {
@@ -140,9 +141,18 @@ const ALL_PERMISSIONS: PermissionKey[] = (MODULES as readonly ModuleDef[]).flatM
 );
 
 const ALL_PERMISSIONS_SET = new Set<string>(ALL_PERMISSIONS);
+const ADMIN_ONLY_PERMISSIONS_SET = new Set<string>(
+  (MODULES as readonly ModuleDef[]).flatMap((m) =>
+    m.permissions.filter((p) => p.adminOnly).map((p) => p.key),
+  ),
+);
 
 export function isValidPermissionKey(key: string): key is PermissionKey {
   return ALL_PERMISSIONS_SET.has(key);
+}
+
+export function isAdminOnlyPermission(key: string): boolean {
+  return ADMIN_ONLY_PERMISSIONS_SET.has(key);
 }
 
 /** Who is asking. Can carry role and the person's own permission list from RBAC. */

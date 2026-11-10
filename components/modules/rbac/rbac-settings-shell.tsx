@@ -10,32 +10,40 @@ import type { RoleItem } from "@/lib/data/rbac";
 interface RbacSettingsShellProps {
   staffRows: any[];
   roles: RoleItem[];
+  isSuperAdmin: boolean;
 }
 
-export function RbacSettingsShell({ staffRows, roles }: RbacSettingsShellProps) {
+export function RbacSettingsShell({ staffRows, roles, isSuperAdmin }: RbacSettingsShellProps) {
   const [activeTab, setActiveTab] = useState<"staff" | "roles">("staff");
+  const currentTab = isSuperAdmin ? activeTab : "staff";
 
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
-        <Segmented
-          label="Access Management Navigation"
-          value={activeTab}
-          onChange={(val) => setActiveTab(val as "staff" | "roles")}
-          options={[
-            { value: "staff", label: `Staff Accounts (${staffRows.length})` },
-            { value: "roles", label: `Roles & Permissions (${roles.length})` },
-          ]}
-        />
+        {isSuperAdmin ? (
+          <Segmented
+            label="Access Management Navigation"
+            value={currentTab}
+            onChange={(val) => setActiveTab(val as "staff" | "roles")}
+            options={[
+              { value: "staff", label: `Staff Accounts (${staffRows.length})` },
+              { value: "roles", label: `Roles & Permissions (${roles.length})` },
+            ]}
+          />
+        ) : (
+          <div className="text-sm font-semibold text-ink">
+            Staff Accounts ({staffRows.length})
+          </div>
+        )}
         <p className="text-xs text-ink-muted">
-          {activeTab === "staff"
+          {currentTab === "staff"
             ? "Manage staff logins, agent profiles, and individual permission overrides."
             : "Define reusable roles and fine-tune system-wide module access permissions."}
         </p>
       </div>
 
-      {activeTab === "staff" ? (
-        <StaffTableWithRbac rows={staffRows} roles={roles} />
+      {currentTab === "staff" ? (
+        <StaffTableWithRbac rows={staffRows} roles={roles} isSuperAdmin={isSuperAdmin} />
       ) : (
         <RolesTable roles={roles} />
       )}

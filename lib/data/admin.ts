@@ -64,7 +64,7 @@ export async function getAdControls() {
 
 /* ------------------------------------ Staff --------------------------------- */
 
-export async function getStaffList(currentStaffId?: string) {
+export async function getStaffList(currentStaffId?: string, actorIsAdmin: boolean = true) {
   const db = await createClient();
   let res: any = await db
     .from("staff_users")
@@ -95,6 +95,9 @@ export async function getStaffList(currentStaffId?: string) {
   }>(res, "Staff").map((s) => {
     const roleObj = one(s.roles);
     const displayRole = roleObj?.name || (s.role ? s.role.toUpperCase() : "Staff");
+    const isSelf = s.id === currentStaffId;
+    const isTargetAdmin = s.role === "admin";
+    const hasLogin = Boolean(s.auth_user_id);
 
     return {
       id: s.id,
@@ -103,13 +106,19 @@ export async function getStaffList(currentStaffId?: string) {
       employeeCode: s.employee_code,
       mobile: s.mobile_number,
       designation: s.designation,
-      signIn: s.auth_user_id ? "Can sign in" : "No login",
-      agentState: s.auth_user_id ? "login" : s.is_active === false ? "inactive" : "active",
-      role: displayRole,
+      signIn: hasLogin ? "Can sign in" : "No login",
+      agentState: hasLogin ? "login" : s.is_active === false ? "inactive" : "active",
+      hasLogin: hasLogin ? "yes" : "no",
+      role: s.role ?? "",
+      roleLabel: displayRole,
       roleId: s.role_id,
       rawRole: s.role,
       joined: dateIST(s.created_at),
-      isSelf: s.id === currentStaffId ? "yes" : "no",
+      isSelf: isSelf ? "yes" : "no",
+      editableRole: hasLogin && !isSelf && actorIsAdmin ? "yes" : "no",
+      canEditRow: actorIsAdmin || !isTargetAdmin ? "yes" : "no",
+      canPermRow: hasLogin && !isSelf && (actorIsAdmin || !isTargetAdmin) ? "yes" : "no",
+      canRemoveRow: !isSelf && (actorIsAdmin || !isTargetAdmin) ? "yes" : "no",
     };
   });
 

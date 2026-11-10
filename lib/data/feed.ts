@@ -21,40 +21,57 @@ function who(person: Person) {
   return user?.full_name ?? user?.mobile_number ?? "Unknown user";
 }
 
+export type FeedScope = {
+  quotes?: boolean;
+  support?: boolean;
+  policies?: boolean;
+  clients?: boolean;
+};
+
 /**
  * What needs the advisor's attention right now: new quote requests, open support tickets,
  * policies added by users that are still unverified, and users who registered in the last 7 days.
+ * Queries only the modules this staff member is allowed to open.
  */
-export async function getActivityFeed(): Promise<FeedItem[]> {
+export async function getActivityFeed(scope: FeedScope = {}): Promise<FeedItem[]> {
   const db = await createClient();
   const since = addDays(todayIST(), -7);
+  const emptyRes = { data: [] as never[], error: null };
 
   const [quotes, tickets, policies, users] = await Promise.all([
-    db
-      .from("quote_requests")
-      .select("id, created_at, users(full_name, mobile_number), policies(policy_number)")
-      .eq("status", "new")
-      .order("created_at", { ascending: false })
-      .limit(10),
-    db
-      .from("support_tickets")
-      .select("id, subject, created_at, users(full_name, mobile_number)")
-      .eq("status", "open")
-      .order("created_at", { ascending: false })
-      .limit(10),
-    db
-      .from("policies")
-      .select("id, policy_number, created_at, users(full_name, mobile_number)")
-      .eq("source", "user_added")
-      .eq("verification_status", "unverified")
-      .order("created_at", { ascending: false })
-      .limit(10),
-    db
-      .from("users")
-      .select("id, full_name, mobile_number, created_at")
-      .gte("created_at", since)
-      .order("created_at", { ascending: false })
-      .limit(5),
+    scope.quotes !== false
+      ? db
+          .from("quote_requests")
+          .select("id, created_at, users(full_name, mobile_number), policies(policy_number)")
+          .eq("status", "new")
+          .order("created_at", { ascending: false })
+          .limit(10)
+      : Promise.resolve(emptyRes),
+    scope.support !== false
+      ? db
+          .from("support_tickets")
+          .select("id, subject, created_at, users(full_name, mobile_number)")
+          .eq("status", "open")
+          .order("created_at", { ascending: false })
+          .limit(10)
+      : Promise.resolve(emptyRes),
+    scope.policies !== false
+      ? db
+          .from("policies")
+          .select("id, policy_number, created_at, users(full_name, mobile_number)")
+          .eq("source", "user_added")
+          .eq("verification_status", "unverified")
+          .order("created_at", { ascending: false })
+          .limit(10)
+      : Promise.resolve(emptyRes),
+    scope.clients !== false
+      ? db
+          .from("users")
+          .select("id, full_name, mobile_number, created_at")
+          .gte("created_at", since)
+          .order("created_at", { ascending: false })
+          .limit(5)
+      : Promise.resolve(emptyRes),
   ]);
 
   const items: FeedItem[] = [

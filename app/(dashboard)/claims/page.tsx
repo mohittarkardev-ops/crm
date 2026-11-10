@@ -34,14 +34,15 @@ export default async function ClaimsPage() {
   const canCreate = can(staff, "claims.create");
   const canReview = can(staff, "claims.approve");
 
-  const [{ rows, totalCount, stats }, createAgents, editAgents] = await Promise.all([
+  const [{ rows, totalCount, stats }, editAgents] = await Promise.all([
     getClaims(),
-    canCreate ? getAgentOptions(staff.id, isAdmin) : Promise.resolve([]),
     canReview ? getAgentOptions(staff.id, true) : Promise.resolve([]),
   ]);
 
-  const buildFields = (agentList: Option[]): FieldDef[] => [
-    { name: "agent", label: "Agent", type: "select", options: agentList, required: true, full: true },
+  const buildFields = (agentList: Option[], includeAgentSelect: boolean): FieldDef[] => [
+    ...(includeAgentSelect
+      ? [{ name: "agent", label: "Agent", type: "select" as const, options: agentList, required: true, full: true }]
+      : []),
     { name: "vehicleRegNo", label: "Vehicle registration no.", required: true },
     { name: "paymentDate", label: "Payment date", type: "date", required: true, maxToday: true },
     { name: "paymentMode", label: "Paid by", type: "select", options: MODE_OPTIONS, required: true },
@@ -54,8 +55,9 @@ export default async function ClaimsPage() {
     { name: "saodDueDate", label: "Own-damage (SAOD) due date", type: "date" },
   ];
 
-  const createFields = buildFields(createAgents);
-  const editFields = buildFields(editAgents);
+  const createAgents = canCreate && isAdmin ? await getAgentOptions(staff.id, true) : [];
+  const createFields = buildFields(createAgents, isAdmin);
+  const editFields = buildFields(editAgents, true);
 
   return (
     <div className="space-y-4">

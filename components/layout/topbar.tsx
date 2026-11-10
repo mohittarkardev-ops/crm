@@ -11,7 +11,7 @@ import { cn } from "@/lib/cn";
 import { findNavItem } from "@/lib/nav";
 import type { PermissionKey } from "@/lib/rbac/permissions";
 
-export type Account = { id: string; name: string; email: string; role: "admin" | "staff" | null };
+export type Account = { id: string; name: string; email: string; role: "admin" | "staff" | null; roleName?: string | null };
 
 function initials(name: string) {
   return name
@@ -23,13 +23,16 @@ function initials(name: string) {
     .toUpperCase();
 }
 
+const FEED_PERMS: PermissionKey[] = ["quotes.view", "support.view", "policies.view", "clients.view"];
+
 /** Page title on the left; global search, bell and account menu on the right (design.md section 3). */
 export function Topbar({ account, allowed }: { account: Account; allowed?: PermissionKey[] }) {
   const pathname = usePathname();
   const title = findNavItem(pathname)?.label ?? (pathname.startsWith("/no-access") ? "No access" : "Dashboard");
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const roleLabel = account.role === "admin" ? "Admin" : "Staff";
+  const roleLabel = account.role === "admin" ? "Admin" : account.roleName || "Staff";
+  const showBell = account.role === "admin" || Boolean(allowed?.some((p) => FEED_PERMS.includes(p)));
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -55,7 +58,7 @@ export function Topbar({ account, allowed }: { account: Account; allowed?: Permi
         <AutoRefresh />
         <GlobalSearch allowed={allowed} />
 
-        <NotificationBell staffId={account.id} />
+        {showBell && <NotificationBell staffId={account.id} />}
 
         <div ref={menuRef} className="relative">
           <button

@@ -20,6 +20,7 @@ export default async function DataGridPage() {
   const staff = await requirePermission("datagrid.view");
   const canEdit = can(staff, "datagrid.edit");
   const canExport = can(staff, "datagrid.export");
+  const canViewPolicies = can(staff, "policies.view");
 
   const [initialData, customFields] = await Promise.all([
     getGridPage({ cursor: null }),
@@ -35,6 +36,7 @@ export default async function DataGridPage() {
         customFields={customFields}
         canEdit={canEdit}
         canExport={canExport}
+        canViewPolicies={canViewPolicies}
       />
     </div>
   );

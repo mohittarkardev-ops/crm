@@ -8,6 +8,7 @@ type UserRecord = {
   mobile_number: string;
   email: string | null;
   is_advisor_client: boolean;
+  date_of_birth: string | null;
   created_at: string;
   policies: { count: number }[] | null;
 };
@@ -23,7 +24,7 @@ export async function getClients() {
       (from, to) =>
         db
           .from("users")
-          .select("id, full_name, mobile_number, email, is_advisor_client, created_at, policies(count)")
+          .select("id, full_name, mobile_number, email, is_advisor_client, date_of_birth, created_at, policies(count)")
           .order("created_at", { ascending: false })
           .order("id", { ascending: false })
           .range(from, to),
@@ -40,6 +41,7 @@ export async function getClients() {
     mobile: u.mobile_number,
     email: u.email,
     type: u.is_advisor_client ? "advisor_client" : "general",
+    dob: u.date_of_birth ?? "",
     policies: u.policies?.[0]?.count ?? 0,
     joined: dateIST(u.created_at),
   }));
