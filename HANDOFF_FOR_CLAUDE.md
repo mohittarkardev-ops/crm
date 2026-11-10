@@ -1,5 +1,5 @@
 # SecureDrive CRM — Comprehensive Handoff & Claude Code Guide
-*Updated on 10 Nov 2026 (through RBAC H2.1–H2.8 Security Hardening; apply SQL migrations `0011` + `0012` in Supabase). For Antigravity, Claude Code CLI or any next LLM session.*
+*Updated on 10 Nov 2026 (through RBAC H2.1–H2.8 Security Hardening; commit `afe9eb0` on `main`; SQL migrations `0011` + `0012` applied in Supabase; mobile backlog separated to `docs/mobile-sync-todo.md`). For Antigravity, Claude Code CLI or any next LLM session.*
 
 ---
 
@@ -32,7 +32,7 @@ This document is the authoritative handoff for the **SecureDrive CRM** integrati
 | **UI-4** | Hudson scrollbar polish & 1st-click nested forms | ✅ **COMPLETE** | Global subtle scrollbars/overflow cleanup; post-commit `onValueChange` + `showWhen` immediate evaluation + `<div>` wrappers around portal controls + `form.reset()` sync |
 | **UI-5** | Tactile Micro-Interactions & Confirm Popovers | ✅ **COMPLETE** | Replaced all `window.confirm()` with `ConfirmButton`, sliding pill indicators (`Segmented`/`StatusButtons`/`VerificationControl`), button press + `Saved ✓` morph, toast exit + hairline timer + pause-on-hover, `CopyButton`, `showWhen` reveal, error shake/focus, drawer unsaved guard, row/cell commit flash, Data Grid bulk dock, drag-drop upload & Claim Portal transitions |
 | **UI-6** | Insurer Dropdown (`logo_url`) & Global Search | ✅ **COMPLETE** | DB-backed `insurers` `CustomSelect` + `InsurerLogo`/`InsurerBadge` + `"Other / Add new"` `showWhen` flow across Policies/Renewals; live RBAC-aware `GlobalSearch` (grouped popover, keyboard nav, mobile dialog, `?q=` `ModulePage` handoff) |
-| **S14** | Cutover & Final Polish | 🚧 **IN PROGRESS** | RBAC H2.1–H2.8 hardened in code & `0012` SQL (run `0011`+`0012` in Supabase); remaining: mobile sync/OTP/reminders, Reports charts, placement slot lock after mobile build |
+| **S14** | Cutover & Final Polish | 🚧 **IN PROGRESS** | RBAC `0011`+`0012` SQL applied; **CRM-only first:** `/reports` charts/Commission, `send-push` Edge Function deploy, CRM polish; **Mobile deferred:** `docs/mobile-sync-todo.md` & post-mobile slot lock |
 
 ---
 
@@ -157,7 +157,7 @@ UI-3 leftovers and all requested module bug fixes (H3, H4, H5, H6, H7, and cross
 ### F. Setup checklist (do once per environment)
 1. `npm install` in `crm/` (includes `tailwind-merge`).
 2. Environment variables: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (server only, never `NEXT_PUBLIC_`), `CLAIM_PORTAL_CODE` (8+ characters), optional `EXPO_ACCESS_TOKEN`. Set them in `.env.local` and in Vercel.
-3. Supabase migrations, in order: `0008_crm_integration_fixes.sql`, `0009_revoke_anon_app_settings.sql`, `0010_rbac_roles_permissions.sql`, `0011_placements_db_now.sql`, `0012_rbac_rls_hardening.sql` (apply `0011` & `0012` in Supabase SQL Editor). Check afterwards that `select table_name, privilege_type from information_schema.role_table_grants where grantee = 'anon' and table_schema = 'public';` returns no rows.
+3. Supabase migrations, in order: `0008_crm_integration_fixes.sql`, `0009_revoke_anon_app_settings.sql`, `0010_rbac_roles_permissions.sql`, `0011_placements_db_now.sql`, `0012_rbac_rls_hardening.sql` (✅ applied on production Supabase). Check afterwards that `select table_name, privilege_type from information_schema.role_table_grants where grantee = 'anon' and table_schema = 'public';` returns no rows.
 
 ### G. Working agreements (to save effort)
 - Read `design.md` and the component you are about to change before editing. Prefer small, exact edits over rewriting whole files.
@@ -177,10 +177,10 @@ Sections H3, H4, H5, H6, H7, and cross-cutting pagination/export were fixed in p
 - **Mobile app is behind the CRM** (`docs/mobile-sync-todo.md`, items 1 to 5 not applied in the app): show `rejection_reason` on rejected policies and let users resubmit; new labels for policy source ("Insured by agency" / "External policy") and document source; quote statuses `pending` and `renewed`; open a policy from a notification via `policy_id`; read `app_settings` (support card, IRDAI licence, disclaimer) instead of hard-coded values.
 - **Mobile items never verified on a device:** add/edit/delete policy form with document upload, FAQ chatbot, edit profile, terms/privacy screens (see `PROJECT.md`).
 - **Not started:** real AdMob native cards and consent (needs an EAS dev build), real logo and app icon, privacy policy / DPDP text, IRDAI disclaimer, store forms.
-- **Duplicate copies exist and can drift:** `crm/supabase/` (functions + migrations 0001 to 0011) duplicates the root `supabase/` folder, and there are two handoff files (`HANDOFF_FOR_CLAUDE.md` at the repo root and inside `crm/`). Pick one source of truth and delete the other.
-- **Stale docs:** `PROJECT.md` still says the CRM is ON HOLD and lists the CRM as todo; `docs/mobile-sync-todo.md` still says Excel import must not start. Both are out of date (the CRM and `/import` exist).
+- **Duplicate copies exist and can drift:** `crm/supabase/` (functions + migrations 0001 to 0012) duplicates the root `supabase/` folder, and there are two handoff files (`HANDOFF_FOR_CLAUDE.md` at the repo root and inside `crm/`). Pick one source of truth and delete the other.
+- **Mobile backlog separated (`docs/mobile-sync-todo.md`):** Both `PROJECT.md` and `docs/mobile-sync-todo.md` have been updated; all mobile-side work (CRM schema/label sync, `expo-notifications` registration, `daily-reminders`, WhatsApp OTP, AdMob, device QA, store release) is **deferred until CRM-only tasks finish**.
 
-**H2. RBAC (S13) security hardening — RESOLVED in code + migration `0012_rbac_rls_hardening.sql` (apply `0012` in Supabase SQL Editor)**
+**H2. RBAC (S13) security hardening — RESOLVED & APPLIED (`0012_rbac_rls_hardening.sql` applied in Supabase SQL Editor)**
 1. **RESOLVED (H2.1 — Overrides & single-RPC load):** `0012_rbac_rls_hardening.sql` adds `staff_custom_permissions_self_select` plus `security definer` `public.get_my_permissions()` (scoped to `auth.uid()`). `getStaff()` in `lib/auth.ts` resolves non-admin permissions via a single `get_my_permissions` RPC call (with `PGRST202`/`42883` pre-`0012` fallback reading `role_permissions` + `staff_custom_permissions`).
 2. **RESOLVED (H2.2 — Database-level RLS enforcement):** `0012_rbac_rls_hardening.sql` adds `public.has_permission(p_permission text)` and replaces blanket `is_staff()` write/`_staff_all` policies across `staff_users`, `users`, `family_members`, `policies`, `policy_documents`, `storage.objects` (`DOCUMENTS`), `renewals`, `quote_requests`, `support_tickets`, `claims`, `notifications`, `templates`, `device_tokens`, `placements`, `ad_slots`, `ad_settings`, `app_settings`, `insurers`, `policy_types`, `import_batches`, and `grid_columns` while preserving mobile customer `_own` / `_read` policies.
 3. **RESOLVED (H2.3 — Role deletion orphan guard):** `deleteRoleAction()` in `lib/actions/rbac.ts` refuses to delete any role that still has assigned staff (`staffCount > 0`).
@@ -269,12 +269,11 @@ Sections H3, H4, H5, H6, H7, and cross-cutting pagination/export were fixed in p
 
 | Priority | Item | Location / Notes |
 |---|---|---|
-| 🟢 Deploy pending | Apply Supabase migrations `0011_placements_db_now.sql` & `0012_rbac_rls_hardening.sql` in Supabase SQL Editor (all H2.1–H2.8 fixes implemented & `next build` verified) | `supabase/migrations/0011_*.sql`, `0012_*.sql` |
-| 🟠 P2 — Next sprint | Reports page shows "Not built yet" for all 4 charts & Commission tile (H8.1–H8.2) | `app/(dashboard)/reports/page.tsx` + `lib/data/admin.ts` |
-| 🟠 P2 | Deploy Edge Function `send-push`; build automated `daily-reminders` & WhatsApp OTP Edge Functions (H1) | `supabase/functions/` |
-| 🟠 P2 | Mobile app needs `expo-notifications` registration into `device_tokens` + `docs/mobile-sync-todo.md` app screens sync (H1, H6.1) | `mobile/src`, `docs/mobile-sync-todo.md` |
-| 🟡 P3 — After mobile build | Lock placement `slot_name` list once final mobile slots are confirmed (H7.2) | Pending owner input after app build |
-| 🟡 P3 — Polish | Populate `public.insurers.logo_url` brand asset URLs; Ad slot create UI (H9); Quote completed/closed tiles (H9); deduplicate `crm/supabase` vs root `supabase` | `/insurers`, `/ads`, `/quotes`, `supabase/` |
+| 🟠 P2 — CRM First | Reports page shows "Not built yet" for all 4 charts & Commission tile (H8.1–H8.2; also H10.3 sidebar check) | `app/(dashboard)/reports/page.tsx` + `lib/data/admin.ts` |
+| 🟠 P2 — CRM Deploy | Deploy Edge Function `supabase/functions/send-push/index.ts` (SQL migrations `0011` + `0012` already applied) | `supabase/functions/send-push/` |
+| 🟡 P3 — CRM Polish | Populate `public.insurers.logo_url` brand asset URLs; Ad slot create UI (H9); Quote completed/closed tiles (H9); deduplicate `crm/supabase` vs root `supabase` | `/insurers`, `/ads`, `/quotes`, `supabase/` |
+| 🔵 Deferred — Mobile Sprint (After CRM) | CRM schema/label sync, `expo-notifications` token registration (`device_tokens`), `daily-reminders`, WhatsApp OTP Edge Functions, native AdMob + UMP consent, device QA, store launch (`H1`, `H6.1`) | Tracked in `docs/mobile-sync-todo.md` |
+| 🟡 P3 — Post-Mobile Lock | Lock placement `slot_name` list once final mobile slots are confirmed (H7.2) | Pending after mobile sprint |
 
 ---
 
@@ -313,8 +312,8 @@ Hello! Please resume work on the SecureDrive Insurance CRM project (`c:\Users\Mo
 
 Read `crm/HANDOFF_FOR_CLAUDE.md` (or root `HANDOFF_FOR_CLAUDE.md`) and `crm/design.md` before modifying any file.
 
-### Current Baseline (Verified Clean: `tsc --noEmit` + `next build`, commit `376f00b` on `main`):
-- **Core Modules (`S1–S8`, `S13`) & Bug Fixes (`BF-1`):** RBAC admin/roles UI, Policies (with vehicle fields, Edit/Delete, Documents), Staff/Agents, Claims (`/claims` + `/claim` public portal with `CLM-` ref IDs), Data Grid (`/data-grid` keyset paging, filters, inline FK/due_date sync, CSV/XLSX export), Bulk Import & Lookup (`/import` batched chunks, safe undo, unmatched copy), Notifications (`send-push` Edge Function + Templates CRUD), Placements (`image_url`, `sort_order`, `get_db_now()` RPC), and `pagedRows()` + CSV export across all lists.
+### Current Baseline (Verified Clean: `tsc --noEmit` + `next build`, commit `afe9eb0` on `main`, `0011` + `0012` SQL applied):
+- **Core Modules (`S1–S8`, `S13`), `BF-1` & RBAC Security (`H2.1–H2.8`):** RBAC admin/roles UI + DB `has_permission()` RLS hardening (`0012`) + `get_my_permissions()` + fail-closed `can()` + role orphan/last-admin/atomic-save guards, Policies (with vehicle fields, Edit/Delete, Documents), Staff/Agents, Claims (`/claims` + `/claim` public portal with `CLM-` ref IDs), Data Grid (`/data-grid` keyset paging, filters, inline FK/due_date sync, CSV/XLSX export), Bulk Import & Lookup (`/import` batched chunks, safe undo, unmatched copy), Notifications (`send-push` Edge Function + Templates CRUD), Placements (`image_url`, `sort_order`, `get_db_now()` RPC), and `pagedRows()` + CSV export across all lists.
 - **UI & UX Passes (`UI-1` through `UI-6`):**
   - Hudson design tokens, seamless custom scrollbars, and 1st-click `showWhen` nested form evaluation (`CustomSelect` / `DatePicker` post-commit `onValueChange` + `<form>.reset()` sync).
   - CRM-wide micro-interactions: zero `window.confirm()` (`ConfirmButton` popovers), gliding `useSlidingPill` indicators, `Button` press + `Saved ✓` morph, `Toaster` rAF hairline countdown & hover-pause, smooth `Drawer` unsaved-changes curtain, error `micro-shake` + first-error focus, row/cell commit flashes, Data Grid floating bulk dock, and flicker-free `300ms` drag-and-drop zones.
@@ -322,17 +321,16 @@ Read `crm/HANDOFF_FOR_CLAUDE.md` (or root `HANDOFF_FOR_CLAUDE.md`) and `crm/desi
   - Live RBAC-aware **Global Search** (`globalSearch` server action, desktop popover + mobile spotlight, `/`, `↑↓`, `Enter`, `Esc`, and `?q=` list sync in `ModulePage`).
 - **Explicitly Dropped (do NOT build):** `S9` Duplicate scanner, `S10` Policy summary PDF, `S11` Command palette (`Ctrl+K`), `S12` Custom fields manager UI.
 
-### Priority Next Steps (Pick What to Tackle Next):
-1. **✅ P1 — RBAC Security & DB RLS Hardening (H2.1–H2.8): Done in code & SQL** — **only SQL execution remains:**
-   - Apply `0011_placements_db_now.sql` and `0012_rbac_rls_hardening.sql` in Supabase SQL Editor (then smoke-test a restricted non-admin login to confirm `get_my_permissions()` + `has_permission()` RLS enforcement).
-2. **🟠 P2 — Deployments, Reports Charts & Mobile App Integration:**
-   - Deploy Edge Function `supabase/functions/send-push/index.ts`.
-   - Build `/reports` charts (4 chart cards) & Commission calculation (`H8.1–H8.2`).
-   - Mobile app (`mobile/src` + `docs/mobile-sync-todo.md`): wire `expo-notifications` token registration into `device_tokens` for CRM push delivery (`H1`, `H6.1`), build automated `daily-reminders` & WhatsApp OTP Edge Functions (`H1`), and sync CRM labels/screens.
-3. **🟡 P3 — Final Lock & Polish:**
-   - Lock `placements.slot_name` list (`H7.2`) **only after mobile app build finishes and final slot keys are confirmed**.
+### Priority Next Steps (Finish CRM-Only Work First; Mobile Is Deferred):
+1. **🟠 P2 — CRM First:**
+   - Build `/reports` charts (4 chart cards) & Commission calculation (`H8.1–H8.2`, plus verify `H10.3`).
+   - Deploy Edge Function `supabase/functions/send-push/index.ts` (if not yet deployed).
+2. **🟡 P3 — CRM Polish:**
    - Populate `public.insurers.logo_url` links whenever brand assets are ready (CRM UI is already pre-wired).
    - Optional polish: Ad slot create UI (`H9`), Quote completed/closed tiles (`H9`), deduplicate `crm/supabase` vs root `supabase`.
+3. **🔵 Mobile Sprint (DEFERRED — Only start after CRM-only work above is finished):**
+   - Follow `docs/mobile-sync-todo.md` (`mobile/` syncs, `expo-notifications` -> `device_tokens`, `daily-reminders`, WhatsApp OTP, native AdMob, device QA, store release).
+   - After mobile build finishes, lock `placements.slot_name` list (`H7.2`).
 
 ### Strict Conventions:
 - Follow `crm/design.md` §7: no `alert()`, no `window.confirm()`, no native `<select>` or `<input type="date">`, no `font-mono`, no foreign shadows, no hard-coded hex colours, no yellow buttons.
