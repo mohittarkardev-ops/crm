@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { AgencySealCharacter } from "@/components/ui/characters";
 import { PendingBar } from "@/components/ui/pending-bar";
 import { FieldGrid } from "@/components/ui/field";
 import { toast } from "@/components/ui/toaster";
@@ -56,6 +57,23 @@ export function BusinessProfileForm({
   return (
     <form action={readOnly ? undefined : formAction} noValidate>
       {!readOnly && <PendingBar active={pending} className="mb-3" />}
+      <div className="mb-4 flex items-center gap-3 rounded-tile border border-divider/60 bg-surface-muted/40 px-3.5 py-2.5">
+        <AgencySealCharacter state={readOnly ? "readonly" : savedFlash ? "saved" : "idle"} />
+        <div className="min-w-0">
+          <p className="text-xs font-semibold text-ink">
+            {savedFlash
+              ? "Business profile updated!"
+              : readOnly
+                ? "View-only agency licence card"
+                : "Agency identity & IRDAI credentials"}
+          </p>
+          <p className="mt-0.5 text-[11px] text-ink-muted">
+            {savedFlash
+              ? "Changes are live across the client mobile app support card."
+              : "Displayed to clients inside the SecureDrive mobile app."}
+          </p>
+        </div>
+      </div>
       {state.error && (
         <p key={errorPulse} role="alert" className="micro-shake mb-4 rounded-control bg-negative-soft px-3 py-2 text-xs text-negative">
           {state.error}

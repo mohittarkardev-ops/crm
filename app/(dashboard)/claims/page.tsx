@@ -1,5 +1,6 @@
 import { CircleCheck, CircleX, Clock, IndianRupee } from "lucide-react";
 import { ModulePage } from "@/components/modules/module-page";
+import { ModuleEmptyCharacter } from "@/components/ui/characters";
 import { MiniStat, StatRow } from "@/components/ui/mini-stat";
 import { approveClaim, createClaim, deleteClaim, rejectClaim, updateClaim } from "@/lib/actions/claims";
 import { getAgentOptions, getClaims } from "@/lib/data/claims";
@@ -74,6 +75,7 @@ export default async function ClaimsPage() {
         totalCount={totalCount}
         exportName="claims"
         emptyLabel="No claims yet"
+        emptyIllustration={<ModuleEmptyCharacter variant="claims" />}
         search="Search ref, vehicle, agent or customer…"
         filters={[
           { key: "status", label: "All statuses", options: STATUS_OPTIONS },

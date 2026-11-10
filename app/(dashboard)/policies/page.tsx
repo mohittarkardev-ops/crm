@@ -1,5 +1,6 @@
 import { CalendarClock, FileCheck2, FileText, FileX2 } from "lucide-react";
 import { ModulePage } from "@/components/modules/module-page";
+import { ModuleEmptyCharacter } from "@/components/ui/characters";
 import { MiniStat, StatRow } from "@/components/ui/mini-stat";
 import { addPolicy } from "@/lib/actions/policies";
 import { getInsurers } from "@/lib/data/lookups";
@@ -35,6 +36,7 @@ export default async function PoliciesPage() {
         truncatedAction={{ href: "/data-grid", label: "Open Data Grid for all records" }}
         exportName="policies"
         emptyLabel="No policies yet"
+        emptyIllustration={<ModuleEmptyCharacter variant="policies" />}
         rowHref="/policies"
         dateFilter={{ key: "expiry", label: "Expiry" }}
         search="Search policy number or client…"

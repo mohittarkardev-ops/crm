@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { ModulePage } from "@/components/modules/module-page";
+import { ModuleEmptyCharacter } from "@/components/ui/characters";
 import { StaffPermissionsDrawer } from "./staff-permissions-drawer";
 import { type RoleItem, type StaffOverride } from "@/lib/data/rbac";
 import { getStaffCustomPermissionsAction } from "@/lib/actions/rbac";
@@ -69,6 +70,7 @@ export function StaffTableWithRbac({ rows, roles, isSuperAdmin }: StaffTableWith
         title="Staff Accounts"
         rows={rows}
         emptyLabel="No staff accounts yet"
+        emptyIllustration={<ModuleEmptyCharacter variant="staff" />}
         search="Search name, code, mobile or email…"
         columns={[
           { key: "name", label: "Name", type: "person" },

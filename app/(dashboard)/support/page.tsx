@@ -1,5 +1,6 @@
 import { CheckCircle2, Headset, LifeBuoy, Ticket } from "lucide-react";
 import { ModulePage } from "@/components/modules/module-page";
+import { ModuleEmptyCharacter } from "@/components/ui/characters";
 import { MiniStat, StatRow } from "@/components/ui/mini-stat";
 import { getSupport } from "@/lib/data/engagement";
 import { SUPPORT_STATUS_OPTIONS } from "@/lib/options";
@@ -24,6 +25,7 @@ export default async function SupportPage() {
         totalCount={totalCount}
         exportName="support-tickets"
         emptyLabel="No support tickets yet"
+        emptyIllustration={<ModuleEmptyCharacter variant="support" />}
         rowHref="/support"
         search="Search user or subject…"
         tabs={{ key: "status", label: "Ticket status", options: SUPPORT_STATUS_OPTIONS }}

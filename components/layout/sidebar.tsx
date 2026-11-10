@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LogOut, ShieldCheck } from "lucide-react";
+import { LogOut } from "lucide-react";
 import { signOut } from "@/app/login/actions";
+import { SidebarShieldEmblem } from "@/components/ui/characters";
 import { cn } from "@/lib/cn";
 import { NAV_ITEMS, SETTINGS_ITEM, type NavItem } from "@/lib/nav";
 import type { PermissionKey } from "@/lib/rbac/permissions";
@@ -59,10 +60,8 @@ export function Sidebar({ allowed }: { allowed: PermissionKey[] }) {
   return (
     <>
       <aside className="fade-up sticky top-4 hidden h-[calc(100vh-2rem)] w-60 shrink-0 flex-col rounded-card bg-sidebar p-3.5 shadow-card lg:flex">
-        <Link href="/" className="mb-3.5 flex items-center gap-3 px-1">
-          <span className="grid size-9 place-items-center rounded-control bg-ink text-white">
-            <ShieldCheck size={18} strokeWidth={1.75} aria-hidden="true" />
-          </span>
+        <Link href="/" className="group/brand mb-3.5 flex items-center gap-3 px-1">
+          <SidebarShieldEmblem />
           <span className="leading-tight">
             <span className="block text-[15px] font-bold text-ink">SecureDrive</span>
             <span className="block text-[11px] text-ink-muted">CRM</span>

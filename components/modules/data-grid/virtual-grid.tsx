@@ -8,7 +8,6 @@ import {
   FileSpreadsheet,
   FileText,
   ExternalLink,
-  TableProperties,
   RotateCcw,
   Check,
   X,
@@ -16,6 +15,7 @@ import {
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Button, buttonStyles } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
+import { SearchScoutCharacter } from "@/components/ui/characters";
 import { Chip } from "@/components/ui/chip";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toaster";
@@ -918,10 +918,10 @@ export function VirtualGrid({
           </table>
 
           {rows.length === 0 && !isSearching && (
-            <div className="py-16 text-center">
-              <TableProperties size={28} className="mx-auto mb-2 text-ink-faint" />
+            <div className="flex flex-col items-center py-14 text-center">
+              <SearchScoutCharacter mood="empty" size="md" className="mb-2" />
               <p className="text-sm font-semibold text-ink">No policies match the criteria</p>
-              <p className="text-xs text-ink-muted mt-1">
+              <p className="mt-1 text-xs text-ink-muted">
                 Try clearing search terms or removing column filters.
               </p>
               {hasActiveFilters && (

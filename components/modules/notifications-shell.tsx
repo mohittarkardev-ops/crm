@@ -130,6 +130,7 @@ export function NotificationsShell({
           totalCount={totalCount}
           exportName="notifications"
           emptyLabel="No notifications yet"
+          emptyIllustration={<CourierShieldCharacter audience="everyone" className="h-20 w-28" />}
           search="Search title or recipient…"
           filters={[
             { key: "kind", label: "All kinds", options: NOTIFICATION_KIND_OPTIONS },
@@ -225,6 +226,7 @@ export function NotificationsShell({
           rows={templateRows}
           exportName="notification-templates"
           emptyLabel="No notification templates yet"
+          emptyIllustration={<CourierShieldCharacter audience="user" className="h-20 w-28" />}
           search="Search template name or title…"
           filters={[{ key: "type", label: "All types", options: TEMPLATE_TYPE_OPTIONS }]}
           columns={[

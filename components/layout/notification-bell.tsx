@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Bell, FileText, LifeBuoy, MessageSquareQuote, UserPlus, X, type LucideIcon } from "lucide-react";
+import { BellWatcherCharacter } from "@/components/ui/characters";
 import { cn } from "@/lib/cn";
 import type { FeedItem, FeedKind } from "@/lib/data/feed";
 import { fetchFeed } from "@/lib/data/feed-actions";
@@ -265,15 +266,24 @@ export function NotificationBell({ staffId }: { staffId: string }) {
         {open && (
           <div className="pop-in absolute right-0 top-12 z-40 w-[22rem] max-w-[calc(100vw-2rem)] rounded-tile bg-surface-strong shadow-card-hover">
             <div className="flex items-center justify-between border-b-[1.5px] border-rule px-4 py-3">
-              <h2 className="text-[15px] font-semibold text-ink">Notifications</h2>
-              <span className="text-[11px] text-ink-muted">Needs your attention</span>
+              <div className="flex items-center gap-2">
+                {items && items.length > 0 && <BellWatcherCharacter mood="alert" compact />}
+                <h2 className="text-[15px] font-semibold text-ink">Notifications</h2>
+              </div>
+              <span className="text-[11px] text-ink-muted">
+                {items && items.length === 0 ? "All caught up" : "Needs your attention"}
+              </span>
             </div>
 
             <ul className="max-h-96 overflow-y-auto">
               {items === null ? (
                 <li className="px-4 py-6 text-center text-sm text-ink-muted">Loading…</li>
               ) : items.length === 0 ? (
-                <li className="px-4 py-8 text-center text-sm text-ink-muted">Nothing needs attention right now</li>
+                <li className="flex flex-col items-center gap-2.5 px-4 py-8 text-center">
+                  <BellWatcherCharacter mood="calm" />
+                  <p className="text-xs font-semibold text-ink">All caught up — nothing urgent</p>
+                  <p className="text-[11px] text-ink-faint">New quotes, tickets, and policy updates will appear here.</p>
+                </li>
               ) : (
                 items.map((item) => {
                   const Icon = ICONS[item.kind];

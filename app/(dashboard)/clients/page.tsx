@@ -1,5 +1,6 @@
 import { User, UserPlus, UserRoundCheck, Users } from "lucide-react";
 import { ModulePage } from "@/components/modules/module-page";
+import { ModuleEmptyCharacter } from "@/components/ui/characters";
 import { MiniStat, StatRow } from "@/components/ui/mini-stat";
 import { addClient, updateClient } from "@/lib/actions/clients";
 import { getClients } from "@/lib/data/clients";
@@ -41,6 +42,7 @@ export default async function ClientsPage() {
         totalCount={totalCount}
         exportName="clients"
         emptyLabel="No clients yet"
+        emptyIllustration={<ModuleEmptyCharacter variant="clients" />}
         search="Search name or mobile…"
         filters={[{ key: "type", label: "All types", options: CLIENT_TYPE_OPTIONS }]}
         columns={[

@@ -1,5 +1,6 @@
 import { CheckCircle2, Clock, Hourglass, Sparkles } from "lucide-react";
 import { ModulePage } from "@/components/modules/module-page";
+import { ModuleEmptyCharacter } from "@/components/ui/characters";
 import { MiniStat, StatRow } from "@/components/ui/mini-stat";
 import { getQuotes } from "@/lib/data/engagement";
 import { CATEGORY_OPTIONS, CLIENT_TYPE_OPTIONS, QUOTE_STATUS_OPTIONS } from "@/lib/options";
@@ -24,6 +25,7 @@ export default async function QuotesPage() {
         totalCount={totalCount}
         exportName="quote-requests"
         emptyLabel="No quote requests yet"
+        emptyIllustration={<ModuleEmptyCharacter variant="quotes" />}
         rowHref="/quotes"
         search="Search user or policy…"
         filters={[

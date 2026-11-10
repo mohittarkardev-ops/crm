@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { AlertCircle, X } from "lucide-react";
+import { X } from "lucide-react";
 import { buttonStyles } from "@/components/ui/button";
+import { UnsavedGuardMini } from "@/components/ui/characters";
 import { cn } from "@/lib/cn";
 
 const DURATION_MS = 320;
@@ -126,8 +127,8 @@ export function Drawer({
               role={confirmDiscard ? "alert" : undefined}
               className="flex flex-wrap items-center justify-between gap-2 border-b border-warning/30 bg-warning-soft px-6 py-2.5 text-xs text-ink"
             >
-              <span className="inline-flex items-center gap-1.5 font-medium">
-                <AlertCircle size={14} className="shrink-0 text-warning" aria-hidden="true" />
+              <span className="inline-flex items-center gap-2 font-medium">
+                <UnsavedGuardMini active={confirmDiscard} />
                 Discard unsaved changes?
               </span>
               <div className="flex items-center gap-1.5">

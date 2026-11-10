@@ -1088,3 +1088,13 @@ export {
   type LookupDetectiveMood,
   type SearchScoutMood,
 } from "@/components/ui/crew-characters";
+
+export {
+  AccessGuardianCharacter,
+  AgencySealCharacter,
+  BellWatcherCharacter,
+  ModuleEmptyCharacter,
+  SidebarShieldEmblem,
+  UnsavedGuardMini,
+  type ModuleEmptyVariant,
+} from "@/components/ui/studio-characters";

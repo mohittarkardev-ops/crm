@@ -1,5 +1,6 @@
 import { CalendarClock, CalendarX2, Megaphone, ToggleRight } from "lucide-react";
 import { ModulePage } from "@/components/modules/module-page";
+import { ModuleEmptyCharacter } from "@/components/ui/characters";
 import { MiniStat, StatRow } from "@/components/ui/mini-stat";
 import {
   activatePlacement,
@@ -58,6 +59,7 @@ export default async function PlacementsPage() {
         totalCount={totalCount}
         exportName="placements"
         emptyLabel="No placements yet"
+        emptyIllustration={<ModuleEmptyCharacter variant="placements" />}
         search="Search title…"
         filters={[
           { key: "slot", label: "All slots", options: slotOptions },

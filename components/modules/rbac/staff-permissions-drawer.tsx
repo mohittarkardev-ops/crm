@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { Drawer } from "@/components/ui/drawer";
 import { Button } from "@/components/ui/button";
+import { AccessGuardianCharacter } from "@/components/ui/characters";
 import { CustomSelect } from "@/components/ui/custom-select";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toaster";
@@ -78,6 +79,8 @@ export function StaffPermissionsDrawer({
 
   const activeRole = roles.find((r) => r.id === selectedRoleId);
   const isSelectedRoleAdmin = activeRole?.name === "Admin";
+  const grantCount = useMemo(() => Object.values(overrides).filter(Boolean).length, [overrides]);
+  const revokeCount = useMemo(() => Object.values(overrides).filter((v) => !v).length, [overrides]);
 
   const setOverrideState = (permKey: string, state: "inherit" | "grant" | "revoke") => {
     setOverrides((prev) => {
@@ -133,10 +136,24 @@ export function StaffPermissionsDrawer({
       title={`Permissions: ${staff?.name || "Staff"}`}
     >
       <form onSubmit={handleSave} className="space-y-5">
-        {/* Info Header */}
-        <div className="rounded-tile border border-divider p-3 bg-surface-muted/30 text-xs text-ink-muted">
-          <p className="font-semibold text-ink">{staff?.name}</p>
-          <p className="text-[11px] text-ink-faint tabular-nums">{staff?.email}</p>
+        {/* Info Header + Live Privilege Guardian */}
+        <div className="flex items-center gap-3 rounded-tile border border-divider bg-surface-muted/30 p-3 text-xs text-ink-muted">
+          <AccessGuardianCharacter
+            isAdmin={isSelectedRoleAdmin}
+            grantCount={grantCount}
+            revokeCount={revokeCount}
+          />
+          <div className="min-w-0 flex-1">
+            <p className="truncate font-semibold text-ink">{staff?.name}</p>
+            <p className="truncate text-[11px] text-ink-faint tabular-nums">{staff?.email}</p>
+            <p className="mt-1 text-[11px] font-medium text-ink-muted">
+              {isSelectedRoleAdmin
+                ? "Full Admin access"
+                : grantCount === 0 && revokeCount === 0
+                  ? `${activeRole?.name || "Role"} default access`
+                  : `${activeRole?.name || "Role"} · +${grantCount} grant${grantCount === 1 ? "" : "s"} / -${revokeCount} revoke${revokeCount === 1 ? "" : "s"}`}
+            </p>
+          </div>
         </div>
 
         {/* Primary Role Selector */}

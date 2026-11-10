@@ -4,8 +4,10 @@ import React, { useState } from "react";
 import { Plus, Edit2, Trash2, ShieldCheck, Users, KeyRound } from "lucide-react";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Button, buttonStyles } from "@/components/ui/button";
+import { ModuleEmptyCharacter, RollbackGuardCharacter } from "@/components/ui/characters";
 import { Chip } from "@/components/ui/chip";
 import { ConfirmButton } from "@/components/ui/confirm-button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { toast } from "@/components/ui/toaster";
 import { type RoleItem } from "@/lib/data/rbac";
 import { RoleEditorDrawer } from "./role-editor-drawer";
@@ -128,6 +130,7 @@ export function RolesTable({ roles }: RolesTableProps) {
                           title={`Delete role "${r.name}"?`}
                           description="No staff are assigned to this role. Deleting it removes the role permanently."
                           confirmLabel="Delete role"
+                          icon={<RollbackGuardCharacter active />}
                           loading={deletingId === r.id}
                           disabled={deletingId !== null}
                           onConfirm={() => handleDelete(r)}
@@ -153,8 +156,12 @@ export function RolesTable({ roles }: RolesTableProps) {
 
             {roles.length === 0 && (
               <tr>
-                <td colSpan={6} className="py-8 text-center text-xs text-ink-muted">
-                  No roles found. Please run migration 0010 in Supabase.
+                <td colSpan={6}>
+                  <EmptyState
+                    label="No roles found. Please run migration 0010 in Supabase."
+                    illustration={<ModuleEmptyCharacter variant="roles" />}
+                    className="py-8"
+                  />
                 </td>
               </tr>
             )}

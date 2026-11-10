@@ -7,6 +7,7 @@ import { signOut } from "@/app/login/actions";
 import { AutoRefresh } from "@/components/layout/auto-refresh";
 import { GlobalSearch } from "@/components/layout/global-search";
 import { NotificationBell } from "@/components/layout/notification-bell";
+import { AccessGuardianCharacter } from "@/components/ui/characters";
 import { cn } from "@/lib/cn";
 import { findNavItem } from "@/lib/nav";
 import type { PermissionKey } from "@/lib/rbac/permissions";
@@ -85,9 +86,13 @@ export function Topbar({ account, allowed }: { account: Account; allowed?: Permi
 
           {menuOpen && (
             <div className="pop-in absolute right-0 top-12 z-40 w-64 rounded-tile bg-surface-strong p-2 shadow-card-hover">
-              <div className="px-3 py-2">
-                <p className="truncate text-sm font-semibold text-ink">{account.name}</p>
-                <p className="truncate text-xs text-ink-muted">{account.email}</p>
+              <div className="flex items-center gap-2.5 px-2.5 py-2">
+                <AccessGuardianCharacter isAdmin={account.role === "admin"} compact />
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-ink">{account.name}</p>
+                  <p className="truncate text-xs text-ink-muted">{account.email}</p>
+                  <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-wider text-ink-faint">{roleLabel}</p>
+                </div>
               </div>
               <form action={signOut} className="border-t border-divider pt-1">
                 <button

@@ -1,5 +1,6 @@
 import { Ban, Layers, ToggleRight } from "lucide-react";
 import { ModulePage } from "@/components/modules/module-page";
+import { ModuleEmptyCharacter } from "@/components/ui/characters";
 import { MiniStat, StatRow } from "@/components/ui/mini-stat";
 import { addAdFreeUser, disableAdSlot, enableAdSlot, removeAdFreeUser } from "@/lib/actions/ads";
 import { getAdControls } from "@/lib/data/admin";
@@ -24,6 +25,7 @@ export default async function AdControlsPage() {
         title="Ad slots"
         rows={slotRows}
         emptyLabel="No ad slots yet"
+        emptyIllustration={<ModuleEmptyCharacter variant="ads" />}
         columns={[
           { key: "slot", label: "Slot" },
           { key: "status", label: "Status", type: "chip" },
@@ -46,6 +48,7 @@ export default async function AdControlsPage() {
         totalCount={totalAdFree}
         exportName="ad-free-users"
         emptyLabel="No ad-free users yet"
+        emptyIllustration={<ModuleEmptyCharacter variant="ads" />}
         search="Search name or mobile…"
         columns={[
           { key: "name", label: "User", type: "person" },
