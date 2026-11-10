@@ -28,7 +28,7 @@ const FEED_PERMS: PermissionKey[] = ["quotes.view", "support.view", "policies.vi
 /** Page title on the left; global search, bell and account menu on the right (design.md section 3). */
 export function Topbar({ account, allowed }: { account: Account; allowed?: PermissionKey[] }) {
   const pathname = usePathname();
-  const title = findNavItem(pathname)?.label ?? (pathname.startsWith("/no-access") ? "No access" : "Dashboard");
+  const title = findNavItem(pathname)?.label ?? (pathname.startsWith("/no-access") ? "No access" : "Not found");
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const roleLabel = account.role === "admin" ? "Admin" : account.roleName || "Staff";

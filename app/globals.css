@@ -411,6 +411,38 @@ html[data-welcome="seen"] .welcome-splash {
   animation: dock-up 280ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
 
+@keyframes scout-float {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-3px) rotate(1.5deg);
+  }
+}
+
+.scout-float {
+  animation: scout-float 4.2s ease-in-out infinite;
+  transform-origin: center;
+}
+
+@keyframes scout-blink {
+  0%,
+  90%,
+  100% {
+    transform: scaleY(1);
+  }
+  94% {
+    transform: scaleY(0.12);
+  }
+}
+
+.scout-blink {
+  animation: scout-blink 5.5s ease-in-out infinite;
+  transform-origin: center;
+  transform-box: fill-box;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
