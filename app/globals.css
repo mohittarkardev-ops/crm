@@ -464,7 +464,139 @@ html[data-welcome="seen"] .welcome-splash {
 
 .scout-wave {
   animation: scout-wave 3.4s ease-in-out infinite;
-  transform-origin: 18px 38px;
+  transform-origin: 20px 39px;
+}
+
+@keyframes scout-wave-burst {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  20% {
+    transform: rotate(-20deg);
+  }
+  42% {
+    transform: rotate(12deg);
+  }
+  64% {
+    transform: rotate(-15deg);
+  }
+  84% {
+    transform: rotate(6deg);
+  }
+}
+
+.scout-wave-burst {
+  animation: scout-wave-burst 750ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  transform-origin: 20px 39px;
+}
+
+@keyframes scout-steam {
+  0% {
+    opacity: 0;
+    transform: translateY(3px) scaleY(0.85);
+  }
+  35% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-5px) scaleY(1.1);
+  }
+}
+
+.scout-steam {
+  animation: scout-steam 2.6s ease-out infinite;
+  transform-box: fill-box;
+  transform-origin: center bottom;
+}
+
+@keyframes scout-lamp-glow {
+  0%,
+  100% {
+    opacity: 0.42;
+  }
+  50% {
+    opacity: 0.72;
+  }
+}
+
+.scout-lamp-glow {
+  animation: scout-lamp-glow 3.6s ease-in-out infinite;
+}
+
+@keyframes splash-door-open {
+  0%,
+  18% {
+    transform: scaleX(1) skewY(0deg);
+  }
+  100% {
+    transform: scaleX(0.24) skewY(-10deg);
+  }
+}
+
+.splash-door-leaf {
+  animation: splash-door-open 1250ms cubic-bezier(0.22, 1, 0.36, 1) 520ms both;
+  transform-box: fill-box;
+  transform-origin: left center;
+}
+
+@keyframes splash-pip-step {
+  from {
+    opacity: 0.55;
+    transform: translateY(5px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.splash-pip-step {
+  animation: splash-pip-step 700ms cubic-bezier(0.22, 1, 0.36, 1) 700ms both;
+  transform-box: fill-box;
+  transform-origin: center bottom;
+}
+
+@keyframes splash-salute-arm {
+  0% {
+    transform: rotate(16deg);
+  }
+  45% {
+    transform: rotate(-14deg);
+  }
+  70% {
+    transform: rotate(8deg);
+  }
+  100% {
+    transform: rotate(0deg);
+  }
+}
+
+.splash-salute-arm {
+  animation: splash-salute-arm 1100ms cubic-bezier(0.22, 1, 0.36, 1) 900ms both;
+  transform-origin: 110px 68px;
+}
+
+@keyframes splash-sparkle {
+  0% {
+    opacity: 0;
+    transform: scale(0.3) rotate(-18deg);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.12) rotate(4deg);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+  }
+}
+
+.splash-sparkle {
+  animation: splash-sparkle 550ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  transform-box: fill-box;
+  transform-origin: center;
 }
 
 /* Remove harsh browser focus rectangles when clicking Recharts slices/bars */

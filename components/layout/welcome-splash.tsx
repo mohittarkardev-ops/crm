@@ -1,38 +1,62 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ShieldCheck } from "lucide-react";
+import { SplashWelcomeCharacter, getShiftForHour, type MascotShift } from "@/components/ui/characters";
 import { cn } from "@/lib/cn";
 
 const KEY = "crm-welcome";
-const HOLD_MS = 3400; // time on screen before the dissolve starts
+const HOLD_MS = 3600; // time on screen before the dissolve starts
 const FADE_MS = 700; // dissolve into the CRM
 
 type Phase = "intro" | "exit" | "done";
 
-function readSeen() {
-  if (new URLSearchParams(window.location.search).has("welcome")) return false; // preview: open /?welcome
+function resolveWelcomeMeta(): { seen: boolean; shift: MascotShift; greeting: string } {
+  const params = new URLSearchParams(window.location.search);
+  const previewParam = params.get("welcome")?.toLowerCase();
+  const hour = new Date().getHours();
+  const shift: MascotShift =
+    previewParam === "morning" || previewParam === "midday" || previewParam === "evening"
+      ? previewParam
+      : getShiftForHour(hour);
+
+  const greeting =
+    shift === "morning"
+      ? "Good morning"
+      : shift === "midday"
+        ? hour < 12 && previewParam !== "midday"
+          ? "Good morning"
+          : hour >= 17 && previewParam !== "midday"
+            ? "Good evening"
+            : "Good afternoon"
+        : "Good evening";
+
+  if (params.has("welcome")) return { seen: false, shift, greeting }; // preview: open /?welcome or /?welcome=morning|midday|evening
   try {
-    return sessionStorage.getItem(KEY) === "1";
+    return { seen: sessionStorage.getItem(KEY) === "1", shift, greeting };
   } catch {
-    return true;
+    return { seen: true, shift, greeting };
   }
 }
 
 /**
- * Welcome splash: colour washes spread across the screen, the staff member is greeted by name,
- * then the screen dissolves into the CRM. Shown once per browser session (a new tab, or after sign-in).
- * Click or press any key to skip.
+ * Welcome splash: colour washes spread across the screen, Door-Opening Pip welcomes the staff
+ * member by name for their current shift, then the screen dissolves into the CRM.
+ * Shown once per browser session (a new tab, or after sign-in). Click or press any key to skip.
  */
 export function WelcomeSplash({ name }: { name: string }) {
   const [phase, setPhase] = useState<Phase>("intro");
+  const [shift, setShift] = useState<MascotShift>("midday");
+  const [greeting, setGreeting] = useState("Welcome back");
   const decided = useRef(false);
 
-  // Before paint: decide whether this session still needs the splash and sync the CSS flag.
+  // Before paint: decide whether this session still needs the splash and sync shift flair cleanly.
   useLayoutEffect(() => {
     if (decided.current) return; // React Strict Mode runs effects twice in development
     decided.current = true;
-    if (readSeen()) {
+    const meta = resolveWelcomeMeta();
+    setShift(meta.shift);
+    setGreeting(meta.greeting);
+    if (meta.seen) {
       document.documentElement.dataset.welcome = "seen";
       setPhase("done");
       return;
@@ -80,18 +104,15 @@ export function WelcomeSplash({ name }: { name: string }) {
       <div className="welcome-wash welcome-wash-2" />
       <div className="welcome-wash welcome-wash-3" />
 
-      <div className="relative z-10 flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
-        <span
-          className="welcome-item grid size-16 place-items-center rounded-[10px] bg-ink text-white shadow-card"
-          style={{ animationDelay: "400ms" }}
-        >
-          <ShieldCheck size={30} strokeWidth={1.75} aria-hidden="true" />
-        </span>
+      <div className="relative z-10 flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+        <div className="welcome-item" style={{ animationDelay: "320ms" }}>
+          <SplashWelcomeCharacter shift={shift} />
+        </div>
         <p
           className="welcome-item text-sm font-medium uppercase tracking-[0.2em] text-ink/70"
           style={{ animationDelay: "900ms" }}
         >
-          Welcome back
+          {greeting}
         </p>
         <h1
           className="welcome-item break-words text-4xl font-bold leading-tight text-ink sm:text-5xl"
@@ -102,8 +123,8 @@ export function WelcomeSplash({ name }: { name: string }) {
         <p className="welcome-item text-sm text-ink/70" style={{ animationDelay: "1600ms" }}>
           The Future is in Good Hands
         </p>
-        <p className="welcome-item mt-6 text-[11px] text-ink/50" style={{ animationDelay: "2200ms" }}>
-          Developed with love in India.
+        <p className="welcome-item mt-5 text-[11px] text-ink/50" style={{ animationDelay: "2200ms" }}>
+          Developed with love in India · Click anywhere to continue
         </p>
       </div>
     </div>

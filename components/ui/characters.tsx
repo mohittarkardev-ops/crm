@@ -151,59 +151,427 @@ export function PolicyScoutCharacter() {
   );
 }
 
-/** 2. Friendly waving Shield Buddy for the Dashboard greeting strip. */
-export function WavingShieldCharacter() {
-  return (
-    <svg viewBox="0 0 64 64" className="size-12 shrink-0 select-none sm:size-14" aria-hidden="true">
-      <ellipse cx="34" cy="57" rx="18" ry="3.5" fill="var(--surface-muted)" />
-      <circle cx="34" cy="31" r="22" fill="var(--accent-soft)" />
+export type MascotShift = "morning" | "midday" | "evening";
 
-      {/* Waving arm */}
+export function getShiftForHour(hour: number): MascotShift {
+  if (hour >= 5 && hour < 11) return "morning";
+  if (hour >= 11 && hour < 19) return "midday";
+  return "evening";
+}
+
+/** 2. Friendly waving Shield Buddy for the Dashboard greeting strip with time-of-day shift flair. */
+export function WavingShieldCharacter({
+  shift = "midday",
+  waveKey = 0,
+}: {
+  shift?: MascotShift;
+  waveKey?: number;
+}) {
+  return (
+    <svg viewBox="0 0 84 68" className="h-14 w-[70px] shrink-0 select-none sm:h-16 sm:w-20" aria-hidden="true">
+      <ellipse cx="43" cy="60" rx="30" ry="3.8" fill="var(--surface-muted)" />
+      <circle
+        cx="37"
+        cy="33"
+        r="22"
+        fill="var(--accent-soft)"
+        opacity={shift === "evening" ? 0.65 : 1}
+      />
+
+      {/* Evening: warm architect desk lamp casting a gentle glow cone behind the shield corner */}
+      {shift === "evening" && (
+        <g>
+          <polygon
+            points="64,31 40,58 76,58"
+            fill="var(--accent-soft)"
+            className="scout-lamp-glow"
+          />
+          <path
+            d="M64 58 H76 C76 55.5 73 54 70 54 C67 54 64 55.5 64 58 Z"
+            fill="var(--text)"
+          />
+          <path
+            d="M71 54 L76 38 L67 27"
+            fill="none"
+            stroke="var(--text)"
+            strokeWidth="2.1"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <circle cx="76" cy="38" r="1.8" fill="var(--accent)" stroke="var(--text)" strokeWidth="1" />
+          <path
+            d="M60 31 C61 25 66 23 70 26 L68 35 Z"
+            fill="var(--accent)"
+            stroke="var(--text)"
+            strokeWidth="1.9"
+            strokeLinejoin="round"
+          />
+          <circle cx="64.5" cy="32.8" r="1.7" fill="var(--surface-strong)" />
+        </g>
+      )}
+
+      {/* Waving arm (calm continuous loop + instant burst when tapped) */}
       <g className="scout-wave">
-        <path
-          d="M18 37 Q10 31 11 21"
-          fill="none"
-          stroke="var(--text)"
-          strokeWidth="3"
-          strokeLinecap="round"
-        />
-        <circle cx="11" cy="20" r="3.8" fill="var(--accent)" stroke="var(--text)" strokeWidth="1.8" />
+        <g key={waveKey} className={waveKey > 0 ? "scout-wave-burst" : undefined}>
+          <path
+            d="M20 39 Q12 33 13 23"
+            fill="none"
+            stroke="var(--text)"
+            strokeWidth="3"
+            strokeLinecap="round"
+          />
+          <circle cx="13" cy="22" r="3.8" fill="var(--accent)" stroke="var(--text)" strokeWidth="1.8" />
+        </g>
       </g>
 
       {/* Main shield body */}
       <path
-        d="M35 12 C45 12 52 16 52 21 V36 C52 46.5 35 53 35 53 C35 53 18 46.5 18 36 V21 C18 16 25 12 35 12 Z"
+        d="M37 14 C47 14 54 18 54 23 V38 C54 48.5 37 55 37 55 C37 55 20 48.5 20 38 V23 C20 18 27 14 37 14 Z"
         fill="var(--surface-strong)"
         stroke="var(--text)"
         strokeWidth="2.2"
         strokeLinejoin="round"
       />
       <path
-        d="M25 17.8 C28.2 16.2 31.6 15.5 35 15.5 C38.4 15.5 41.8 16.2 45 17.8"
+        d="M27 19.8 C30.2 18.2 33.6 17.5 37 17.5 C40.4 17.5 43.8 18.2 47 19.8"
         fill="none"
         stroke="var(--accent)"
         strokeWidth="3.6"
         strokeLinecap="round"
       />
 
+      {/* Mid-day flair: sporty yellow sun visor above the eyes */}
+      {shift === "midday" && (
+        <g>
+          <path
+            d="M21 22 C26 17.2 48 17.2 53 22 L52 24.8 C47 21.5 27 21.5 22 24.8 Z"
+            fill="var(--accent)"
+            stroke="var(--text)"
+            strokeWidth="1.8"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M20 24.5 Q37 20 55 24.5 L57 27 Q37 23.2 19 27 Z"
+            fill="var(--accent)"
+            stroke="var(--text)"
+            strokeWidth="1.8"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M28 23.5 Q37 21.8 46 23.5"
+            fill="none"
+            stroke="var(--surface-strong)"
+            strokeWidth="1.3"
+            strokeLinecap="round"
+          />
+        </g>
+      )}
+
+      {/* Evening flair: crescent moon pin clipped onto upper-right shield shoulder */}
+      {shift === "evening" && (
+        <g>
+          <circle
+            cx="48.5"
+            cy="24.5"
+            r="4.6"
+            fill="var(--surface-strong)"
+            stroke="var(--text)"
+            strokeWidth="1.5"
+          />
+          <path
+            d="M49.6 21.9 C47.5 21.9 46 23.1 46 24.5 C46 25.9 47.5 27.1 49.6 27.1 C48.3 26.3 48 25.4 48 24.5 C48 23.6 48.3 22.7 49.6 21.9 Z"
+            fill="var(--accent)"
+            stroke="var(--text)"
+            strokeWidth="1"
+            strokeLinejoin="round"
+          />
+        </g>
+      )}
+
       {/* Face */}
       <g className="scout-blink">
-        <circle cx="29.5" cy="29.5" r="2.3" fill="var(--text)" />
-        <circle cx="30.2" cy="28.6" r="0.8" fill="var(--surface-strong)" />
-        <circle cx="40.5" cy="29.5" r="2.3" fill="var(--text)" />
-        <circle cx="41.2" cy="28.6" r="0.8" fill="var(--surface-strong)" />
+        <circle cx="31.5" cy="32" r="2.3" fill="var(--text)" />
+        <circle cx="32.2" cy="31.1" r="0.85" fill="var(--surface-strong)" />
+        <circle cx="42.5" cy="32" r="2.3" fill="var(--text)" />
+        <circle cx="43.2" cy="31.1" r="0.85" fill="var(--surface-strong)" />
       </g>
-      <circle cx="25.5" cy="33.5" r="2" fill="var(--accent-soft)" />
-      <circle cx="44.5" cy="33.5" r="2" fill="var(--accent-soft)" />
-      <path d="M31.5 35.5 Q35 39 38.5 35.5" fill="none" stroke="var(--text)" strokeWidth="1.9" strokeLinecap="round" />
+      <circle cx="27.5" cy="36" r="2.1" fill="var(--accent-soft)" />
+      <circle cx="46.5" cy="36" r="2.1" fill="var(--accent-soft)" />
+      <path d="M33.5 38.5 Q37 42 40.5 38.5" fill="none" stroke="var(--text)" strokeWidth="1.9" strokeLinecap="round" />
+
+      {/* Morning flair: cozy right paw cradling a steaming coffee mug */}
+      {shift === "morning" ? (
+        <g>
+          <path
+            d="M54 39 Q58 41 60 45"
+            fill="none"
+            stroke="var(--text)"
+            strokeWidth="2.6"
+            strokeLinecap="round"
+          />
+          <path
+            d="M73 43 C77 43 77 49.5 73 49.5"
+            fill="none"
+            stroke="var(--text)"
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
+          <rect
+            x="59"
+            y="39"
+            width="14"
+            height="14.5"
+            rx="3"
+            fill="var(--surface-strong)"
+            stroke="var(--text)"
+            strokeWidth="2"
+          />
+          <rect x="60" y="44" width="12" height="5" fill="var(--accent)" />
+          <ellipse cx="66" cy="39" rx="5.5" ry="1.6" fill="var(--text)" />
+          <circle cx="59.5" cy="45.5" r="2.8" fill="var(--surface-strong)" stroke="var(--text)" strokeWidth="1.7" />
+          <path
+            d="M63 35 Q61 31.5 63.5 28"
+            fill="none"
+            stroke="var(--text-muted)"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            className="scout-steam"
+          />
+          <path
+            d="M68.5 34.5 Q70.5 30.5 68 27"
+            fill="none"
+            stroke="var(--text-muted)"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            className="scout-steam"
+            style={{ animationDelay: "1.1s" }}
+          />
+        </g>
+      ) : (
+        <g>
+          <path
+            d="M54 39 Q58 42.5 55.5 46.5"
+            fill="none"
+            stroke="var(--text)"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+          />
+          <circle cx="55.5" cy="46.5" r="3" fill="var(--surface-strong)" stroke="var(--text)" strokeWidth="1.7" />
+        </g>
+      )}
 
       {/* Tiny sparkle */}
       <path
-        d="M54 12 L55 15 L58 16 L55 17 L54 20 L53 17 L50 16 L53 15 Z"
+        d="M56 13 L57 16 L60 17 L57 18 L56 21 L55 18 L52 17 L55 16 Z"
         fill="var(--accent)"
         stroke="var(--text)"
         strokeWidth="1"
         strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** 2b. Door-opening host Pip for the post-login WelcomeSplash reveal. */
+export function SplashWelcomeCharacter({ shift = "midday" }: { shift?: MascotShift }) {
+  return (
+    <svg
+      viewBox="0 0 168 128"
+      className="h-32 w-44 select-none sm:h-36 sm:w-48"
+      role="img"
+      aria-label="Pip opening the SecureDrive portal door in welcome"
+    >
+      {/* Floor shadow + threshold warm light */}
+      <ellipse cx="84" cy="116" rx="58" ry="6.5" fill="color-mix(in srgb, var(--text) 9%, transparent)" />
+      <circle cx="84" cy="64" r="52" fill="var(--accent-soft)" opacity="0.55" />
+
+      {/* Arched doorway frame */}
+      <path
+        d="M46 112 V48 C46 25 63 14 84 14 C105 14 122 25 122 48 V112 Z"
+        fill="var(--accent-soft)"
+        stroke="var(--text)"
+        strokeWidth="2.4"
+        strokeLinejoin="round"
+      />
+      {/* Bright inner doorway glow & floor beam */}
+      <path
+        d="M52 112 V50 C52 31 66 21 84 21 C102 21 116 31 116 50 V112 Z"
+        fill="var(--surface-strong)"
+      />
+      <polygon
+        points="54,112 114,112 124,117 44,117"
+        fill="var(--accent-soft)"
+        opacity="0.7"
+      />
+
+      {/* Swinging portal door leaf (hinged on left jamb) */}
+      <g className="splash-door-leaf">
+        <path
+          d="M50 112 V49 C50 29 65 19 84 19 C103 19 118 29 118 49 V112 Z"
+          fill="var(--surface)"
+          stroke="var(--text)"
+          strokeWidth="2.2"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M62 60 V49 C62 36 72 29 84 29 C96 29 106 36 106 49 V60 Z"
+          fill="var(--surface-strong)"
+          stroke="var(--divider)"
+          strokeWidth="1.6"
+        />
+        <rect
+          x="61"
+          y="69"
+          width="46"
+          height="32"
+          rx="3"
+          fill="var(--surface-strong)"
+          stroke="var(--divider)"
+          strokeWidth="1.6"
+        />
+        <circle cx="109" cy="83" r="3.4" fill="var(--accent)" stroke="var(--text)" strokeWidth="1.6" />
+      </g>
+
+      {/* Crisp threshold base line */}
+      <line x1="34" y1="112" x2="134" y2="112" stroke="var(--text)" strokeWidth="2.2" strokeLinecap="round" />
+
+      {/* Pip stepping forward cleanly out of the opened threshold */}
+      <g className="splash-pip-step">
+        {/* Left paw holding open threshold */}
+        <path d="M68 72 Q58 75 60 82" fill="none" stroke="var(--text)" strokeWidth="3" strokeLinecap="round" />
+        <ellipse cx="60" cy="83" rx="5.2" ry="4" fill="var(--surface-strong)" stroke="var(--text)" strokeWidth="2" />
+
+        {/* Right greeting salute/wave arm */}
+        <g className="splash-salute-arm">
+          <path d="M110 68 Q124 61 127 47" fill="none" stroke="var(--text)" strokeWidth="3.2" strokeLinecap="round" />
+          <circle cx="127" cy="46" r="4.8" fill="var(--accent)" stroke="var(--text)" strokeWidth="2" />
+        </g>
+
+        {/* Shield torso */}
+        <path
+          d="M89 36 C104 36 113 42 113 49 V77 C113 93 89 102 89 102 C89 102 65 93 65 77 V49 C65 42 74 36 89 36 Z"
+          fill="var(--surface-strong)"
+          stroke="var(--text)"
+          strokeWidth="2.4"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M75 44 C80 41.5 84.5 40.8 89 40.8 C93.5 40.8 98 41.5 103 44"
+          fill="none"
+          stroke="var(--accent)"
+          strokeWidth="4"
+          strokeLinecap="round"
+        />
+
+        {/* Matching shift flair so Splash Pip seamlessly transitions into Dashboard Pip */}
+        {shift === "midday" && (
+          <g>
+            <path
+              d="M71 46 Q89 41 107 46 L109 49.5 Q89 45.5 69 49.5 Z"
+              fill="var(--accent)"
+              stroke="var(--text)"
+              strokeWidth="1.9"
+              strokeLinejoin="round"
+            />
+            <path
+              d="M80 46 Q89 44.2 98 46"
+              fill="none"
+              stroke="var(--surface-strong)"
+              strokeWidth="1.4"
+              strokeLinecap="round"
+            />
+          </g>
+        )}
+        {shift === "evening" && (
+          <g>
+            <circle cx="104.5" cy="49" r="5" fill="var(--surface-strong)" stroke="var(--text)" strokeWidth="1.6" />
+            <path
+              d="M105.7 46.2 C103.5 46.2 102 47.5 102 49 C102 50.5 103.5 51.8 105.7 51.8 C104.3 51 104 50 104 49 C104 48 104.3 47 105.7 46.2 Z"
+              fill="var(--accent)"
+              stroke="var(--text)"
+              strokeWidth="1"
+              strokeLinejoin="round"
+            />
+          </g>
+        )}
+
+        {/* Warm happy eyes + welcoming smile */}
+        <path d="M77 52.5 Q80.5 49.5 84 52" fill="none" stroke="var(--text)" strokeWidth="1.7" strokeLinecap="round" />
+        <path d="M94 52 Q97.5 49.5 101 52.5" fill="none" stroke="var(--text)" strokeWidth="1.7" strokeLinecap="round" />
+        <g className="scout-blink">
+          <ellipse cx="80.5" cy="58.5" rx="2.7" ry="3.3" fill="var(--text)" />
+          <circle cx="81.4" cy="57.2" r="1" fill="var(--surface-strong)" />
+          <ellipse cx="97.5" cy="58.5" rx="2.7" ry="3.3" fill="var(--text)" />
+          <circle cx="98.4" cy="57.2" r="1" fill="var(--surface-strong)" />
+        </g>
+        <ellipse cx="73.5" cy="63.5" rx="2.8" ry="1.8" fill="var(--accent-soft)" />
+        <ellipse cx="104.5" cy="63.5" rx="2.8" ry="1.8" fill="var(--accent-soft)" />
+        <path d="M84 65.5 Q89 70.5 94 65.5" fill="none" stroke="var(--text)" strokeWidth="2.1" strokeLinecap="round" />
+
+        {/* Same iconic yellow SecureDrive staff lanyard badge from /login */}
+        <path
+          d="M78 75 L89 86 L100 75"
+          fill="none"
+          stroke="var(--accent)"
+          strokeWidth="2.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <circle cx="89" cy="86" r="1.9" fill="var(--text)" />
+        <rect
+          x="82"
+          y="87"
+          width="14"
+          height="10"
+          rx="2.5"
+          fill="var(--accent)"
+          stroke="var(--text)"
+          strokeWidth="1.7"
+        />
+        <line x1="85.5" y1="92" x2="90.5" y2="92" stroke="var(--text)" strokeWidth="1.8" strokeLinecap="round" />
+        <circle cx="93.2" cy="92" r="1.7" fill="var(--positive)" />
+      </g>
+
+      {/* Morning brew doorstep cup when shift is morning */}
+      {shift === "morning" && (
+        <g className="splash-sparkle" style={{ animationDelay: "980ms" }}>
+          <path d="M136 101 C139.5 101 139.5 107 136 107" fill="none" stroke="var(--text)" strokeWidth="1.8" strokeLinecap="round" />
+          <rect x="123" y="98" width="13" height="13.5" rx="2.8" fill="var(--surface-strong)" stroke="var(--text)" strokeWidth="1.9" />
+          <rect x="124" y="102.5" width="11" height="4.5" fill="var(--accent)" />
+          <ellipse cx="129.5" cy="98" rx="5" ry="1.5" fill="var(--text)" />
+          <path d="M127.5 94.5 Q125.5 91 128 87.5" fill="none" stroke="var(--text-muted)" strokeWidth="1.5" strokeLinecap="round" className="scout-steam" />
+          <path d="M132 94 Q134 90.5 131.5 87" fill="none" stroke="var(--text-muted)" strokeWidth="1.5" strokeLinecap="round" className="scout-steam" style={{ animationDelay: "1.1s" }} />
+        </g>
+      )}
+
+      {/* Celebratory portal sparkles */}
+      <path
+        d="M36 42 L37.6 46 L41.5 47.5 L37.6 49 L36 53 L34.4 49 L30.5 47.5 L34.4 46 Z"
+        fill="var(--accent)"
+        stroke="var(--text)"
+        strokeWidth="1.1"
+        strokeLinejoin="round"
+        className="splash-sparkle"
+        style={{ animationDelay: "1050ms" }}
+      />
+      <path
+        d="M137 26 L138.4 29.5 L142 31 L138.4 32.5 L137 36 L135.6 32.5 L132 31 L135.6 29.5 Z"
+        fill="var(--accent)"
+        stroke="var(--text)"
+        strokeWidth="1.1"
+        strokeLinejoin="round"
+        className="splash-sparkle"
+        style={{ animationDelay: "1200ms" }}
+      />
+      <circle
+        cx="141"
+        cy="66"
+        r="3.2"
+        fill="var(--positive)"
+        stroke="var(--text)"
+        strokeWidth="1.2"
+        className="splash-sparkle"
+        style={{ animationDelay: "1320ms" }}
       />
     </svg>
   );
