@@ -159,7 +159,7 @@ async function resolveSystemRoleId(db: Db, systemRole: "admin" | "staff"): Promi
 
 /**
  * Changes a person's name and details. For people who sign in it also changes the role and, optionally, sets a new
- * password. For agents without a login the role and password are ignored.
+ * password. For agents without a login, switching `access` to "login" upgrades them to a CRM login in place.
  */
 export async function updateStaff(id: string, _previous: ActionState, formData: FormData): Promise<ActionState> {
   const admin = await requireAdmin();
@@ -170,6 +170,10 @@ export async function updateStaff(id: string, _previous: ActionState, formData: 
   const name = text(formData, "name");
   const role = text(formData, "role");
   const newPassword = String(formData.get("newPassword") ?? "");
+  const enableLogin = text(formData, "access") === "login";
+  const grantEmail = text(formData, "email").toLowerCase();
+  const grantRole = text(formData, "grantRole") || "staff";
+  const grantPassword = String(formData.get("password") ?? "");
 
   const db = await createClient();
   const target = await db.from("staff_users").select("id, role, auth_user_id").eq("id", id).maybeSingle();
@@ -191,6 +195,11 @@ export async function updateStaff(id: string, _previous: ActionState, formData: 
     if (newPassword && (newPassword.length < 8 || newPassword.length > 72)) fieldErrors.newPassword = "Use 8 to 72 characters.";
     if (id === admin.id && effectiveRole !== target.data.role) fieldErrors.role = "You cannot change your own role.";
     else if (!isActorAdmin && effectiveRole === "admin") fieldErrors.role = "Only admins can assign the Admin role.";
+  } else if (enableLogin) {
+    if (!isEmail(grantEmail)) fieldErrors.email = "Enter a valid email address.";
+    if (!ROLES.includes(grantRole)) fieldErrors.grantRole = "Choose a role.";
+    else if (grantRole === "admin" && !isActorAdmin) fieldErrors.grantRole = "Only admins can assign the Admin role.";
+    if (grantPassword.length < 8 || grantPassword.length > 72) fieldErrors.password = "Use 8 to 72 characters.";
   }
   if (Object.keys(fieldErrors).length > 0) return fail("Please fix the highlighted fields.", { fieldErrors, values });
 
@@ -204,6 +213,58 @@ export async function updateStaff(id: string, _previous: ActionState, formData: 
 
   if (hasLogin && target.data.role === "admin" && effectiveRole !== "admin" && (await adminCount(db)) <= 1) {
     return fail("At least one admin is required.", { fieldErrors: { role: "This is the only admin." }, values });
+  }
+
+  // Upgrading an existing no-login agent to a CRM login in place (preserving staff_users.id & claims history).
+  if (!hasLogin && enableLogin) {
+    const auth = createAdminClient();
+    if (!auth) return fail(NO_KEY, { values });
+
+    const existingEmail = await db.from("staff_users").select("id").eq("email", grantEmail).neq("id", id).maybeSingle();
+    if (existingEmail.error) return fail(dbMessage(existingEmail.error), { values });
+    if (existingEmail.data) {
+      return fail("This email already has a staff account.", { fieldErrors: { email: "Already a staff member." }, values });
+    }
+
+    const created = await auth.auth.admin.createUser({
+      email: grantEmail,
+      password: grantPassword,
+      email_confirm: true,
+      user_metadata: { full_name: name },
+    });
+    if (created.error || !created.data.user) {
+      const message = created.error?.message ?? "Could not create the login.";
+      if (/already|registered|exists/i.test(message)) {
+        return fail("A login with this email already exists.", {
+          fieldErrors: { email: "Already has a login. Remove it in Supabase first, or use another email." },
+          values,
+        });
+      }
+      return fail(message, { values });
+    }
+
+    const authId = created.data.user.id;
+    const roleId = await resolveSystemRoleId(db, grantRole as "admin" | "staff");
+    const upgraded = await db
+      .from("staff_users")
+      .update({
+        full_name: name,
+        email: grantEmail,
+        role: grantRole,
+        ...(roleId ? { role_id: roleId } : {}),
+        auth_user_id: authId,
+        is_active: true,
+        ...profile,
+      })
+      .eq("id", id)
+      .select("id");
+    if (upgraded.error) {
+      await auth.auth.admin.deleteUser(authId);
+      return fail(dbMessage(upgraded.error), { values });
+    }
+
+    await audit(db, admin.id, "staff.enable_login", "staff_user", id);
+    return done(`${name} can now sign in as ${grantRole === "admin" ? "an admin" : "staff"}.`);
   }
 
   const auth = hasLogin && newPassword ? createAdminClient() : null;

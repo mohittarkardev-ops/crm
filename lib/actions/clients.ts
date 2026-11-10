@@ -102,19 +102,21 @@ export async function updateClient(clientId: string, _previous: ActionState, for
     });
   }
 
-  const updated = await db
-    .from("users")
-    .update({
-      mobile_number: data.mobile!,
-      full_name: data.name,
-      email: data.email,
-      is_advisor_client: data.isAdvisorClient,
-      date_of_birth: data.dob,
-    })
-    .eq("id", clientId)
-    .select("id");
-  if (updated.error) return fail(dbMessage(updated.error), { values });
-  if ((updated.data ?? []).length === 0) return fail("That client could not be found.", { values });
+  const updated = await db.rpc("crm_update_client", {
+    p_user_id: clientId,
+    p_mobile: data.mobile!,
+    p_full_name: data.name,
+    p_email: data.email,
+    p_is_advisor_client: data.isAdvisorClient,
+    p_dob: data.dob,
+  });
+  if (updated.error) {
+    if (updated.error.code === "PGRST202" || updated.error.code === "42883") {
+      return fail("Please run migration 0013_rbac_anti_escalation.sql in the Supabase SQL Editor first.", { values });
+    }
+    return fail(dbMessage(updated.error), { values });
+  }
+  if (updated.data !== true) return fail("That client could not be found.", { values });
 
   await audit(db, staff.id, "client.update", "user", clientId);
   return done(`${data.name} updated.`);

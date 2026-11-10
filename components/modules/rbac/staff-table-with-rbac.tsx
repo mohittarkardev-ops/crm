@@ -17,6 +17,8 @@ interface StaffTableWithRbacProps {
 
 const LOGIN_ONLY = { field: "access", equals: [""] };
 const EDIT_LOGIN_ONLY = { field: "hasLogin", equals: ["yes"] };
+const EDIT_NO_LOGIN_ONLY = { field: "hasLogin", equals: ["no"] };
+const ENABLE_LOGIN_NOW = { field: "access", equals: ["login"] };
 const EDIT_ROLE_ONLY = { field: "editableRole", equals: ["yes"] };
 
 const PROFILE_FIELDS: FieldDef[] = [
@@ -152,6 +154,37 @@ export function StaffTableWithRbac({ rows, roles, isSuperAdmin }: StaffTableWith
               hint: "Admin vs Staff level. Custom roles & fine-grained permissions are in Permissions.",
             },
             ...PROFILE_FIELDS,
+            {
+              name: "access",
+              label: "CRM sign-in access",
+              type: "select",
+              full: true,
+              showWhen: EDIT_NO_LOGIN_ONLY,
+              options: [
+                { value: "", label: "No login (agent only)" },
+                { value: "login", label: "Enable CRM sign-in" },
+              ],
+              hint: "Upgrade this agent to a CRM login in place without losing existing claim history.",
+            },
+            { name: "email", label: "Email (login ID)", type: "email", required: true, showWhen: ENABLE_LOGIN_NOW },
+            {
+              name: "grantRole",
+              label: "Role",
+              type: "select",
+              options: roleOptions,
+              required: true,
+              showWhen: ENABLE_LOGIN_NOW,
+              hint: "Fine-grained permissions can be customized via Permissions after saving.",
+            },
+            {
+              name: "password",
+              label: "Temporary password",
+              type: "password",
+              required: true,
+              full: true,
+              showWhen: ENABLE_LOGIN_NOW,
+              hint: "At least 8 characters. Share it with them; they can sign in immediately.",
+            },
             {
               name: "newPassword",
               label: "New password (optional)",

@@ -109,6 +109,8 @@ export async function getStaffList(currentStaffId?: string, actorIsAdmin: boolea
       signIn: hasLogin ? "Can sign in" : "No login",
       agentState: hasLogin ? "login" : s.is_active === false ? "inactive" : "active",
       hasLogin: hasLogin ? "yes" : "no",
+      access: "",
+      grantRole: "staff",
       role: s.role ?? "",
       roleLabel: displayRole,
       roleId: s.role_id,

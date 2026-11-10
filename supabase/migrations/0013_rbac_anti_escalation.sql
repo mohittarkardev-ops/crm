@@ -190,4 +190,46 @@ create policy staff_custom_permissions_admin_all on public.staff_custom_permissi
     )
   );
 
+-- ---------------------------------------------------------------------
+-- 4. Client Edit RPC (bypasses 0002's column-level REVOKE UPDATE safely
+--    for authorized CRM staff while keeping mobile users locked out of
+--    editing mobile_number / is_advisor_client on their own row).
+-- ---------------------------------------------------------------------
+create or replace function public.crm_update_client(
+  p_user_id uuid,
+  p_mobile text,
+  p_full_name text,
+  p_email text,
+  p_is_advisor_client boolean,
+  p_dob date
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_updated int;
+begin
+  if not (select public.has_permission('clients.edit')) then
+    raise exception 'Permission denied' using errcode = '42501';
+  end if;
+
+  update public.users
+  set
+    mobile_number = p_mobile,
+    full_name = p_full_name,
+    email = p_email,
+    is_advisor_client = p_is_advisor_client,
+    date_of_birth = p_dob
+  where id = p_user_id;
+
+  get diagnostics v_updated = row_count;
+  return v_updated > 0;
+end;
+$$;
+
+revoke all on function public.crm_update_client(uuid, text, text, text, boolean, date) from public, anon;
+grant execute on function public.crm_update_client(uuid, text, text, text, boolean, date) to authenticated;
+
 commit;
