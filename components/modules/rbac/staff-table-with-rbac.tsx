@@ -75,6 +75,7 @@ export function StaffTableWithRbac({ rows, roles }: StaffTableWithRbacProps) {
         rowActions={[
           {
             label: "Permissions",
+            showWhen: { key: "agentState", in: ["login"] },
             action: async (id: string) => {
               const row = rows.find((r) => r.id === id);
               if (row) void handleOpenPermissions(row);

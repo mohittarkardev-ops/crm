@@ -129,9 +129,10 @@ export async function addStaff(_previous: ActionState, formData: FormData): Prom
   }
 
   const authId = created.data.user.id;
+  const roleId = await resolveSystemRoleId(db, role as "admin" | "staff");
   const inserted = await db
     .from("staff_users")
-    .insert({ email, full_name: name, role, auth_user_id: authId, ...profile })
+    .insert({ email, full_name: name, role, ...(roleId ? { role_id: roleId } : {}), auth_user_id: authId, ...profile })
     .select("id")
     .single();
   if (inserted.error) {
@@ -146,6 +147,13 @@ export async function addStaff(_previous: ActionState, formData: FormData): Prom
 async function adminCount(db: Db) {
   const res = await db.from("staff_users").select("id", { count: "exact", head: true }).eq("role", "admin");
   return res.count ?? 0;
+}
+
+async function resolveSystemRoleId(db: Db, systemRole: "admin" | "staff"): Promise<string | null> {
+  const roleName = systemRole === "admin" ? "Admin" : "Staff";
+  const { data, error } = await db.from("roles").select("id").eq("name", roleName).maybeSingle();
+  if (error || !data) return null;
+  return data.id as string;
 }
 
 /**
@@ -193,9 +201,18 @@ export async function updateStaff(id: string, _previous: ActionState, formData: 
   const auth = hasLogin && newPassword ? createAdminClient() : null;
   if (hasLogin && newPassword && !auth) return fail(NO_KEY, { values });
 
+  let rolePatch: { role?: string; role_id?: string } = {};
+  if (hasLogin) {
+    rolePatch.role = role;
+    if (role !== target.data.role) {
+      const nextRoleId = await resolveSystemRoleId(db, role as "admin" | "staff");
+      if (nextRoleId) rolePatch.role_id = nextRoleId;
+    }
+  }
+
   const updated = await db
     .from("staff_users")
-    .update({ full_name: name, ...(hasLogin ? { role } : {}), ...profile })
+    .update({ full_name: name, ...rolePatch, ...profile })
     .eq("id", id)
     .select("id");
   if (updated.error) return fail(dbMessage(updated.error), { values });

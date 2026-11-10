@@ -13,7 +13,8 @@ export type StaffProfile = {
 /**
  * Current Supabase user plus their staff_users row (null if the account is not CRM staff).
  * Cached per request, so layouts and pages can call it freely.
- * Computes effective permissions from the user's role and individual overrides.
+ * Resolves effective permissions via `get_my_permissions()` RPC (single roundtrip) with a
+ * clean fallback before migration 0012; fails closed (`undefined` -> dashboard.view only) on error.
  */
 export const getStaff = cache(async () => {
   const supabase = await createClient();
@@ -33,46 +34,39 @@ export const getStaff = cache(async () => {
 
   let permissions: string[] | undefined = undefined;
 
-  if (data.role === "admin") {
-    // Admin has full access to everything
-  } else {
+  if (data.role !== "admin") {
     try {
-      // 1. Role permissions
-      let rolePerms: string[] = [];
-      if (data.role_id) {
-        const { data: rpData } = await supabase
-          .from("role_permissions")
-          .select("permission")
-          .eq("role_id", data.role_id);
-        if (rpData) {
-          rolePerms = rpData.map((r: any) => r.permission);
+      // Single security-definer RPC scoped strictly to auth.uid() (migration 0012).
+      const rpcRes = await supabase.rpc("get_my_permissions");
+      if (!rpcRes.error && Array.isArray(rpcRes.data)) {
+        permissions = (rpcRes.data as { permission: string }[])
+          .map((row) => row.permission)
+          .filter((p): p is string => typeof p === "string");
+      } else if (
+        rpcRes.error?.code === "PGRST202" ||
+        rpcRes.error?.code === "42883"
+      ) {
+        // Fallback when migration 0012 has not been applied yet: load role + own overrides explicitly.
+        const [rpRes, customRes] = await Promise.all([
+          data.role_id
+            ? supabase.from("role_permissions").select("permission").eq("role_id", data.role_id)
+            : Promise.resolve({ data: [], error: null }),
+          supabase.from("staff_custom_permissions").select("permission, granted").eq("staff_id", data.id),
+        ]);
+
+        if (!rpRes.error && !customRes.error) {
+          const effective = new Set<string>(
+            ((rpRes.data ?? []) as { permission: string }[]).map((r) => r.permission),
+          );
+          for (const item of (customRes.data ?? []) as { permission: string; granted: boolean }[]) {
+            if (item.granted) effective.add(item.permission);
+            else effective.delete(item.permission);
+          }
+          permissions = Array.from(effective);
         }
-      }
-
-      // 2. Individual custom overrides
-      const { data: customData } = await supabase
-        .from("staff_custom_permissions")
-        .select("permission, granted")
-        .eq("staff_id", data.id);
-
-      const grantedOverrides = new Set<string>();
-      const revokedOverrides = new Set<string>();
-      if (customData) {
-        for (const item of customData as any[]) {
-          if (item.granted) grantedOverrides.add(item.permission);
-          else revokedOverrides.add(item.permission);
-        }
-      }
-
-      const effective = new Set<string>(rolePerms);
-      for (const p of grantedOverrides) effective.add(p);
-      for (const p of revokedOverrides) effective.delete(p);
-
-      if (data.role_id || (customData && customData.length > 0)) {
-        permissions = Array.from(effective);
       }
     } catch {
-      // If tables are not yet created, gracefully falls back to default role rules
+      // Leave permissions undefined -> `can()` fails closed to `dashboard.view` only.
     }
   }
 
@@ -81,7 +75,7 @@ export const getStaff = cache(async () => {
     full_name: data.full_name,
     email: data.email,
     role: data.role as "admin" | "staff" | null,
-    role_id: (data as any).role_id ?? null,
+    role_id: (data as { role_id?: string | null }).role_id ?? null,
     permissions,
   };
 

@@ -1,5 +1,5 @@
 # SecureDrive CRM — Comprehensive Handoff & Claude Code Guide
-*Updated on 10 Nov 2026 (after BF-1 & UI-4 Scrollbar / Conditional Form Fix Pass). For Antigravity, Claude Code CLI or any next LLM session.*
+*Updated on 10 Nov 2026 (through RBAC H2.1–H2.8 Security Hardening; apply SQL migrations `0011` + `0012` in Supabase). For Antigravity, Claude Code CLI or any next LLM session.*
 
 ---
 
@@ -32,7 +32,7 @@ This document is the authoritative handoff for the **SecureDrive CRM** integrati
 | **UI-4** | Hudson scrollbar polish & 1st-click nested forms | ✅ **COMPLETE** | Global subtle scrollbars/overflow cleanup; post-commit `onValueChange` + `showWhen` immediate evaluation + `<div>` wrappers around portal controls + `form.reset()` sync |
 | **UI-5** | Tactile Micro-Interactions & Confirm Popovers | ✅ **COMPLETE** | Replaced all `window.confirm()` with `ConfirmButton`, sliding pill indicators (`Segmented`/`StatusButtons`/`VerificationControl`), button press + `Saved ✓` morph, toast exit + hairline timer + pause-on-hover, `CopyButton`, `showWhen` reveal, error shake/focus, drawer unsaved guard, row/cell commit flash, Data Grid bulk dock, drag-drop upload & Claim Portal transitions |
 | **UI-6** | Insurer Dropdown (`logo_url`) & Global Search | ✅ **COMPLETE** | DB-backed `insurers` `CustomSelect` + `InsurerLogo`/`InsurerBadge` + `"Other / Add new"` `showWhen` flow across Policies/Renewals; live RBAC-aware `GlobalSearch` (grouped popover, keyboard nav, mobile dialog, `?q=` `ModulePage` handoff) |
-| **S14** | Cutover & Final Polish | ⏳ **NEXT** | RBAC RLS hardening (H2), mobile sync/OTP/reminders, Reports charts, placement slot lock after mobile build |
+| **S14** | Cutover & Final Polish | 🚧 **IN PROGRESS** | RBAC H2.1–H2.8 hardened in code & `0012` SQL (run `0011`+`0012` in Supabase); remaining: mobile sync/OTP/reminders, Reports charts, placement slot lock after mobile build |
 
 ---
 
@@ -138,6 +138,14 @@ UI-3 leftovers and all requested module bug fixes (H3, H4, H5, H6, H7, and cross
 - **Global Seamless Scrollbars & Overflow Cleanup (`globals.css`, `sidebar.tsx`, `role-editor-drawer.tsx`, `staff-permissions-drawer.tsx`, `virtual-grid.tsx`, `module-page.tsx`, `roles-table.tsx`, `import-history.tsx`, `column-mapper.tsx`, `design.md`)**:
   - Styled scrollbars globally with transparent tracks, no arrow buttons, `6px` charcoal-ink pills (`10px` hit target), and `scrollbar-width: thin`.
   - Removed nested inner scrollboxes inside RBAC drawers (now single-scroll with sticky bottom footer), tightened Sidebar rhythm to prevent scrollbars at 125%–150% zoom, reduced Data Grid `min-h` to `240px` to prevent double page+grid scrolling when zoomed in, and removed blanket `whitespace-nowrap` / forced `min-w` from standard tables to prevent unnecessary horizontal scrollbars.
+- **UI-4 (1st-Click Nested Conditional Forms)**:
+  - Fixed `CustomSelect` and `DatePicker` to fire post-commit `onValueChange` strictly after React commits the hidden `<input>` value to the DOM (StrictMode-safe + supports native `<form>.reset()`), replaced `<label>` wrappers around portal controls in `Field` and `ClaimPortal` with `<div>`, and updated `PrimaryForm` to merge explicit `(name, value)` updates and clear stale `watch` overrides on validation remounts.
+- **UI-5 (Hudson Micro-Interactions & Custom Confirm Popovers)**:
+  - Replaced every `window.confirm()` across the CRM (`ModulePage`, `DeletePolicyButton`, `DeleteDocumentButton`, `ImportHistory`, `RolesTable`) with portal-anchored [`ConfirmButton`](file:///c:/Users/Mohit/Desktop/securedrive/crm/components/ui/confirm-button.tsx).
+  - Shared [`useSlidingPill`](file:///c:/Users/Mohit/Desktop/securedrive/crm/components/ui/use-sliding-pill.ts) indicator across `Segmented`, `StatusButtons`, and `VerificationControl`; added button press detent + `saved ✓` morph (`Button`, `Export CSV`, `BusinessProfileForm`, `DocumentUpload`); upgraded `Toaster` & `NotificationBell` live toasts with unified `rAF` `3px` countdown bars, hover pause, and bottom slide exit; added `CopyButton`; added smooth grid-row curtain `Drawer` discard guard + scroll-aware header rule; added `reveal-down` for dynamic `showWhen` fields, `micro-shake` + first-error auto-focus/scroll, row commit flashes, `InlineCell` save check + floating Data Grid bulk-action dock, smooth anti-flicker `300ms` dropzones (`ColumnMapper`, `DocumentUpload`, `BulkLookup`), and `ClaimPortal` step/status transitions.
+- **UI-6 (DB Insurer Dropdown + Logos & RBAC Global Search)**:
+  - Built [`InsurerLogo`](file:///c:/Users/Mohit/Desktop/securedrive/crm/components/ui/insurer-logo.tsx) / `InsurerBadge` (renders `https://`/`/` `logo_url` or falls back cleanly to monogram initials on `null`/error), `getInsurers()` (`id, name, logo_url`), and `insurerFields()` (`lib/policy-fields.ts`) with searchable `CustomSelect` + `"Other / Add new insurer…"` conditional auto-create flow across **Add Policy**, **Edit Policy**, Policies table, Renewals table, and Policy Detail. Updating `public.insurers.logo_url` automatically lights up real logos across the CRM.
+  - Built RBAC-enforced [`globalSearch`](file:///c:/Users/Mohit/Desktop/securedrive/crm/lib/actions/search.ts) and [`GlobalSearch`](file:///c:/Users/Mohit/Desktop/securedrive/crm/components/layout/global-search.tsx) wired via `DashboardLayout` -> `Topbar` (`allowed` permissions): debounced 200ms grouped popover + keyboard navigation (`/`, `↑↓`, `Enter`, `Esc`) + mobile spotlight dialog + `?q=` list handoff synced cleanly via `<Suspense>`-wrapped `SearchQuerySync` inside `ModulePage`.
 
 ### E. Known, deliberate or still-open items
 - The permission 3-state toggle in `staff-permissions-drawer.tsx` is hand-built (Role / Grant / Revoke with green and red). It is an accepted exception to the "use `Segmented`" rule.
@@ -149,7 +157,7 @@ UI-3 leftovers and all requested module bug fixes (H3, H4, H5, H6, H7, and cross
 ### F. Setup checklist (do once per environment)
 1. `npm install` in `crm/` (includes `tailwind-merge`).
 2. Environment variables: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (server only, never `NEXT_PUBLIC_`), `CLAIM_PORTAL_CODE` (8+ characters), optional `EXPO_ACCESS_TOKEN`. Set them in `.env.local` and in Vercel.
-3. Supabase migrations, in order: `0008_crm_integration_fixes.sql`, `0009_revoke_anon_app_settings.sql`, `0010_rbac_roles_permissions.sql`, `0011_placements_db_now.sql`. Check afterwards that `select table_name, privilege_type from information_schema.role_table_grants where grantee = 'anon' and table_schema = 'public';` returns no rows.
+3. Supabase migrations, in order: `0008_crm_integration_fixes.sql`, `0009_revoke_anon_app_settings.sql`, `0010_rbac_roles_permissions.sql`, `0011_placements_db_now.sql`, `0012_rbac_rls_hardening.sql` (apply `0011` & `0012` in Supabase SQL Editor). Check afterwards that `select table_name, privilege_type from information_schema.role_table_grants where grantee = 'anon' and table_schema = 'public';` returns no rows.
 
 ### G. Working agreements (to save effort)
 - Read `design.md` and the component you are about to change before editing. Prefer small, exact edits over rewriting whole files.
@@ -172,15 +180,15 @@ Sections H3, H4, H5, H6, H7, and cross-cutting pagination/export were fixed in p
 - **Duplicate copies exist and can drift:** `crm/supabase/` (functions + migrations 0001 to 0011) duplicates the root `supabase/` folder, and there are two handoff files (`HANDOFF_FOR_CLAUDE.md` at the repo root and inside `crm/`). Pick one source of truth and delete the other.
 - **Stale docs:** `PROJECT.md` still says the CRM is ON HOLD and lists the CRM as todo; `docs/mobile-sync-todo.md` still says Excel import must not start. Both are out of date (the CRM and `/import` exist).
 
-**H2. RBAC (S13) problems (STILL OPEN — VERIFIED by reading `lib/auth.ts`, `lib/rbac/permissions.ts`, `lib/actions/rbac.ts`, migration `0010`)**
-1. **HIGH, per-staff overrides never apply to non-admin staff.** `getStaff()` reads `staff_custom_permissions` with the signed-in user's own session, but the only RLS policy on that table is admin-only (`staff_custom_permissions_admin_all`). A staff member therefore gets zero override rows, so Grant / Revoke have no effect. Fix: add a SELECT policy `using (staff_id = (select id from staff_users where auth_user_id = auth.uid()))`, or read permissions through a `security definer` function.
-2. **HIGH, permissions are enforced only in the Next.js app, not in the database.** Every table still has `is_staff()` RLS, and no policy uses `get_staff_permissions()`. A staff member with a revoked permission can still call the Supabase API directly (the anon key is public) and delete policies, approve claims, and so on. `design.md` and earlier text say "RLS integration"; that is overstated. Fix: add `has_permission(text)` and use it in write policies for policies, claims, staff, placements, ad tables, imports.
-3. **HIGH, deleting a role leaves its staff with broad access.** `staff_users.role_id` is `on delete set null`; with no role and no overrides, `getStaff()` returns no permission list and `can()` falls back to "everything that is not adminOnly". Fix: refuse to delete a role that has staff (`staffCount > 0`) or move them to the Staff role.
-4. **HIGH, `can()` fails open.** If the permission tables are missing or a query errors (the `try/catch` in `getStaff()` swallows it), non-admins get the broad default. For non-admins this should fail closed (only `dashboard.view`).
-5. **HIGH, no last-admin / self-lockout guard in `saveStaffPermissionsAction`.** The old `updateStaff` blocked demoting the only admin or changing your own role; the permissions drawer does not. It can also assign roles to agents without a login. Add the same guards.
-6. **MEDIUM, default Staff permissions are narrower than the S1 rules.** Migration `0010` seeds Staff with view-only for placements and ads and no `settings.view` / `settings.edit` / `placements.manage` / `ads.manage`. Plain staff are now redirected away from Settings and cannot switch ads or placements. If that is not intended, add those keys to the Staff role seed.
-7. **MEDIUM, role save is not atomic and ignores errors.** `updateRoleAction` deletes all `role_permissions` then inserts; a failed insert leaves a role with no permissions. `createRoleAction` ignores the insert result. Permission strings are not checked against the catalog.
-8. **LOW:** `get_staff_permissions(uuid)` is `security definer` and executable by everyone; revoke execute from `anon`/`public`. The RBAC actions call `requirePermission()` (a page guard that redirects) instead of `authorize()`, so a denied call navigates to `/no-access` instead of returning an error. `getStaff()` makes 3 queries per request for staff; one RPC would do.
+**H2. RBAC (S13) security hardening — RESOLVED in code + migration `0012_rbac_rls_hardening.sql` (apply `0012` in Supabase SQL Editor)**
+1. **RESOLVED (H2.1 — Overrides & single-RPC load):** `0012_rbac_rls_hardening.sql` adds `staff_custom_permissions_self_select` plus `security definer` `public.get_my_permissions()` (scoped to `auth.uid()`). `getStaff()` in `lib/auth.ts` resolves non-admin permissions via a single `get_my_permissions` RPC call (with `PGRST202`/`42883` pre-`0012` fallback reading `role_permissions` + `staff_custom_permissions`).
+2. **RESOLVED (H2.2 — Database-level RLS enforcement):** `0012_rbac_rls_hardening.sql` adds `public.has_permission(p_permission text)` and replaces blanket `is_staff()` write/`_staff_all` policies across `staff_users`, `users`, `family_members`, `policies`, `policy_documents`, `storage.objects` (`DOCUMENTS`), `renewals`, `quote_requests`, `support_tickets`, `claims`, `notifications`, `templates`, `device_tokens`, `placements`, `ad_slots`, `ad_settings`, `app_settings`, `insurers`, `policy_types`, `import_batches`, and `grid_columns` while preserving mobile customer `_own` / `_read` policies.
+3. **RESOLVED (H2.3 — Role deletion orphan guard):** `deleteRoleAction()` in `lib/actions/rbac.ts` refuses to delete any role that still has assigned staff (`staffCount > 0`).
+4. **RESOLVED (H2.4 — Fail-closed `can()` & `role_id` assignment):** `can()` in `lib/rbac/permissions.ts` fails closed (`return permission === "dashboard.view"`) when a non-admin lacks an explicit loaded `permissions` array; `getStaff()` in `lib/auth.ts` leaves `permissions` `undefined` on lookup failure (and `[]` when loaded empty); `addStaff`/`updateStaff` in `lib/actions/staff.ts` always set system `role_id` for login staff (and `0012` backfills existing login `staff_users` missing `role_id`).
+5. **RESOLVED (H2.5 — Last-admin / self-lockout / login-only guards):** `saveStaffPermissionsAction()` in `lib/actions/rbac.ts` rejects non-login agents (`!auth_user_id`), unknown `roleId`, self-role changes, and demoting the last active login admin, rolling back if override updates fail; the `"Permissions"` row action in `components/modules/rbac/staff-table-with-rbac.tsx` is shown only when `agentState === "login"`.
+6. **RESOLVED (H2.6 — Default Staff seeds):** `0012_rbac_rls_hardening.sql` seeds `'placements.manage'`, `'ads.manage'`, `'settings.view'`, and `'settings.edit'` onto the system `'Staff'` role (`on conflict do nothing`).
+7. **RESOLVED (H2.7 — Atomic role saves & catalog validation):** `0012_rbac_rls_hardening.sql` adds transactional `public.save_role_permissions(p_role_id uuid, p_permissions text[])` guarded by `has_permission('staff.manage')`; `lib/actions/rbac.ts` validates UUIDs and permission keys via `isValidPermissionKey()`, rolls back `createRoleAction` on `role_permissions` insert failure, and uses `save_role_permissions` (with snapshot restore fallback) in `updateRoleAction`.
+8. **RESOLVED (H2.8 — RPC execute locking & `authorize()`):** `0012_rbac_rls_hardening.sql` revokes execute on `get_staff_permissions(uuid)` from `public`, `anon`, and `authenticated` (`service_role` only) and grants `get_my_permissions()` / `has_permission(text)` only to `authenticated`; all 5 actions in `lib/actions/rbac.ts` use `authorize("staff.manage")` instead of page-redirecting `requirePermission()`.
 
 ---
 
@@ -261,14 +269,12 @@ Sections H3, H4, H5, H6, H7, and cross-cutting pagination/export were fixed in p
 
 | Priority | Item | Location / Notes |
 |---|---|---|
-| 🔴 P1 — Block production | RBAC overrides never apply to non-admin staff (H2.1) | `lib/auth.ts` + `staff_custom_permissions` SELECT RLS |
-| 🔴 P1 | DB-level permission enforcement missing on tables (H2.2) | Supabase RLS `has_permission(text)` |
-| 🔴 P1 | Deleting RBAC role orphans staff; `can()` fails open; no last-admin guard on permissions drawer (H2.3–H2.5) | `lib/actions/rbac.ts`, `lib/rbac/permissions.ts` |
+| 🟢 Deploy pending | Apply Supabase migrations `0011_placements_db_now.sql` & `0012_rbac_rls_hardening.sql` in Supabase SQL Editor (all H2.1–H2.8 fixes implemented & `next build` verified) | `supabase/migrations/0011_*.sql`, `0012_*.sql` |
 | 🟠 P2 — Next sprint | Reports page shows "Not built yet" for all 4 charts & Commission tile (H8.1–H8.2) | `app/(dashboard)/reports/page.tsx` + `lib/data/admin.ts` |
-| 🟠 P2 | Mobile app needs `expo-notifications` registration into `device_tokens` for CRM push delivery (H1, H6.1) | `mobile/src` |
-| 🟠 P2 | Automated daily reminders, WhatsApp OTP Edge Functions, and mobile sync checklist (H1) | `supabase/functions/`, `mobile/src` |
+| 🟠 P2 | Deploy Edge Function `send-push`; build automated `daily-reminders` & WhatsApp OTP Edge Functions (H1) | `supabase/functions/` |
+| 🟠 P2 | Mobile app needs `expo-notifications` registration into `device_tokens` + `docs/mobile-sync-todo.md` app screens sync (H1, H6.1) | `mobile/src`, `docs/mobile-sync-todo.md` |
 | 🟡 P3 — After mobile build | Lock placement `slot_name` list once final mobile slots are confirmed (H7.2) | Pending owner input after app build |
-| 🟡 P3 — Polish | RBAC default Staff seeds, non-atomic role save, and RPC consolidation (H2.6–H2.8); Ad slot create UI (H9); Quote completed/closed tiles (H9) | `migration 0010`, `lib/actions/rbac.ts`, `/ads`, `/quotes` |
+| 🟡 P3 — Polish | Populate `public.insurers.logo_url` brand asset URLs; Ad slot create UI (H9); Quote completed/closed tiles (H9); deduplicate `crm/supabase` vs root `supabase` | `/insurers`, `/ads`, `/quotes`, `supabase/` |
 
 ---
 
@@ -286,9 +292,10 @@ Sections H3, H4, H5, H6, H7, and cross-cutting pagination/export were fixed in p
    - Typography: Inter (`next/font`), tabular numbers for currency and dates (`tabular-nums`). Zero rogue `font-mono`.
 
 2. **Benchmark UI Components**:
-   - Dropdowns: [`crm/components/ui/custom-select.tsx`](file:///c:/Users/Mohit/Desktop/securedrive/crm/components/ui/custom-select.tsx)
+   - Dropdowns: [`crm/components/ui/custom-select.tsx`](file:///c:/Users/Mohit/Desktop/securedrive/crm/components/ui/custom-select.tsx) & [`crm/components/ui/insurer-logo.tsx`](file:///c:/Users/Mohit/Desktop/securedrive/crm/components/ui/insurer-logo.tsx)
    - Date Pickers: [`crm/components/ui/date-picker.tsx`](file:///c:/Users/Mohit/Desktop/securedrive/crm/components/ui/date-picker.tsx) & [`crm/components/ui/calendar.tsx`](file:///c:/Users/Mohit/Desktop/securedrive/crm/components/ui/calendar.tsx)
-   - Segmented Controls: [`crm/components/ui/segmented.tsx`](file:///c:/Users/Mohit/Desktop/securedrive/crm/components/ui/segmented.tsx)
+   - Segmented Controls & Confirmations: [`crm/components/ui/segmented.tsx`](file:///c:/Users/Mohit/Desktop/securedrive/crm/components/ui/segmented.tsx), [`crm/components/ui/confirm-button.tsx`](file:///c:/Users/Mohit/Desktop/securedrive/crm/components/ui/confirm-button.tsx), [`crm/components/ui/copy-button.tsx`](file:///c:/Users/Mohit/Desktop/securedrive/crm/components/ui/copy-button.tsx)
+   - Global Search & Toasts: [`crm/components/layout/global-search.tsx`](file:///c:/Users/Mohit/Desktop/securedrive/crm/components/layout/global-search.tsx), [`crm/components/ui/toaster.tsx`](file:///c:/Users/Mohit/Desktop/securedrive/crm/components/ui/toaster.tsx)
    - Card Headers: [`crm/components/ui/card.tsx`](file:///c:/Users/Mohit/Desktop/securedrive/crm/components/ui/card.tsx)
    - Chips & Badges: [`crm/components/ui/chip.tsx`](file:///c:/Users/Mohit/Desktop/securedrive/crm/components/ui/chip.tsx)
    - Form Fields: [`crm/components/ui/field.tsx`](file:///c:/Users/Mohit/Desktop/securedrive/crm/components/ui/field.tsx)
@@ -304,30 +311,32 @@ Copy and paste the exact prompt below to resume the task seamlessly:
 ```markdown
 Hello! Please resume work on the SecureDrive Insurance CRM project (`c:\Users\Mohit\Desktop\securedrive\crm`).
 
-Read `HANDOFF_FOR_CLAUDE.md` (root) and `crm/design.md` before touching any file.
+Read `crm/HANDOFF_FOR_CLAUDE.md` (or root `HANDOFF_FOR_CLAUDE.md`) and `crm/design.md` before modifying any file.
 
-### What Has Been Done:
-- S1–S8, S13 complete. UI: CustomSelect global rollout + full design-system audit + `UI-3` verified.
-- **UI-4, UI-5 & UI-6 complete (`tsc --noEmit` + `next build`)**: Global seamless Hudson scrollbars & overflow cleanup; fixed conditional (`showWhen`) nested form fields on 1st click (`CustomSelect`/`DatePicker`/`PrimaryForm`); added Hudson micro-interactions CRM-wide (`ConfirmButton` replacing all `window.confirm()`, `useSlidingPill`, `CopyButton`, `Button` press & `saved` morph, toast hairline timer/pause/exit, drawer scroll hairline & unsaved guard, error shake + auto-focus, row/cell commit flash, Data Grid floating bulk dock, dropzone drag highlight, sidebar/topbar/Claim Portal polish); converted Insurer field to DB-backed `CustomSelect` with `InsurerLogo` (`logo_url` + monogram fallback) + `"Other"` auto-create flow; wired RBAC-aware `GlobalSearch` (`globalSearch` server action, desktop/mobile UI, `?q=` `ModulePage` handoff).
-- **BF-1 fixes complete & built clean (`tsc --noEmit` + `next build`)**: H3 (Bulk Import batch perf, safe undo, no field overwrites, lookup unmatched/CSV), H4 (Data Grid multi-column keyset cursor, Type/Status filters, insurer FK, SAOD/TP sync, CSV export filters & sanitization), H5 (Claims agent isolation, Edit/Delete, ref codes in portal & queue, explicit verification_status), H6 (Notifications `send-push` Edge Function + CRM push dispatch + Templates CRUD), H7 (Placements image/sort fields + `0011_placements_db_now.sql` RPC with flexible `slot_name`), and Cross-cutting (`pagedRows()` past 1,000 rows + 50/page table pagination + CSV export).
-- Dropped: S9, S10, S11, S12 — do NOT implement these.
-- Current module review & remaining open items are in Section H of `HANDOFF_FOR_CLAUDE.md`.
+### Current Baseline (Verified Clean: `tsc --noEmit` + `next build`, commit `376f00b` on `main`):
+- **Core Modules (`S1–S8`, `S13`) & Bug Fixes (`BF-1`):** RBAC admin/roles UI, Policies (with vehicle fields, Edit/Delete, Documents), Staff/Agents, Claims (`/claims` + `/claim` public portal with `CLM-` ref IDs), Data Grid (`/data-grid` keyset paging, filters, inline FK/due_date sync, CSV/XLSX export), Bulk Import & Lookup (`/import` batched chunks, safe undo, unmatched copy), Notifications (`send-push` Edge Function + Templates CRUD), Placements (`image_url`, `sort_order`, `get_db_now()` RPC), and `pagedRows()` + CSV export across all lists.
+- **UI & UX Passes (`UI-1` through `UI-6`):**
+  - Hudson design tokens, seamless custom scrollbars, and 1st-click `showWhen` nested form evaluation (`CustomSelect` / `DatePicker` post-commit `onValueChange` + `<form>.reset()` sync).
+  - CRM-wide micro-interactions: zero `window.confirm()` (`ConfirmButton` popovers), gliding `useSlidingPill` indicators, `Button` press + `Saved ✓` morph, `Toaster` rAF hairline countdown & hover-pause, smooth `Drawer` unsaved-changes curtain, error `micro-shake` + first-error focus, row/cell commit flashes, Data Grid floating bulk dock, and flicker-free `300ms` drag-and-drop zones.
+  - Database-backed **Insurer** `CustomSelect` with pre-built `InsurerLogo` (`logo_url` + monogram fallback) + `"Other / Add new"` flow.
+  - Live RBAC-aware **Global Search** (`globalSearch` server action, desktop popover + mobile spotlight, `/`, `↑↓`, `Enter`, `Esc`, and `?q=` list sync in `ModulePage`).
+- **Explicitly Dropped (do NOT build):** `S9` Duplicate scanner, `S10` Policy summary PDF, `S11` Command palette (`Ctrl+K`), `S12` Custom fields manager UI.
 
-### Remaining P1 Bugs (fix before go-live):
-1. **RBAC overrides never apply to non-admin staff (H2.1)** — `staff_custom_permissions` has no SELECT RLS policy for the staff member's own rows. Grant/Revoke in the Permissions drawer silently do nothing. Fix: add `SELECT using (staff_id = (select id from staff_users where auth_user_id = auth.uid()))` RLS policy, or switch to a `security definer` RPC.
-2. **DB-level permission enforcement is missing (H2.2)** — all table RLS still uses `is_staff()`, not `get_staff_permissions()`. Staff can hit the Supabase API directly and bypass CRM permission checks. Fix: add `has_permission(text)` function and use it in write policies.
-3. **RBAC role deletion / fail-open / self-lockout guards (H2.3–H2.5)** — refuse deleting roles with staff; make `can()` fail closed (`dashboard.view` only) for non-admins when permissions are unavailable; add last-admin/self-lockout guards in `saveStaffPermissionsAction`.
+### Priority Next Steps (Pick What to Tackle Next):
+1. **✅ P1 — RBAC Security & DB RLS Hardening (H2.1–H2.8): Done in code & SQL** — **only SQL execution remains:**
+   - Apply `0011_placements_db_now.sql` and `0012_rbac_rls_hardening.sql` in Supabase SQL Editor (then smoke-test a restricted non-admin login to confirm `get_my_permissions()` + `has_permission()` RLS enforcement).
+2. **🟠 P2 — Deployments, Reports Charts & Mobile App Integration:**
+   - Deploy Edge Function `supabase/functions/send-push/index.ts`.
+   - Build `/reports` charts (4 chart cards) & Commission calculation (`H8.1–H8.2`).
+   - Mobile app (`mobile/src` + `docs/mobile-sync-todo.md`): wire `expo-notifications` token registration into `device_tokens` for CRM push delivery (`H1`, `H6.1`), build automated `daily-reminders` & WhatsApp OTP Edge Functions (`H1`), and sync CRM labels/screens.
+3. **🟡 P3 — Final Lock & Polish:**
+   - Lock `placements.slot_name` list (`H7.2`) **only after mobile app build finishes and final slot keys are confirmed**.
+   - Populate `public.insurers.logo_url` links whenever brand assets are ready (CRM UI is already pre-wired).
+   - Optional polish: Ad slot create UI (`H9`), Quote completed/closed tiles (`H9`), deduplicate `crm/supabase` vs root `supabase`.
 
-### Remaining P2 Items (next sprint):
-- Run migration `0011_placements_db_now.sql` in Supabase and deploy Edge Function `send-push`.
-- Build Reports charts & Commission calculation on `/reports` (`H8.1–H8.2`).
-- Wire `expo-notifications` token registration in `mobile/src` to populate `device_tokens` so CRM push alerts reach physical devices (`H1`, `H6.1`).
-- Build remaining Edge Functions (`daily-reminders`, `send-whatsapp-otp`, `verify-otp`) and mobile sync items (`docs/mobile-sync-todo.md`).
-- Finalize and lock `placements.slot_name` list **only after mobile app build finishes and final slot keys are given**.
-
-### Conventions to follow:
-- No `alert()`, native `<select>`, native date inputs, `font-mono`, foreign shadows, or hard-coded colours (see `crm/design.md` §7).
-- Every new page: `requirePermission(...)`. Every server action: `authorize(...)`.
-- Run `npm install`, `npx tsc --noEmit`, `npm run build` before and after changes.
+### Strict Conventions:
+- Follow `crm/design.md` §7: no `alert()`, no `window.confirm()`, no native `<select>` or `<input type="date">`, no `font-mono`, no foreign shadows, no hard-coded hex colours, no yellow buttons.
+- Every page starts with `requirePermission(...)`; every server action uses `authorize(...)`.
+- Verify changes inside `c:\Users\Mohit\Desktop\securedrive\crm` with `npm run typecheck` and `npm run build`.
 - Git remote: `https://github.com/mohittarkardev-ops/crm.git` branch `main`.
 ```

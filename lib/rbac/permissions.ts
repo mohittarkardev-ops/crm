@@ -139,9 +139,11 @@ const ALL_PERMISSIONS: PermissionKey[] = (MODULES as readonly ModuleDef[]).flatM
   m.permissions.map((p) => p.key as PermissionKey),
 );
 
-const ADMIN_ONLY = new Set<string>(
-  (MODULES as readonly ModuleDef[]).flatMap((m) => m.permissions.filter((p) => p.adminOnly).map((p) => p.key)),
-);
+const ALL_PERMISSIONS_SET = new Set<string>(ALL_PERMISSIONS);
+
+export function isValidPermissionKey(key: string): key is PermissionKey {
+  return ALL_PERMISSIONS_SET.has(key);
+}
 
 /** Who is asking. Can carry role and the person's own permission list from RBAC. */
 export type Subject = {
@@ -152,19 +154,18 @@ export type Subject = {
 /**
  * Can this person do this?
  * 1. Admins can do everything.
- * 2. If the user has an explicit permissions list (from roles + individual overrides), that list is checked.
- * 3. Fallback: staff can do anything not marked `adminOnly`.
+ * 2. Non-admins require an explicit permissions array (from roles + individual overrides).
+ * 3. Fail closed: if permissions are missing or could not be loaded for a non-admin, allow Dashboard only.
  */
 export function can(subject: Subject | null | undefined, permission: PermissionKey): boolean {
   if (!subject) return false;
   if (subject.role === "admin") return true;
 
-  // If specific permissions list is present, check it directly!
   if (Array.isArray(subject.permissions)) {
     return subject.permissions.includes(permission);
   }
 
-  return !ADMIN_ONLY.has(permission);
+  return permission === "dashboard.view";
 }
 
 /** Every permission this person has. Sent to the browser only to hide buttons; the server stays the authority. */
