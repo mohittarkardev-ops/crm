@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -18,12 +19,13 @@ import { cn } from "@/lib/cn";
 const OPEN_MS = 360;
 const CLOSE_MS = 240;
 
-const DrawerFooterContext = createContext<HTMLElement | null>(null);
+type DrawerFooterState = { attached: true; el: HTMLElement | null } | null;
+const DrawerFooterContext = createContext<DrawerFooterState>(null);
 
 /**
  * Fixed action bar for forms inside a `<Drawer />`.
  * Portals out of the scrollable form container so Save/Cancel stay pinned to the bottom edge
- * with a clean contrasting surface and rounded corner clipping regardless of form height.
+ * with an opaque contrasting surface and rounded corner clipping regardless of form height.
  */
 export function DrawerFooter({
   children,
@@ -32,9 +34,9 @@ export function DrawerFooter({
   children: ReactNode;
   className?: string;
 }) {
-  const footerEl = useContext(DrawerFooterContext);
-  if (footerEl) {
-    return createPortal(children, footerEl);
+  const ctx = useContext(DrawerFooterContext);
+  if (ctx?.attached) {
+    return ctx.el ? createPortal(children, ctx.el) : null;
   }
   return (
     <div
@@ -75,6 +77,10 @@ export function Drawer({
   const [hasMoreBelow, setHasMoreBelow] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [footerEl, setFooterEl] = useState<HTMLElement | null>(null);
+  const footerContextValue = useMemo<DrawerFooterState>(
+    () => ({ attached: true, el: footerEl }),
+    [footerEl],
+  );
 
   const panelRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -252,7 +258,7 @@ export function Drawer({
           </div>
         </div>
 
-        <DrawerFooterContext.Provider value={footerEl}>
+        <DrawerFooterContext.Provider value={footerContextValue}>
           <div
             ref={bodyRef}
             onScroll={syncScrollState}

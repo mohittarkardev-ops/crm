@@ -192,8 +192,8 @@ export function StaffPermissionsDrawer({
         ) : (
           /* Individual Overrides Section */
           <div className="space-y-4 pt-2 border-t border-divider">
-            <div className="flex items-center justify-between">
-              <div>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">
                   Individual Overrides
                 </h3>
@@ -205,9 +205,9 @@ export function StaffPermissionsDrawer({
                 <button
                   type="button"
                   onClick={() => setOverrides({})}
-                  className="text-[11px] font-medium text-ink-muted hover:text-ink select-none underline"
+                  className="shrink-0 whitespace-nowrap text-[11px] font-medium text-ink-muted hover:text-ink select-none underline underline-offset-2"
                 >
-                  Reset all to Role default
+                  Reset to defaults
                 </button>
               )}
             </div>
