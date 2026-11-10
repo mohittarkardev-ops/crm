@@ -1,3 +1,5 @@
+import { cn } from "@/lib/cn";
+
 /**
  * The SecureDrive Shield Crew — bespoke inline SVG mascot characters strictly styled with
  * Hudson CSS design tokens (no hard-coded hex values, calm reduced-motion-safe loops).
@@ -505,104 +507,199 @@ export function ClaimTrophyCharacter() {
   );
 }
 
-/** 14. Interactive Login Desk Mascot for /login (covers eyes politely when typing password). */
-export function LoginDeskCharacter({ mood = "ready" }: { mood?: "ready" | "privacy" | "oops" }) {
+export type LoginMascotMood = "ready" | "email" | "privacy" | "peek" | "checking" | "oops";
+
+/** 14. Interactive Login Desk Mascot for /login (eye tracking, privacy paws, one-eye peek, error shake). */
+export function LoginDeskCharacter({
+  mood = "ready",
+  emailProgress = 0,
+  waveKey = 0,
+}: {
+  mood?: LoginMascotMood;
+  /** 0..1 cursor/typing progress used to pan pupils across the email input. */
+  emailProgress?: number;
+  /** Increment to trigger a friendly wave gesture on click. */
+  waveKey?: number;
+}) {
+  const clamped = Math.max(0, Math.min(1, emailProgress));
   const isPrivacy = mood === "privacy";
+  const isPeek = mood === "peek";
+  const isEmail = mood === "email";
+  const isChecking = mood === "checking";
   const isOops = mood === "oops";
+
+  const lookX = isEmail
+    ? -2.2 + clamped * 4.4
+    : isPeek
+      ? 0.9
+      : isChecking
+        ? -1.2
+        : 0;
+  const lookY = isEmail
+    ? 1.7
+    : isPeek
+      ? 1.6
+      : isChecking
+        ? -1.4
+        : 0;
 
   return (
     <svg
-      viewBox="0 0 132 104"
-      className="mx-auto h-24 w-32 select-none"
+      viewBox="0 0 140 112"
+      className={cn("mx-auto h-26 w-32 select-none", isOops && "micro-shake")}
       role="img"
       aria-label={
         isPrivacy
           ? "SecureDrive mascot politely covering its eyes while you enter your password"
-          : isOops
-            ? "SecureDrive mascot looking puzzled after a login error"
-            : "SecureDrive mascot welcoming you to sign in"
+          : isPeek
+            ? "SecureDrive mascot peeking with one eye while your password is shown"
+            : isChecking
+              ? "SecureDrive mascot checking your sign-in details"
+              : isOops
+                ? "SecureDrive mascot looking puzzled after a sign-in error"
+                : "SecureDrive mascot welcoming you to sign in"
       }
     >
-      <ellipse cx="66" cy="95" rx="42" ry="5" fill="var(--surface-muted)" />
+      <ellipse cx="70" cy="102" rx="44" ry="5" fill="var(--surface-muted)" />
       <rect
         x="24"
         y="12"
-        width="84"
-        height="68"
-        rx="20"
+        width="92"
+        height="74"
+        rx="22"
         fill={isOops ? "var(--negative-soft)" : "var(--accent-soft)"}
         className="transition-colors duration-200"
       />
 
-      {/* Shield body */}
-      <path
-        d="M66 17 C80 17 90 22.5 90 29 V54 C90 69.5 66 79 66 79 C66 79 42 69.5 42 54 V29 C42 22.5 52 17 66 17 Z"
-        fill="var(--surface-strong)"
-        stroke="var(--text)"
-        strokeWidth="2.3"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M52.5 23.8 C57 21.8 61.5 21.2 66 21.2 C70.5 21.2 75 21.8 79.5 23.8"
-        fill="none"
-        stroke="var(--accent)"
-        strokeWidth="3.8"
-        strokeLinecap="round"
-      />
-
-      {/* Facial expressions */}
-      {isOops ? (
-        <g>
-          <path d="M51 32 Q55.5 28.5 60 31.5" fill="none" stroke="var(--text)" strokeWidth="1.9" strokeLinecap="round" />
-          <path d="M72 34 L81 32" fill="none" stroke="var(--text)" strokeWidth="1.9" strokeLinecap="round" />
-          <circle cx="56.5" cy="40.5" r="2.3" fill="var(--text)" />
-          <circle cx="75.5" cy="40.5" r="2.3" fill="var(--text)" />
-          <circle cx="66" cy="50" r="3" fill="none" stroke="var(--text)" strokeWidth="2" />
-        </g>
-      ) : (
-        <g>
-          <g className="scout-blink">
-            <circle cx="56.5" cy="40" r="2.5" fill="var(--text)" />
-            <circle cx="57.3" cy="39" r="0.85" fill="var(--surface-strong)" />
-            <circle cx="75.5" cy="40" r="2.5" fill="var(--text)" />
-            <circle cx="76.3" cy="39" r="0.85" fill="var(--surface-strong)" />
-          </g>
-          <circle cx="50.5" cy="44.5" r="2.3" fill="var(--accent-soft)" />
-          <circle cx="81.5" cy="44.5" r="2.3" fill="var(--accent-soft)" />
-          <path d="M60.5 47 Q66 51.5 71.5 47" fill="none" stroke="var(--text)" strokeWidth="2" strokeLinecap="round" />
+      {/* Waving left arm when clicked / greeting */}
+      {waveKey > 0 && !isPrivacy && !isPeek && (
+        <g key={waveKey} className="scout-wave" style={{ transformOrigin: "44px 56px" }}>
+          <path d="M44 56 Q28 48 27 34" fill="none" stroke="var(--text)" strokeWidth="3.2" strokeLinecap="round" />
+          <circle cx="27" cy="33" r="4.5" fill="var(--accent)" stroke="var(--text)" strokeWidth="2" />
         </g>
       )}
 
-      {/* Polite eye-covering paws on password focus; resting by sides otherwise */}
-      <g
-        style={{
-          transform: isPrivacy ? "translate(6px, -21px) rotate(12deg)" : "translate(0px, 0px)",
-        }}
-        className="transition-transform duration-200 ease-out"
-      >
-        <ellipse cx="44" cy="59" rx="7.5" ry="5.5" fill="var(--surface-strong)" stroke="var(--text)" strokeWidth="2.1" />
-      </g>
-      <g
-        style={{
-          transform: isPrivacy ? "translate(-6px, -21px) rotate(-12deg)" : "translate(0px, 0px)",
-        }}
-        className="transition-transform duration-200 ease-out"
-      >
-        <ellipse cx="88" cy="59" rx="7.5" ry="5.5" fill="var(--surface-strong)" stroke="var(--text)" strokeWidth="2.1" />
+      {/* Shield body */}
+      <path
+        d="M70 18 C85 18 96 24 96 31 V58 C96 74 70 84 70 84 C70 84 44 74 44 58 V31 C44 24 55 18 70 18 Z"
+        fill="var(--surface-strong)"
+        stroke="var(--text)"
+        strokeWidth="2.4"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M55 25.5 C60 23.2 65 22.5 70 22.5 C75 22.5 80 23.2 85 25.5"
+        fill="none"
+        stroke="var(--accent)"
+        strokeWidth="4"
+        strokeLinecap="round"
+      />
+
+      {/* Brows */}
+      {isOops ? (
+        <g>
+          <path d="M53.5 34 Q59 29.5 64 33" fill="none" stroke="var(--text)" strokeWidth="2" strokeLinecap="round" />
+          <path d="M76 35.5 L86 33.5" fill="none" stroke="var(--text)" strokeWidth="2" strokeLinecap="round" />
+        </g>
+      ) : isChecking ? (
+        <g>
+          <path d="M54 34 L64 35.5" fill="none" stroke="var(--text)" strokeWidth="1.9" strokeLinecap="round" />
+          <path d="M76 35.5 L86 34" fill="none" stroke="var(--text)" strokeWidth="1.9" strokeLinecap="round" />
+        </g>
+      ) : (
+        <g>
+          <path d="M54.5 35 Q59.5 33 64.5 35" fill="none" stroke="var(--text)" strokeWidth="1.7" strokeLinecap="round" opacity="0.65" />
+          <path d="M75.5 35 Q80.5 33 85.5 35" fill="none" stroke="var(--text)" strokeWidth="1.7" strokeLinecap="round" opacity="0.65" />
+        </g>
+      )}
+
+      {/* Eye sockets + live tracking pupils */}
+      <g className={!isOops && !isChecking ? "scout-blink" : undefined}>
+        <circle cx="59.5" cy="43" r="5" fill="var(--surface-muted)" stroke="var(--divider)" strokeWidth="1.2" />
+        <circle cx="80.5" cy="43" r="5" fill="var(--surface-muted)" stroke="var(--divider)" strokeWidth="1.2" />
+        <g
+          style={{ transform: `translate(${lookX}px, ${lookY}px)` }}
+          className="transition-transform duration-150 ease-out"
+        >
+          <circle cx="59.5" cy="43" r="2.7" fill="var(--text)" />
+          <circle cx="60.4" cy="42" r="0.9" fill="var(--surface-strong)" />
+          <circle cx="80.5" cy="43" r="2.7" fill="var(--text)" />
+          <circle cx="81.4" cy="42" r="0.9" fill="var(--surface-strong)" />
+        </g>
       </g>
 
-      {/* Little staff lanyard pill at bottom when not in privacy mode */}
-      <rect
-        x="57"
-        y="61"
-        width="18"
-        height="11"
-        rx="3"
-        fill="var(--accent)"
-        stroke="var(--text)"
-        strokeWidth="1.6"
-      />
-      <line x1="61" y1="66.5" x2="71" y2="66.5" stroke="var(--text)" strokeWidth="1.6" strokeLinecap="round" />
+      {/* Cheeks */}
+      <circle cx="52" cy="49.5" r="2.4" fill="var(--accent-soft)" />
+      <circle cx="88" cy="49.5" r="2.4" fill="var(--accent-soft)" />
+
+      {/* Mouth expression */}
+      {isOops ? (
+        <circle cx="70" cy="54" r="3" fill="none" stroke="var(--text)" strokeWidth="2" />
+      ) : isChecking ? (
+        <line x1="65.5" y1="53.5" x2="74.5" y2="53.5" stroke="var(--text)" strokeWidth="2" strokeLinecap="round" />
+      ) : isPeek ? (
+        <path d="M65.5 53 Q70 55.5 75.5 52" fill="none" stroke="var(--text)" strokeWidth="2" strokeLinecap="round" />
+      ) : (
+        <path d="M64 52 Q70 57 76 52" fill="none" stroke="var(--text)" strokeWidth="2.1" strokeLinecap="round" />
+      )}
+
+      {/* Staff lanyard badge */}
+      <rect x="61" y="65" width="18" height="11" rx="3" fill="var(--accent)" stroke="var(--text)" strokeWidth="1.6" />
+      <line x1="65" y1="70.5" x2="75" y2="70.5" stroke="var(--text)" strokeWidth="1.6" strokeLinecap="round" />
+
+      {/* Paws — transformBox: "fill-box" + transformOrigin: "center" rotates/moves around each paw accurately */}
+      <g
+        style={{
+          transformBox: "fill-box",
+          transformOrigin: "center",
+          transform:
+            isPrivacy || isPeek
+              ? "translate(13.5px, -21px) rotate(14deg)"
+              : isChecking
+                ? "translate(4px, -6px) rotate(8deg)"
+                : "translate(0px, 0px)",
+        }}
+        className="transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]"
+      >
+        <ellipse cx="46" cy="64" rx="8.5" ry="6" fill="var(--surface-strong)" stroke="var(--text)" strokeWidth="2.2" />
+        <line x1="43" y1="62" x2="43" y2="66" stroke="var(--divider)" strokeWidth="1.4" strokeLinecap="round" />
+        <line x1="47" y1="62" x2="47" y2="66" stroke="var(--divider)" strokeWidth="1.4" strokeLinecap="round" />
+      </g>
+
+      <g
+        style={{
+          transformBox: "fill-box",
+          transformOrigin: "center",
+          transform: isPrivacy
+            ? "translate(-13.5px, -21px) rotate(-14deg)"
+            : isPeek
+              ? "translate(-8px, -11px) rotate(10deg)"
+              : isChecking
+                ? "translate(-4px, -6px) rotate(-8deg)"
+                : "translate(0px, 0px)",
+        }}
+        className="transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]"
+      >
+        <ellipse cx="94" cy="64" rx="8.5" ry="6" fill="var(--surface-strong)" stroke="var(--text)" strokeWidth="2.2" />
+        <line x1="93" y1="62" x2="93" y2="66" stroke="var(--divider)" strokeWidth="1.4" strokeLinecap="round" />
+        <line x1="97" y1="62" x2="97" y2="66" stroke="var(--divider)" strokeWidth="1.4" strokeLinecap="round" />
+      </g>
+
+      {/* State status bubble (valid email sparkle / checking / oops ?) */}
+      {isOops && (
+        <g className="scout-float">
+          <circle cx="106" cy="24" r="9" fill="var(--surface-strong)" stroke="var(--negative)" strokeWidth="2" />
+          <text x="106" y="27.5" textAnchor="middle" fontSize="11" fontWeight="700" fill="var(--negative)">
+            ?
+          </text>
+        </g>
+      )}
+      {isChecking && (
+        <g className="scout-float">
+          <circle cx="106" cy="24" r="9" fill="var(--accent)" stroke="var(--text)" strokeWidth="2" />
+          <circle cx="106" cy="24" r="3" fill="var(--text)" />
+        </g>
+      )}
     </svg>
   );
 }
