@@ -9,7 +9,8 @@ import React, {
   useMemo,
 } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown, Check, Search, X } from "lucide-react";
+import { ChevronDown, Check, Plus, Search, X } from "lucide-react";
+import { InsurerLogo } from "@/components/ui/insurer-logo";
 import { cn } from "@/lib/cn";
 
 export type SelectOption = {
@@ -17,6 +18,9 @@ export type SelectOption = {
   label: string;
   hint?: string;
   disabled?: boolean;
+  /** Optional logo URL (or monogram badge when `showBadge` is true) rendered beside the option label. */
+  logoUrl?: string | null;
+  showBadge?: boolean;
 };
 
 export interface CustomSelectProps {
@@ -31,6 +35,8 @@ export interface CustomSelectProps {
   invalid?: boolean;
   className?: string;
   onChange?: (value: string) => void;
+  /** Called after React commits the new value to the hidden form input (for FormData / conditional fields). */
+  onValueChange?: (value: string) => void;
 }
 
 const POPOVER_MAX_HEIGHT = 260;
@@ -57,6 +63,7 @@ export function CustomSelect({
   invalid = false,
   className,
   onChange,
+  onValueChange,
 }: CustomSelectProps) {
   const isControlled = propValue !== undefined;
   const [internalValue, setInternalValue] = useState(defaultValue);
@@ -69,6 +76,18 @@ export function CustomSelect({
     }
   }, [defaultValue, isControlled]);
 
+  // Notify form listeners strictly AFTER the hidden <input> reflects the new value in the DOM.
+  const prevCommittedRef = useRef(selectedValue);
+  const onValueChangeRef = useRef(onValueChange);
+  useEffect(() => {
+    onValueChangeRef.current = onValueChange;
+  }, [onValueChange]);
+  useEffect(() => {
+    if (prevCommittedRef.current === selectedValue) return;
+    prevCommittedRef.current = selectedValue;
+    onValueChangeRef.current?.(selectedValue);
+  }, [selectedValue]);
+
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [highlightedIndex, setHighlightedIndex] = useState<number>(-1);
@@ -79,10 +98,21 @@ export function CustomSelect({
     width: number;
   } | null>(null);
 
+  const hiddenInputRef = useRef<HTMLInputElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+
+  // Respect native <form>.reset() calls in uncontrolled mode.
+  useEffect(() => {
+    if (isControlled) return;
+    const form = hiddenInputRef.current?.form;
+    if (!form) return;
+    const onReset = () => setInternalValue(defaultValue);
+    form.addEventListener("reset", onReset);
+    return () => form.removeEventListener("reset", onReset);
+  }, [defaultValue, isControlled, name]);
 
   // Typeahead key buffer for quick typing jump
   const typeaheadBuffer = useRef("");
@@ -389,7 +419,7 @@ export function CustomSelect({
 
   return (
     <>
-      {name && <input type="hidden" name={name} value={selectedValue} />}
+      {name && <input ref={hiddenInputRef} type="hidden" name={name} value={selectedValue} />}
 
       {/* Trigger Button */}
       <button
@@ -417,11 +447,22 @@ export function CustomSelect({
       >
         <span
           className={cn(
-            "truncate block flex-1 font-normal select-none transition-colors",
-            selectedOption ? "text-ink font-medium" : "text-ink-faint"
+            "flex min-w-0 flex-1 items-center gap-2 font-normal select-none transition-colors",
+            selectedOption ? "text-ink font-medium" : "text-ink-faint",
           )}
         >
-          {selectedOption ? selectedOption.label : placeholder}
+          {selectedOption &&
+            (selectedOption.value === "__other__" ? (
+              <span
+                aria-hidden="true"
+                className="grid size-5 shrink-0 place-items-center rounded-[4px] border border-dashed border-ink-faint text-ink-muted"
+              >
+                <Plus size={12} strokeWidth={2} />
+              </span>
+            ) : selectedOption.logoUrl || selectedOption.showBadge ? (
+              <InsurerLogo name={selectedOption.label} logoUrl={selectedOption.logoUrl} size="sm" />
+            ) : null)}
+          <span className="truncate">{selectedOption ? selectedOption.label : placeholder}</span>
         </span>
 
         <div className="flex items-center gap-1.5 shrink-0 text-ink-muted">
@@ -514,18 +555,35 @@ export function CustomSelect({
               className="max-h-56 overflow-y-auto p-1 space-y-0.5 select-none focus:outline-none"
             >
               {filteredOptions.length === 0 ? (
-                <div className="py-4 text-center text-xs text-ink-muted">
-                  <p className="font-medium">No results found</p>
-                  {searchQuery && (
-                    <p className="mt-0.5 text-[11px] text-ink-faint truncate px-2">
-                      for &ldquo;{searchQuery}&rdquo;
-                    </p>
-                  )}
+                <div className="py-4 px-3 text-center text-xs text-ink-muted space-y-2.5">
+                  <div>
+                    <p className="font-medium">No results found</p>
+                    {searchQuery && (
+                      <p className="mt-0.5 text-[11px] text-ink-faint truncate px-2">
+                        for &ldquo;{searchQuery}&rdquo;
+                      </p>
+                    )}
+                  </div>
+                  {(() => {
+                    const otherOpt = options.find((o) => o.value === "__other__" && !o.disabled);
+                    if (!otherOpt) return null;
+                    return (
+                      <button
+                        type="button"
+                        onClick={() => handleSelect(otherOpt)}
+                        className="inline-flex h-8 items-center gap-1.5 rounded-control border border-divider bg-surface-muted/60 px-3 text-xs font-medium text-ink transition-colors hover:bg-accent-soft"
+                      >
+                        <Plus size={13} strokeWidth={2} />
+                        {otherOpt.label}
+                      </button>
+                    );
+                  })()}
                 </div>
               ) : (
                 filteredOptions.map((option, idx) => {
                   const isSelected = option.value === selectedValue;
                   const isHighlighted = idx === highlightedIndex;
+                  const isOtherOption = option.value === "__other__";
 
                   return (
                     <button
@@ -538,6 +596,7 @@ export function CustomSelect({
                       onMouseEnter={() => setHighlightedIndex(idx)}
                       className={cn(
                         "flex w-full items-center justify-between gap-2.5 px-3 py-2 rounded-[4px] text-left text-xs transition-colors cursor-pointer",
+                        isOtherOption && idx > 0 && !searchQuery.trim() && "mt-1 border-t border-divider/60 pt-2.5",
                         option.disabled && "opacity-40 cursor-not-allowed pointer-events-none",
                         isSelected
                           ? "bg-accent-soft text-ink font-semibold"
@@ -546,8 +605,25 @@ export function CustomSelect({
                           : "text-ink hover:bg-surface-muted/60"
                       )}
                     >
-                      <span className="truncate flex-1 font-medium">
-                        {option.label}
+                      <span className="flex min-w-0 flex-1 items-center gap-2.5">
+                        {isOtherOption ? (
+                          <span
+                            aria-hidden="true"
+                            className="grid size-5 shrink-0 place-items-center rounded-[4px] border border-dashed border-ink-faint text-ink-muted"
+                          >
+                            <Plus size={12} strokeWidth={2} />
+                          </span>
+                        ) : option.logoUrl || option.showBadge ? (
+                          <InsurerLogo name={option.label} logoUrl={option.logoUrl} size="sm" />
+                        ) : null}
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate font-medium">{option.label}</span>
+                          {option.hint && (
+                            <span className="block truncate text-[11px] font-normal text-ink-faint">
+                              {option.hint}
+                            </span>
+                          )}
+                        </span>
                       </span>
 
                       {isSelected && (

@@ -42,6 +42,8 @@ const TONES: Record<string, ChipTone> = {
   invited: "warning",
   manual: "neutral",
   automated: "info",
+  broadcast: "accent",
+  user_specific: "neutral",
   completed: "positive",
   approved: "positive",
   verified: "positive",

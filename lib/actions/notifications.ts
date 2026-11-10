@@ -14,16 +14,18 @@ import {
   formValues,
   normalizeMobile,
   parseDate,
-
   text,
   type Db,
 } from "@/lib/actions/shared";
 import { categoryLabel } from "@/lib/status";
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const KINDS = ["renewal", "offer", "greeting", "announcement"]; // notifications_kind_check
 const AUDIENCES = ["everyone", "advisor_clients", "general_users", "user", "expiring"];
 const CATEGORIES = ["car", "bike", "health", "term", "other"];
+const TEMPLATE_TYPES = ["broadcast", "automated", "user_specific"];
 const MAX_RANGE_DAYS = 366;
+const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
 
 type Named<T> = T | T[] | null;
 type Person = { name: string; mobile: string };
@@ -113,10 +115,14 @@ async function expiringRecipients(db: Db, from: string, to: string, category: st
 
 async function findRecipients(db: Db, input: AudienceInput): Promise<Found | { error: string; field?: string }> {
   if (input.audience === "user") {
-    const user = await db.from("users").select("id").eq("mobile_number", input.mobile!).maybeSingle();
+    const user = await db.from("users").select("id").eq("mobile_number", input.mobile!).limit(2);
     if (user.error) return { error: dbMessage(user.error) };
-    if (!user.data) return { error: "No user has this mobile number.", field: "target" };
-    return { reachable: [user.data.id as string], unreachable: [] };
+    const matches = user.data ?? [];
+    if (matches.length === 0) return { error: "No user has this mobile number.", field: "target" };
+    if (matches.length > 1) {
+      return { error: "Multiple user accounts share this mobile number. Deduplicate them first.", field: "target" };
+    }
+    return { reachable: [matches[0].id as string], unreachable: [] };
   }
 
   if (input.audience === "expiring") {
@@ -142,6 +148,74 @@ function describeExpiry(input: AudienceInput) {
   const range =
     input.from === input.to ? `on ${formatDate(input.from!)}` : `between ${formatDate(input.from!)} and ${formatDate(input.to!)}`;
   return `policies expiring ${range}${input.category ? ` (${categoryLabel(input.category)})` : ""}`;
+}
+
+/**
+ * Dispatches Expo push alerts to registered `device_tokens` for `userIds`.
+ * Never throws: notification feed rows remain saved even if Expo Push is temporarily unreachable.
+ */
+async function dispatchPushAlerts(
+  db: Db,
+  userIds: string[],
+  title: string,
+  body: string,
+  kind: string,
+): Promise<{ totalTokens: number; sent: number }> {
+  const tokens: string[] = [];
+  for (let i = 0; i < userIds.length; i += 500) {
+    const { data, error } = await db
+      .from("device_tokens")
+      .select("token")
+      .in("user_id", userIds.slice(i, i + 500));
+    if (error) return { totalTokens: 0, sent: 0 };
+    for (const row of data ?? []) {
+      if (row.token) tokens.push(row.token as string);
+    }
+  }
+  if (tokens.length === 0) return { totalTokens: 0, sent: 0 };
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  };
+  if (process.env.EXPO_ACCESS_TOKEN) {
+    headers.Authorization = `Bearer ${process.env.EXPO_ACCESS_TOKEN}`;
+  }
+
+  let sent = 0;
+  const staleTokens: string[] = [];
+  for (let i = 0; i < tokens.length; i += 100) {
+    const batch = tokens.slice(i, i + 100);
+    const messages = batch.map((to) => ({ to, sound: "default", title, body, data: { kind } }));
+    try {
+      const res = await fetch(EXPO_PUSH_URL, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(messages),
+      });
+      if (!res.ok) continue;
+      const json = (await res.json()) as {
+        data?: { status?: string; details?: { error?: string } }[];
+      };
+      const tickets = json.data ?? [];
+      for (let idx = 0; idx < batch.length; idx++) {
+        const ticket = tickets[idx];
+        if (ticket?.status === "ok") {
+          sent++;
+        } else if (ticket?.details?.error === "DeviceNotRegistered") {
+          staleTokens.push(batch[idx]);
+        }
+      }
+    } catch {
+      /* push delivery failure does not roll back in-app Updates feed notifications */
+    }
+  }
+
+  for (let i = 0; i < staleTokens.length; i += 200) {
+    await db.from("device_tokens").delete().in("token", staleTokens.slice(i, i + 200));
+  }
+
+  return { totalTokens: tokens.length, sent };
 }
 
 /** "How many people will this reach?" Nothing is sent. */
@@ -182,9 +256,8 @@ export async function previewNotification(formData: FormData): Promise<PreviewRe
 }
 
 /**
- * Sends a notification by writing one row per recipient into `notifications`; each user sees it in the app's
- * Updates feed. Broadcasts go to registered users only (people who have logged in to the app at least once).
- * Push alerts are not sent yet: that needs a device-token sender (Edge Function), which is a later step.
+ * Writes one row per recipient into `notifications` (shown in the app's Updates feed) and dispatches
+ * Expo Push alerts to any registered `device_tokens`.
  */
 export async function sendNotification(_previous: ActionState, formData: FormData): Promise<ActionState> {
   const auth = await authorize("notifications.send");
@@ -192,11 +265,30 @@ export async function sendNotification(_previous: ActionState, formData: FormDat
   const staff = auth.staff;
   const values = formValues(formData);
 
-  const title = text(formData, "title");
-  const body = text(formData, "body");
+  const templateId = text(formData, "templateId");
+  let title = text(formData, "title");
+  let body = text(formData, "body");
   const kind = text(formData, "kind");
   const confirmed = formData.get("confirm") === "on";
   const { input, fieldErrors } = readAudience(formData);
+
+  const db = await createClient();
+  let resolvedTemplateId: string | null = null;
+  if (templateId) {
+    if (!UUID.test(templateId)) {
+      fieldErrors.templateId = "Choose a valid template.";
+    } else {
+      const tpl = await db.from("templates").select("id, title, body").eq("id", templateId).maybeSingle();
+      if (tpl.error) return fail(dbMessage(tpl.error), { values });
+      if (!tpl.data) {
+        fieldErrors.templateId = "That template could not be found.";
+      } else {
+        resolvedTemplateId = tpl.data.id as string;
+        if (!title) title = String(tpl.data.title ?? "").trim();
+        if (!body) body = String(tpl.data.body ?? "").trim();
+      }
+    }
+  }
 
   if (title.length < 3 || title.length > 100) fieldErrors.title = "Title must be 3 to 100 characters.";
   if (body.length < 3 || body.length > 1000) fieldErrors.body = "Message must be 3 to 1000 characters.";
@@ -206,7 +298,6 @@ export async function sendNotification(_previous: ActionState, formData: FormDat
   }
   if (Object.keys(fieldErrors).length > 0) return fail("Please fix the highlighted fields.", { fieldErrors, values });
 
-  const db = await createClient();
   const found = await findRecipients(db, input);
   if ("error" in found) {
     return fail(found.error, { fieldErrors: found.field ? { [found.field]: "Not found." } : undefined, values });
@@ -216,18 +307,117 @@ export async function sendNotification(_previous: ActionState, formData: FormDat
   if (recipients.length === 0) return fail("There is nobody to send this to yet.", { values });
 
   for (let i = 0; i < recipients.length; i += 500) {
-    const chunk = recipients.slice(i, i + 500).map((userId) => ({ user_id: userId, title, body, kind }));
+    const chunk = recipients.slice(i, i + 500).map((userId) => ({
+      user_id: userId,
+      template_id: resolvedTemplateId,
+      title,
+      body,
+      kind,
+    }));
     const inserted = await db.from("notifications").insert(chunk);
     if (inserted.error) {
       return fail(`Sent to ${i} of ${recipients.length} users, then it failed: ${dbMessage(inserted.error)}`, { values });
     }
   }
 
+  const pushResult = await dispatchPushAlerts(db, recipients, title, body, kind);
+
   await audit(db, staff.id, `notification.${input.audience}`, "notification", null);
 
-  let message = `Sent to ${recipients.length} user${recipients.length === 1 ? "" : "s"}. They will see it in the app's Updates feed.`;
+  const pushNote =
+    pushResult.totalTokens === 0
+      ? " (no devices registered for push alerts yet)"
+      : ` (${pushResult.sent} of ${pushResult.totalTokens} device push alerts delivered)`;
+  let message = `Sent to ${recipients.length} user${recipients.length === 1 ? "" : "s"}${pushNote}.`;
   if (found.unreachable.length > 0) {
     message += ` ${found.unreachable.length} ${found.unreachable.length === 1 ? "client is" : "clients are"} not on the app yet and did not receive it.`;
   }
   return done(message);
+}
+
+/** Deletes a single sent notification from a user's feed. */
+export async function deleteNotification(id: string): Promise<ActionState> {
+  const auth = await authorize("notifications.send");
+  if (!auth.staff) return auth.error;
+  const staff = auth.staff;
+  if (!UUID.test(id)) return fail("That notification could not be found.");
+
+  const db = await createClient();
+  const result = await db.from("notifications").delete().eq("id", id).select("id");
+  if (result.error) return fail(dbMessage(result.error));
+  if ((result.data ?? []).length === 0) return fail("That notification could not be found.");
+
+  await audit(db, staff.id, "notification.delete", "notification", id);
+  return done("Notification removed.");
+}
+
+/* ----------------------------- Templates CRUD ----------------------------- */
+
+function readTemplate(formData: FormData) {
+  const name = text(formData, "name");
+  const title = text(formData, "title");
+  const body = text(formData, "body");
+  const type = text(formData, "type") || "broadcast";
+
+  const fieldErrors: Record<string, string> = {};
+  if (name.length < 2 || name.length > 80) fieldErrors.name = "Template name must be 2 to 80 characters.";
+  if (title.length < 3 || title.length > 100) fieldErrors.title = "Title must be 3 to 100 characters.";
+  if (body.length < 3 || body.length > 1000) fieldErrors.body = "Message must be 3 to 1000 characters.";
+  if (!TEMPLATE_TYPES.includes(type)) fieldErrors.type = "Choose a valid template type.";
+
+  return {
+    fieldErrors,
+    data: { name, title, body, type },
+  };
+}
+
+export async function createTemplate(_previous: ActionState, formData: FormData): Promise<ActionState> {
+  const auth = await authorize("notifications.send");
+  if (!auth.staff) return auth.error;
+  const staff = auth.staff;
+  const values = formValues(formData);
+
+  const { fieldErrors, data } = readTemplate(formData);
+  if (Object.keys(fieldErrors).length > 0) return fail("Please fix the highlighted fields.", { fieldErrors, values });
+
+  const db = await createClient();
+  const inserted = await db.from("templates").insert(data).select("id").single();
+  if (inserted.error) return fail(dbMessage(inserted.error), { values });
+
+  await audit(db, staff.id, "template.create", "template", inserted.data.id as string);
+  return done("Template saved.");
+}
+
+export async function updateTemplate(id: string, _previous: ActionState, formData: FormData): Promise<ActionState> {
+  const auth = await authorize("notifications.send");
+  if (!auth.staff) return auth.error;
+  const staff = auth.staff;
+  if (!UUID.test(id)) return fail("That template could not be found.");
+  const values = formValues(formData);
+
+  const { fieldErrors, data } = readTemplate(formData);
+  if (Object.keys(fieldErrors).length > 0) return fail("Please fix the highlighted fields.", { fieldErrors, values });
+
+  const db = await createClient();
+  const updated = await db.from("templates").update(data).eq("id", id).select("id");
+  if (updated.error) return fail(dbMessage(updated.error), { values });
+  if ((updated.data ?? []).length === 0) return fail("That template could not be found.", { values });
+
+  await audit(db, staff.id, "template.update", "template", id);
+  return done("Template updated.");
+}
+
+export async function deleteTemplate(id: string): Promise<ActionState> {
+  const auth = await authorize("notifications.send");
+  if (!auth.staff) return auth.error;
+  const staff = auth.staff;
+  if (!UUID.test(id)) return fail("That template could not be found.");
+
+  const db = await createClient();
+  const removed = await db.from("templates").delete().eq("id", id).select("id");
+  if (removed.error) return fail(dbMessage(removed.error));
+  if ((removed.data ?? []).length === 0) return fail("That template could not be found.");
+
+  await audit(db, staff.id, "template.delete", "template", id);
+  return done("Template deleted.");
 }

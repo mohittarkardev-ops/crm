@@ -21,8 +21,12 @@ type DatePickerProps = {
   /** Dates after today cannot be picked (for example a date of birth). */
   maxToday?: boolean;
   onChange?: (value: string) => void;
-  /** Called after the value has changed and the form has the new value. */
-  onValueChange?: () => void;
+  /** Called after the value has changed and the form hidden input has the new value. */
+  onValueChange?: (value: string) => void;
+  /** Opens the calendar as soon as the field appears (used by inline cell editing). */
+  defaultOpen?: boolean;
+  /** Called whenever the calendar opens or closes. */
+  onOpenChange?: (open: boolean) => void;
   className?: string;
 };
 
@@ -39,16 +43,43 @@ export function DatePicker({
   maxToday,
   onChange,
   onValueChange,
+  defaultOpen = false,
+  onOpenChange,
   className,
 }: DatePickerProps) {
   const isControlled = propValue !== undefined;
   const [internalValue, setInternalValue] = useState(defaultValue);
   const value = isControlled ? propValue : internalValue;
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const [pos, setPos] = useState<{ left: number; top?: number; bottom?: number } | null>(null);
+  const hiddenInputRef = useRef<HTMLInputElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
-  const first = useRef(true);
+  const prevCommittedRef = useRef(value);
+  const onValueChangeRef = useRef(onValueChange);
+  const firstOpen = useRef(true);
+
+  useEffect(() => {
+    onValueChangeRef.current = onValueChange;
+  }, [onValueChange]);
+
+  // Respect native <form>.reset() calls in uncontrolled mode.
+  useEffect(() => {
+    if (isControlled) return;
+    const form = hiddenInputRef.current?.form;
+    if (!form) return;
+    const onReset = () => setInternalValue(defaultValue);
+    form.addEventListener("reset", onReset);
+    return () => form.removeEventListener("reset", onReset);
+  }, [defaultValue, isControlled, name]);
+
+  useEffect(() => {
+    if (firstOpen.current) {
+      firstOpen.current = false;
+      return;
+    }
+    onOpenChange?.(open);
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const place = useCallback(() => {
     const trigger = triggerRef.current;
@@ -94,14 +125,12 @@ export function DatePicker({
     };
   }, [open, place]);
 
-  // Tell the form (after the hidden input has the new value) that something changed.
+  // Tell the form (after the hidden input has the new value) that something changed (StrictMode-safe).
   useEffect(() => {
-    if (first.current) {
-      first.current = false;
-      return;
-    }
-    onValueChange?.();
-  }, [value]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (prevCommittedRef.current === value) return;
+    prevCommittedRef.current = value;
+    onValueChangeRef.current?.(value);
+  }, [value]);
 
   const max = maxToday ? todayIST() : undefined;
 
@@ -116,7 +145,7 @@ export function DatePicker({
 
   return (
     <>
-      {name && <input type="hidden" name={name} value={value} />}
+      {name && <input ref={hiddenInputRef} type="hidden" name={name} value={value} />}
       <button
         ref={triggerRef}
         type="button"

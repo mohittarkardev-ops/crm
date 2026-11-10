@@ -19,7 +19,7 @@ function isActive(pathname: string, href: string) {
   return href === "/" ? pathname === "/" : pathname.startsWith(href);
 }
 
-const ROW = "flex h-9 w-full items-center gap-3 rounded-[4px] px-3 text-[13px] transition-colors duration-150";
+const ROW = "flex h-8 w-full items-center gap-3 rounded-[4px] px-3 text-[13px] transition-colors duration-150";
 
 function NavLink({ item, active }: { item: NavItem; active: boolean }) {
   const Icon = item.icon;
@@ -29,10 +29,17 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
       aria-current={active ? "page" : undefined}
       className={cn(
         ROW,
+        "group relative",
         active ? "bg-sidebar-active font-semibold text-ink" : "text-ink-muted hover:bg-sidebar-active/60 hover:text-ink",
       )}
     >
-      <Icon size={16} strokeWidth={1.75} aria-hidden="true" />
+      {active && <span aria-hidden="true" className="absolute left-1 top-1.5 bottom-1.5 w-[3px] rounded-full bg-accent" />}
+      <Icon
+        size={16}
+        strokeWidth={1.75}
+        className={cn("transition-transform duration-150", !active && "group-hover:translate-x-0.5")}
+        aria-hidden="true"
+      />
       {item.label}
     </Link>
   );
@@ -51,8 +58,8 @@ export function Sidebar({ allowed }: { allowed: PermissionKey[] }) {
 
   return (
     <>
-      <aside className="fade-up sticky top-4 hidden h-[calc(100vh-2rem)] w-60 shrink-0 flex-col rounded-card bg-sidebar p-4 shadow-card lg:flex">
-        <Link href="/" className="mb-5 flex items-center gap-3 px-1">
+      <aside className="fade-up sticky top-4 hidden h-[calc(100vh-2rem)] w-60 shrink-0 flex-col rounded-card bg-sidebar p-3.5 shadow-card lg:flex">
+        <Link href="/" className="mb-3.5 flex items-center gap-3 px-1">
           <span className="grid size-9 place-items-center rounded-control bg-ink text-white">
             <ShieldCheck size={18} strokeWidth={1.75} aria-hidden="true" />
           </span>
@@ -62,9 +69,9 @@ export function Sidebar({ allowed }: { allowed: PermissionKey[] }) {
           </span>
         </Link>
 
-        <nav aria-label="Main" className="flex-1 overflow-y-auto">
+        <nav aria-label="Main" className="flex-1 overflow-y-auto pr-0.5">
           {groups.map((group, i) => (
-            <div key={i} className={cn("space-y-0.5", i > 0 && "mt-3 border-t border-divider pt-3")}>
+            <div key={i} className={cn("space-y-0.5", i > 0 && "mt-2 border-t border-divider pt-2")}>
               {group.map((item) => (
                 <NavLink key={item.href} item={item} active={isActive(pathname, item.href)} />
               ))}
@@ -72,7 +79,7 @@ export function Sidebar({ allowed }: { allowed: PermissionKey[] }) {
           ))}
         </nav>
 
-        <form action={signOut} className="mt-3 border-t border-divider pt-3">
+        <form action={signOut} className="mt-2.5 border-t border-divider pt-2.5">
           <button
             type="submit"
             className={cn(ROW, "text-ink-muted hover:bg-sidebar-active/60 hover:text-ink")}

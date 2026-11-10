@@ -1,11 +1,22 @@
 import { createClient } from "@/lib/supabase/server";
 import { rowsOf } from "@/lib/data/helpers";
 
-/** Existing insurer names, offered as suggestions in the Add Policy form so names stay consistent. */
-export async function getInsurerNames(): Promise<string[]> {
+export type InsurerItem = { id: string; name: string; logoUrl: string | null };
+
+/** All insurers from `public.insurers` (alphabetical), including future logo URLs. */
+export async function getInsurers(): Promise<InsurerItem[]> {
   const db = await createClient();
-  const res = await db.from("insurers").select("name").order("name");
-  return rowsOf<{ name: string }>(res, "Insurers").map((i) => i.name);
+  const res = await db.from("insurers").select("id, name, logo_url").order("name");
+  return rowsOf<{ id: string; name: string; logo_url: string | null }>(res, "Insurers").map((i) => ({
+    id: i.id,
+    name: i.name,
+    logoUrl: i.logo_url ?? null,
+  }));
+}
+
+/** Existing insurer names. */
+export async function getInsurerNames(): Promise<string[]> {
+  return (await getInsurers()).map((i) => i.name);
 }
 
 export type BusinessProfile = {

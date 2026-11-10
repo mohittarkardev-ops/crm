@@ -93,7 +93,7 @@ export function StaffTableWithRbac({ rows, roles }: StaffTableWithRbacProps) {
         ]}
         primary={{
           label: "Add Staff",
-          drawerTitle: "Add Staff Account",
+          drawerTitle: "Add Account",
           action: addStaff,
           fields: [
             { name: "name", label: "Full name", required: true },

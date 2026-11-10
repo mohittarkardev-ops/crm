@@ -2,7 +2,7 @@ import { CalendarClock, FileCheck2, FileText, FileX2 } from "lucide-react";
 import { ModulePage } from "@/components/modules/module-page";
 import { MiniStat, StatRow } from "@/components/ui/mini-stat";
 import { addPolicy } from "@/lib/actions/policies";
-import { getInsurerNames } from "@/lib/data/lookups";
+import { getInsurers } from "@/lib/data/lookups";
 import { getPolicies } from "@/lib/data/policies";
 import {
   CATEGORY_OPTIONS,
@@ -12,12 +12,12 @@ import {
   VERIFICATION_OPTIONS,
 } from "@/lib/options";
 import { can } from "@/lib/rbac/permissions";
-import { vehicleFields } from "@/lib/policy-fields";
+import { insurerFields, vehicleFields } from "@/lib/policy-fields";
 import { requirePermission } from "@/lib/rbac/server";
 
 export default async function PoliciesPage() {
   const staff = await requirePermission("policies.view");
-  const [{ rows, stats }, insurers] = await Promise.all([getPolicies(), getInsurerNames()]);
+  const [{ rows, totalCount, stats }, insurers] = await Promise.all([getPolicies(), getInsurers()]);
 
   return (
     <div className="space-y-4">
@@ -31,6 +31,9 @@ export default async function PoliciesPage() {
       <ModulePage
         index={4}
         rows={rows}
+        totalCount={totalCount}
+        truncatedAction={{ href: "/data-grid", label: "Open Data Grid for all records" }}
+        exportName="policies"
         emptyLabel="No policies yet"
         rowHref="/policies"
         dateFilter={{ key: "expiry", label: "Expiry" }}
@@ -45,7 +48,7 @@ export default async function PoliciesPage() {
           { key: "policyNumber", label: "Policy no." },
           { key: "client", label: "Client", type: "person" },
           { key: "category", label: "Category", type: "chip" },
-          { key: "insurer", label: "Insurer" },
+          { key: "insurer", label: "Insurer", type: "insurer" },
           { key: "premium", label: "Premium", type: "inr", align: "right" },
           { key: "expiry", label: "Expiry", type: "date" },
           { key: "status", label: "Status", type: "chip" },
@@ -65,7 +68,7 @@ export default async function PoliciesPage() {
             },
             { name: "clientName", label: "Client name", hint: "Needed only when the number is new." },
             { name: "category", label: "Category", type: "select", options: CATEGORY_OPTIONS, required: true },
-            { name: "insurer", label: "Insurer", required: true, suggestions: insurers },
+            ...insurerFields(insurers),
             { name: "policyNumber", label: "Policy number", required: true },
             { name: "premium", label: "Premium (₹)", type: "number" },
             { name: "startDate", label: "Start date", type: "date" },

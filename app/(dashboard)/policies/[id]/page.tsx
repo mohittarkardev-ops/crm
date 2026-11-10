@@ -6,9 +6,10 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { DetailHeader } from "@/components/layout/detail-header";
 import { DocumentsCard } from "@/components/modules/documents-card";
 import { DeletePolicyButton, EditPolicyButton } from "@/components/modules/policy-actions";
-import { getInsurerNames } from "@/lib/data/lookups";
+import { InsurerBadge } from "@/components/ui/insurer-logo";
+import { getInsurers } from "@/lib/data/lookups";
 import type { FieldDef } from "@/lib/module-types";
-import { vehicleFields } from "@/lib/policy-fields";
+import { insurerFields, normalizeInsurerValue, vehicleFields } from "@/lib/policy-fields";
 import { getPolicyDetail } from "@/lib/data/details";
 import { formatDate, formatINR } from "@/lib/format";
 import { StatusButtons } from "@/components/ui/status-buttons";
@@ -28,11 +29,11 @@ function expiryText(daysLeft: number) {
 export default async function PolicyDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const staff = await requirePermission("policies.view");
-  const [p, insurers] = await Promise.all([getPolicyDetail(id), getInsurerNames()]);
+  const [p, insurers] = await Promise.all([getPolicyDetail(id), getInsurers()]);
 
   const editFields: FieldDef[] = [
     { name: "policyNumber", label: "Policy number", required: true },
-    { name: "insurer", label: "Insurer", required: true, suggestions: insurers },
+    ...insurerFields(insurers, p.insurer),
     { name: "premium", label: "Premium (₹)", type: "number" },
     { name: "planType", label: "Plan type" },
     { name: "startDate", label: "Start date", type: "date" },
@@ -41,6 +42,11 @@ export default async function PolicyDetailPage({ params }: { params: Promise<{ i
     { name: "holderAddress", label: "Holder address", full: true },
     ...(p.isVehicle ? vehicleFields(false) : []),
   ];
+
+  const editValues = {
+    ...p.edit,
+    insurer: normalizeInsurerValue(insurers, p.edit.insurer),
+  };
 
   return (
     <div className="space-y-4">
@@ -52,7 +58,7 @@ export default async function PolicyDetailPage({ params }: { params: Promise<{ i
         actions={
           <>
             {can(staff, "policies.edit") && (
-              <EditPolicyButton fields={editFields} values={p.edit} action={updatePolicy.bind(null, p.id)} />
+              <EditPolicyButton fields={editFields} values={editValues} action={updatePolicy.bind(null, p.id)} />
             )}
             {can(staff, "policies.delete") && <DeletePolicyButton action={deletePolicy.bind(null, p.id)} />}
           </>
@@ -74,7 +80,10 @@ export default async function PolicyDetailPage({ params }: { params: Promise<{ i
             <DetailList
               items={[
                 { label: "Category", value: categoryLabel(p.category) },
-                { label: "Insurer", value: p.insurer },
+                {
+                  label: "Insurer",
+                  value: p.insurer ? <InsurerBadge name={p.insurer} logoUrl={p.insurerLogoUrl} size="sm" /> : null,
+                },
                 { label: "Plan type", value: p.planType },
                 { label: "Policy number", value: <span className="tabular-nums">{p.policyNumber}</span> },
                 { label: "Premium", value: p.premium === null ? null : formatINR(p.premium) },

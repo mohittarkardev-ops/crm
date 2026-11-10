@@ -101,12 +101,13 @@ No other shadows: only `shadow-card` and `shadow-card-hover`. Never `shadow-sm`,
 - **Charts:** Recharts. Bars use yellow on a pale grey track, rounded tops, grid lines use `var(--divider)`. Donut and legend use the grey scale plus yellow. White tooltip card.
 - **Drawer / modal:** white, radius 12, overlay `rgba(28,28,28,0.35)`, forms in a right-side 480px drawer.
 - **Empty state:** muted icon in a grey circle plus one short label. Loading uses skeleton blocks.
+- **Scrollbars:** seamless Hudson style defined once in `app/globals.css`: transparent track, zero arrow buttons, thin `6px` visual charcoal-ink pill thumb (`10px` hit target via transparent border + `background-clip: padding-box`). Avoid nested vertical scrollbars inside drawers or double vertical scrolling when zoomed in.
 - **Icons:** Lucide, outlined, 1.75px stroke, 16–18px.
 
 ---
 
 ## 5. Motion
-Entry fade plus 8px slide (250ms, 40ms stagger), number count-up once. Nothing else. Respect `prefers-reduced-motion`.
+Entry fade plus 8px slide (250ms, 40ms stagger), number count-up once, and subtle tactile micro-interactions upon action (`140–240ms`: button press detent + `"Saved ✓"` morph, gliding indicator on `Segmented` / `StatusButtons` / `VerificationControl`, `reveal-down` on conditional `showWhen` fields, `micro-shake` on validation errors, transient row/cell commit flash, and `dock-up` for Data Grid bulk selection). Zero hover lifts on cards or noisy bounce. Respect `prefers-reduced-motion`.
 
 ---
 
@@ -126,7 +127,7 @@ Dashboard: Active Policies, New Clients, Renewal Revenue, Renewal Rate; Renewals
 
 **Do:** use tokens and the components above; add a missing component here first; format money as INR (`₹1,17,500`) and dates as `13 Nov 2026`; keep every icon-only button labelled; leave data empty rather than inventing placeholder values.
 
-**Don't:** use hard-coded colours; make yellow buttons or large yellow areas; add dark mode, hover lifts, gradients (except the page background), mixed icon sets or new fonts (no `font-mono`: plates and IDs use Inter bold, uppercase, tabular figures); use more than one primary button per card or form; use pure black `#000`; use native `<select>` or `<input type="date">` (use `CustomSelect` and `DatePicker`); use `alert()` (use `toast`); nest `rounded-card` inside a card (use `rounded-tile`); put a `<Button>` inside a `<Link>` (use `buttonStyles` on the `Link`); hand-build chips, segmented toggles or spinners (use `Chip`, `Segmented`, `Spinner`).
+**Don't:** use hard-coded colours; make yellow buttons or large yellow areas; add dark mode, hover lifts, gradients (except the page background), mixed icon sets or new fonts (no `font-mono`: plates and IDs use Inter bold, uppercase, tabular figures); use more than one primary button per card or form; use pure black `#000`; use native `<select>` or `<input type="date">` (use `CustomSelect` and `DatePicker`); use `alert()` or `window.confirm()` (use `toast` and `ConfirmButton`); nest `rounded-card` inside a card (use `rounded-tile`); put a `<Button>` inside a `<Link>` (use `buttonStyles` on the `Link`); hand-build chips, segmented toggles or spinners (use `Chip`, `Segmented`, `Spinner`).
 
 **Class names:** `cn()` is `twMerge(clsx())`, so an override such as `h-8 px-3 text-xs` really replaces a component's default `h-10 px-4 text-sm`. Native checkboxes and radios take the ink colour from one global rule in `globals.css`. Labels above fields are `text-xs font-medium text-ink-muted`.
 

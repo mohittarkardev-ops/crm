@@ -7,7 +7,7 @@ import { requirePermission } from "@/lib/rbac/server";
 
 export default async function RenewalsPage() {
   await requirePermission("renewals.view");
-  const { rows, stats } = await getRenewals();
+  const { rows, totalCount, stats } = await getRenewals();
 
   return (
     <div className="space-y-4">
@@ -21,6 +21,8 @@ export default async function RenewalsPage() {
       <ModulePage
         index={4}
         rows={rows}
+        totalCount={totalCount}
+        exportName="renewals"
         emptyLabel="No renewals due"
         rowHref="/policies"
         search="Search client or policy…"
@@ -32,7 +34,7 @@ export default async function RenewalsPage() {
         columns={[
           { key: "client", label: "Client", type: "person" },
           { key: "policy", label: "Policy" },
-          { key: "insurer", label: "Insurer" },
+          { key: "insurer", label: "Insurer", type: "insurer" },
           { key: "expiry", label: "Expiry", type: "date" },
           { key: "daysLeft", label: "Days left", type: "number" },
           { key: "status", label: "Status", type: "chip" },

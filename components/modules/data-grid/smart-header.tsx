@@ -1,9 +1,12 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useLayoutEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import {
   Filter,
   ChevronDown,
+  ArrowUp,
+  ArrowDown,
   ArrowDownAZ,
   ArrowDownZA,
   ArrowDown10,
@@ -27,6 +30,7 @@ export interface SmartHeaderProps {
   label: string;
   fieldKey: string;
   isCustom?: boolean;
+  sortable?: boolean;
   filterType?: HeaderFilterType;
   options?: string[]; // for in_array
   openHeaderMenu: string | null;
@@ -41,6 +45,7 @@ export function SmartHeader({
   label,
   fieldKey,
   isCustom = false,
+  sortable = true,
   filterType = "contains",
   options = [],
   openHeaderMenu,
@@ -54,6 +59,32 @@ export function SmartHeader({
   const currentFilterData = columnFilters[fieldKey];
   const isSorted = sortConfig?.field === fieldKey;
   const isFiltered = Boolean(currentFilterData);
+
+  // The filter menu is drawn in a portal (fixed position) so the scrolling table never clips it.
+  const triggerRef = useRef<HTMLDivElement>(null);
+  const [menuPos, setMenuPos] = useState<{ left: number; top: number } | null>(null);
+
+  useLayoutEffect(() => {
+    if (!isMenuOpen) {
+      setMenuPos(null);
+      return;
+    }
+    const place = () => {
+      const rect = triggerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setMenuPos({
+        left: Math.min(Math.max(8, rect.left), window.innerWidth - 256 - 8),
+        top: rect.bottom + 6,
+      });
+    };
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [isMenuOpen]);
 
   // Local state for the filter menu
   const [tempText, setTempText] = useState<string>("");
@@ -141,8 +172,8 @@ export function SmartHeader({
     }
     if (filterType === "date_range") {
       return {
-        asc: <CalendarDays size={14} />,
-        desc: <CalendarDays size={14} />,
+        asc: <ArrowUp size={14} />,
+        desc: <ArrowDown size={14} />,
         labelAsc: "Oldest to Newest",
         labelDesc: "Newest to Oldest",
       };
@@ -160,6 +191,7 @@ export function SmartHeader({
   return (
     <th className="relative px-3 py-2.5 text-left text-[10px] font-semibold tracking-wider text-ink-muted uppercase border-b border-divider select-none bg-surface-muted/95 backdrop-blur whitespace-nowrap header-menu-container">
       <div
+        ref={triggerRef}
         onClick={() => setOpenHeaderMenu(isMenuOpen ? null : fieldKey)}
         className="inline-flex items-center gap-1.5 cursor-pointer hover:text-ink transition-colors group"
       >
@@ -167,7 +199,7 @@ export function SmartHeader({
         <div className="flex items-center gap-0.5 text-ink-faint">
           {isSorted && (
             <span className="text-ink">
-              {sortConfig?.direction === "asc" ? sortUI.asc : sortUI.desc}
+              {sortConfig?.direction === "asc" ? <ArrowUp size={12} /> : <ArrowDown size={12} />}
             </span>
           )}
           {isFiltered && (
@@ -181,35 +213,42 @@ export function SmartHeader({
         </div>
       </div>
 
-      {isMenuOpen && (
-        <div className="absolute top-full left-0 z-50 mt-1 w-64 rounded-tile border border-divider bg-surface-strong p-3 shadow-card-hover text-xs normal-case tracking-normal font-sans text-ink">
+      {isMenuOpen &&
+        menuPos &&
+        createPortal(
+        <div
+          style={{ left: menuPos.left, top: menuPos.top, maxHeight: `calc(100vh - ${menuPos.top}px - 12px)` }}
+          className="header-menu-panel pop-in fixed z-[60] w-64 overflow-y-auto rounded-tile border border-divider bg-surface-strong p-3 text-xs normal-case tracking-normal font-sans text-ink shadow-card-hover"
+        >
           {/* Sorting */}
-          <div className="space-y-1 pb-2 mb-2 border-b border-divider">
-            <button
-              type="button"
-              onClick={() => handleSortClick("asc")}
-              className={cn(
-                "flex w-full items-center gap-2 rounded-[4px] px-2 py-1.5 text-left transition-colors",
-                isSorted && sortConfig?.direction === "asc"
-                  ? "bg-accent-soft font-semibold text-ink"
-                  : "text-ink-muted hover:bg-surface-muted hover:text-ink"
-              )}
-            >
-              {sortUI.asc} {sortUI.labelAsc}
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSortClick("desc")}
-              className={cn(
-                "flex w-full items-center gap-2 rounded-[4px] px-2 py-1.5 text-left transition-colors",
-                isSorted && sortConfig?.direction === "desc"
-                  ? "bg-accent-soft font-semibold text-ink"
-                  : "text-ink-muted hover:bg-surface-muted hover:text-ink"
-              )}
-            >
-              {sortUI.desc} {sortUI.labelDesc}
-            </button>
-          </div>
+          {sortable && (
+            <div className="space-y-1 pb-2 mb-2 border-b border-divider">
+              <button
+                type="button"
+                onClick={() => handleSortClick("asc")}
+                className={cn(
+                  "flex w-full items-center gap-2 rounded-[4px] px-2 py-1.5 text-left transition-colors",
+                  isSorted && sortConfig?.direction === "asc"
+                    ? "bg-accent-soft font-semibold text-ink"
+                    : "text-ink-muted hover:bg-surface-muted hover:text-ink"
+                )}
+              >
+                {sortUI.asc} {sortUI.labelAsc}
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSortClick("desc")}
+                className={cn(
+                  "flex w-full items-center gap-2 rounded-[4px] px-2 py-1.5 text-left transition-colors",
+                  isSorted && sortConfig?.direction === "desc"
+                    ? "bg-accent-soft font-semibold text-ink"
+                    : "text-ink-muted hover:bg-surface-muted hover:text-ink"
+                )}
+              >
+                {sortUI.desc} {sortUI.labelDesc}
+              </button>
+            </div>
+          )}
 
           {/* Filtering */}
           <div>
@@ -320,7 +359,8 @@ export function SmartHeader({
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </th>
   );

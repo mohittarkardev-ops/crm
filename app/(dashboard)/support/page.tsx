@@ -7,7 +7,7 @@ import { requirePermission } from "@/lib/rbac/server";
 
 export default async function SupportPage() {
   await requirePermission("support.view");
-  const { rows, stats } = await getSupport();
+  const { rows, totalCount, stats } = await getSupport();
 
   return (
     <div className="space-y-4">
@@ -21,6 +21,8 @@ export default async function SupportPage() {
       <ModulePage
         index={4}
         rows={rows}
+        totalCount={totalCount}
+        exportName="support-tickets"
         emptyLabel="No support tickets yet"
         rowHref="/support"
         search="Search user or subject…"

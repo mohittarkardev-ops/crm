@@ -9,7 +9,7 @@ import { requirePermission } from "@/lib/rbac/server";
 
 export default async function ClientsPage() {
   const staff = await requirePermission("clients.view");
-  const { rows, stats } = await getClients();
+  const { rows, totalCount, stats } = await getClients();
 
   return (
     <div className="space-y-4">
@@ -23,6 +23,8 @@ export default async function ClientsPage() {
       <ModulePage
         index={4}
         rows={rows}
+        totalCount={totalCount}
+        exportName="clients"
         emptyLabel="No clients yet"
         search="Search name or mobile…"
         filters={[{ key: "type", label: "All types", options: CLIENT_TYPE_OPTIONS }]}

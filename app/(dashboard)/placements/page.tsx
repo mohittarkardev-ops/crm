@@ -17,7 +17,7 @@ import { requirePermission } from "@/lib/rbac/server";
 export default async function PlacementsPage() {
   const staff = await requirePermission("placements.view");
   const canManage = can(staff, "placements.manage");
-  const { rows, stats, slotOptions } = await getPlacements();
+  const { rows, totalCount, stats, slotOptions } = await getPlacements();
 
   // The same fields are used to create and to edit. When editing, each field is pre-filled from the row key of the same name.
   const fields: FieldDef[] = [
@@ -26,14 +26,21 @@ export default async function PlacementsPage() {
       label: "Slot name",
       required: true,
       suggestions: slotOptions.map((s) => s.value),
-      hint: "Must match a slot the app reads, for example home_banner.",
+      hint: "Flexible until final mobile build; e.g. home_banner.",
     },
     { name: "title", label: "Title", required: true },
     { name: "body", label: "Message", type: "textarea", full: true },
+    {
+      name: "imageUrl",
+      label: "Image URL",
+      full: true,
+      hint: "Optional https:// image URL shown on banner placements.",
+    },
     { name: "ctaLabel", label: "Button label" },
-    { name: "actionUrl", label: "Button link", hint: "Starts with https://" },
+    { name: "actionUrl", label: "Button link", hint: "Starts with https:// or /" },
     { name: "startsOn", label: "Starts on", type: "date", hint: "Leave empty to start now." },
     { name: "endsOn", label: "Ends on", type: "date", hint: "Leave empty to run until switched off." },
+    { name: "sortOrder", label: "Sort order", type: "number", hint: "Lower numbers show first (default 0)." },
   ];
 
   return (
@@ -48,6 +55,8 @@ export default async function PlacementsPage() {
       <ModulePage
         index={4}
         rows={rows}
+        totalCount={totalCount}
+        exportName="placements"
         emptyLabel="No placements yet"
         search="Search title…"
         filters={[
@@ -56,7 +65,9 @@ export default async function PlacementsPage() {
         ]}
         columns={[
           { key: "slot", label: "Slot", type: "chip" },
+          { key: "imageUrl", label: "Banner", type: "image" },
           { key: "title", label: "Title" },
+          { key: "sortOrder", label: "Order", type: "number", align: "right" },
           { key: "startsOn", label: "Starts", type: "date" },
           { key: "endsOn", label: "Ends", type: "date" },
           { key: "status", label: "Status", type: "chip" },
@@ -80,7 +91,17 @@ export default async function PlacementsPage() {
               ]
             : undefined
         }
-        primary={canManage ? { label: "New Placement", drawerTitle: "New Placement", action: createPlacement, fields } : undefined}
+        primary={
+          canManage
+            ? {
+                label: "New Placement",
+                drawerTitle: "New Placement",
+                action: createPlacement,
+                fields,
+                defaultValues: { sortOrder: "0" },
+              }
+            : undefined
+        }
       />
     </div>
   );

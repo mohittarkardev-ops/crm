@@ -102,7 +102,7 @@ export function RoleEditorDrawer({ isOpen, onClose, role }: RoleEditorDrawerProp
       onClose={onClose}
       title={isEdit ? `Edit Role: ${role?.name}` : "Create New Role"}
     >
-      <form onSubmit={handleSave} className="space-y-5 pb-6">
+      <form onSubmit={handleSave} className="space-y-5">
         {isAdminRole && (
           <div className="flex items-center gap-2 rounded-tile bg-accent-soft p-3 text-xs text-ink font-medium">
             <ShieldCheck size={16} className="text-ink shrink-0" />
@@ -147,7 +147,7 @@ export function RoleEditorDrawer({ isOpen, onClose, role }: RoleEditorDrawerProp
             </h3>
           </div>
 
-          <div className="space-y-4 max-h-[460px] overflow-y-auto pr-1">
+          <div className="space-y-4">
             {MODULES.map((mod) => {
               const modPermKeys = mod.permissions.map((p) => p.key);
               const allChecked = modPermKeys.every((k) => selectedPerms.has(k) || isAdminRole);
@@ -204,7 +204,7 @@ export function RoleEditorDrawer({ isOpen, onClose, role }: RoleEditorDrawerProp
           </div>
         )}
 
-        <div className="flex items-center justify-end gap-2 pt-4 border-t border-divider">
+        <div className="sticky bottom-0 -mx-6 -mb-5 mt-6 flex items-center justify-end gap-2 border-t border-divider bg-surface-strong px-6 py-4">
           <Button variant="secondary" onClick={onClose} disabled={loading}>
             Cancel
           </Button>

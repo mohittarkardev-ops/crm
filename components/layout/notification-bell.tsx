@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Bell, FileText, LifeBuoy, MessageSquareQuote, UserPlus, X, type LucideIcon } from "lucide-react";
+import { cn } from "@/lib/cn";
 import type { FeedItem, FeedKind } from "@/lib/data/feed";
 import { fetchFeed } from "@/lib/data/feed-actions";
 import { createClient } from "@/lib/supabase/client";
@@ -29,29 +30,70 @@ function timeAgo(iso: string) {
 }
 
 function Toast({ item, onClose }: { item: FeedItem; onClose: () => void }) {
+  const [entered, setEntered] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const remainingRef = useRef(TOAST_MS);
   const closeRef = useRef(onClose);
-  closeRef.current = onClose;
 
   useEffect(() => {
-    const timer = window.setTimeout(() => closeRef.current(), TOAST_MS);
-    return () => window.clearTimeout(timer);
+    closeRef.current = onClose;
+  }, [onClose]);
+
+  const beginClose = useCallback(() => {
+    setLeaving(true);
+    window.setTimeout(() => closeRef.current(), 280);
   }, []);
 
+  useEffect(() => {
+    let inner = 0;
+    const outer = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(() => {
+        setEntered(true);
+        if (cardRef.current?.matches(":hover")) setPaused(true);
+      });
+    });
+    return () => {
+      cancelAnimationFrame(outer);
+      cancelAnimationFrame(inner);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (paused || leaving) return;
+    const startedAt = Date.now();
+    const timer = window.setTimeout(beginClose, Math.max(0, remainingRef.current));
+    return () => {
+      window.clearTimeout(timer);
+      remainingRef.current = Math.max(0, remainingRef.current - (Date.now() - startedAt));
+    };
+  }, [paused, leaving, beginClose]);
+
   const Icon = ICONS[item.kind];
+  const visible = entered && !leaving;
   return (
-    <div className="pop-in flex items-start gap-3 rounded-tile bg-surface-strong p-3 shadow-card-hover">
+    <div
+      ref={cardRef}
+      onPointerEnter={() => setPaused(true)}
+      onPointerLeave={() => setPaused(false)}
+      className={cn(
+        "flex items-start gap-3 rounded-tile border border-divider/60 bg-surface-strong p-3 shadow-card-hover transition-[opacity,transform] duration-[280ms] ease-[cubic-bezier(0.22,1,0.36,1)]",
+        visible ? "translate-y-0 scale-100 opacity-100" : "translate-y-4 scale-[0.98] opacity-0",
+      )}
+    >
       <span className="grid size-9 shrink-0 place-items-center rounded-full bg-accent text-ink">
         <Icon size={16} strokeWidth={1.75} aria-hidden="true" />
       </span>
-      <Link href={item.href} onClick={onClose} className="min-w-0 flex-1">
+      <Link href={item.href} onClick={beginClose} className="min-w-0 flex-1">
         <p className="text-[13px] font-semibold text-ink">{item.title}</p>
         <p className="truncate text-xs text-ink-muted">{item.detail}</p>
       </Link>
       <button
         type="button"
         aria-label="Dismiss"
-        onClick={onClose}
-        className="grid size-6 shrink-0 place-items-center rounded-control text-ink-faint hover:bg-surface-muted hover:text-ink"
+        onClick={beginClose}
+        className="grid size-6 shrink-0 place-items-center rounded-control text-ink-faint transition-colors hover:bg-surface-muted hover:text-ink"
       >
         <X size={14} strokeWidth={1.75} aria-hidden="true" />
       </button>
@@ -210,11 +252,11 @@ export function NotificationBell({ staffId }: { staffId: string }) {
           aria-label={unread > 0 ? `Notifications, ${unread} unread` : "Notifications"}
           aria-expanded={open}
           onClick={toggle}
-          className="glass relative grid size-10 place-items-center rounded-control text-ink-muted transition-colors hover:text-ink"
+          className="glass relative grid size-10 place-items-center rounded-control text-ink-muted transition-[color,transform] duration-150 hover:text-ink active:scale-[0.97]"
         >
           <Bell size={18} strokeWidth={1.75} aria-hidden="true" />
           {unread > 0 && (
-            <span className="absolute -right-1 -top-1 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-negative px-1 text-[10px] font-semibold tabular-nums text-white">
+            <span className="check-pop absolute -right-1 -top-1 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-negative px-1 text-[10px] font-semibold tabular-nums text-white">
               {unread > 9 ? "9+" : unread}
             </span>
           )}

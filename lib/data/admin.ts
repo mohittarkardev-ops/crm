@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { countOf, dateIST, one, rowsOf } from "@/lib/data/helpers";
+import { countOf, dateIST, one, pagedRows, rowsOf } from "@/lib/data/helpers";
 import { countRenewalsDue } from "@/lib/data/policies";
 import type { Row } from "@/lib/module-types";
 import { chipFor } from "@/lib/status";
@@ -10,25 +10,30 @@ const head = { count: "exact", head: true } as const;
 
 export async function getAdControls() {
   const db = await createClient();
-  const [slotsRes, freeRes] = await Promise.all([
+  const [slotsRes, free, freeCountRes] = await Promise.all([
     db.from("ad_slots").select("slot_name, is_enabled, updated_at").order("slot_name"),
-    db
-      .from("ad_settings")
-      .select("user_id, updated_at, users(full_name, mobile_number)")
-      .eq("show_ads", false)
-      .order("updated_at", { ascending: false })
-      .limit(1000),
+    pagedRows<{
+      user_id: string;
+      updated_at: string;
+      users: { full_name: string | null; mobile_number: string } | { full_name: string | null; mobile_number: string }[] | null;
+    }>(
+      (from, to) =>
+        db
+          .from("ad_settings")
+          .select("user_id, updated_at, users(full_name, mobile_number)")
+          .eq("show_ads", false)
+          .order("updated_at", { ascending: false })
+          .order("id", { ascending: false })
+          .range(from, to),
+      "Ad-free users",
+    ),
+    db.from("ad_settings").select("id", head).eq("show_ads", false),
   ]);
 
   const slots = rowsOf<{ slot_name: string; is_enabled: boolean; updated_at: string }>(
     slotsRes,
     "Ad slots",
   );
-  const free = rowsOf<{
-    user_id: string;
-    updated_at: string;
-    users: { full_name: string | null; mobile_number: string } | { full_name: string | null; mobile_number: string }[] | null;
-  }>(freeRes, "Ad-free users");
 
   const slotRows: Row[] = slots.map((s) => ({
     id: s.slot_name,
@@ -48,10 +53,12 @@ export async function getAdControls() {
   });
 
   const enabled = slots.filter((s) => s.is_enabled).length;
+  const totalAdFree = countOf(freeCountRes, "Ad-free users count");
   return {
     slotRows,
     freeRows,
-    stats: { on: enabled, off: slots.length - enabled, adFree: freeRows.length },
+    totalAdFree,
+    stats: { on: enabled, off: slots.length - enabled, adFree: totalAdFree },
   };
 }
 

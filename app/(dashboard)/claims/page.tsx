@@ -1,7 +1,7 @@
 import { CircleCheck, CircleX, Clock, IndianRupee } from "lucide-react";
 import { ModulePage } from "@/components/modules/module-page";
 import { MiniStat, StatRow } from "@/components/ui/mini-stat";
-import { approveClaim, createClaim, rejectClaim } from "@/lib/actions/claims";
+import { approveClaim, createClaim, deleteClaim, rejectClaim, updateClaim } from "@/lib/actions/claims";
 import { getAgentOptions, getClaims } from "@/lib/data/claims";
 import type { FieldDef, Option } from "@/lib/module-types";
 import { can } from "@/lib/rbac/permissions";
@@ -30,12 +30,18 @@ const GROUP_OPTIONS: Option[] = [
 
 export default async function ClaimsPage() {
   const staff = await requirePermission("claims.view");
+  const isAdmin = staff.role === "admin";
   const canCreate = can(staff, "claims.create");
   const canReview = can(staff, "claims.approve");
-  const [{ rows, stats }, agents] = await Promise.all([getClaims(), canCreate ? getAgentOptions() : Promise.resolve([])]);
 
-  const fields: FieldDef[] = [
-    { name: "agent", label: "Agent", type: "select", options: agents, required: true, full: true },
+  const [{ rows, totalCount, stats }, createAgents, editAgents] = await Promise.all([
+    getClaims(),
+    canCreate ? getAgentOptions(staff.id, isAdmin) : Promise.resolve([]),
+    canReview ? getAgentOptions(staff.id, true) : Promise.resolve([]),
+  ]);
+
+  const buildFields = (agentList: Option[]): FieldDef[] => [
+    { name: "agent", label: "Agent", type: "select", options: agentList, required: true, full: true },
     { name: "vehicleRegNo", label: "Vehicle registration no.", required: true },
     { name: "paymentDate", label: "Payment date", type: "date", required: true, maxToday: true },
     { name: "paymentMode", label: "Paid by", type: "select", options: MODE_OPTIONS, required: true },
@@ -47,6 +53,9 @@ export default async function ClaimsPage() {
     { name: "vehicleGroup", label: "Vehicle group", type: "select", options: GROUP_OPTIONS },
     { name: "saodDueDate", label: "Own-damage (SAOD) due date", type: "date" },
   ];
+
+  const createFields = buildFields(createAgents);
+  const editFields = buildFields(editAgents);
 
   return (
     <div className="space-y-4">
@@ -60,15 +69,18 @@ export default async function ClaimsPage() {
       <ModulePage
         index={4}
         rows={rows}
+        totalCount={totalCount}
+        exportName="claims"
         emptyLabel="No claims yet"
-        search="Search vehicle, agent or customer…"
+        search="Search ref, vehicle, agent or customer…"
         filters={[
           { key: "status", label: "All statuses", options: STATUS_OPTIONS },
           { key: "mode", label: "All payment modes", options: MODE_OPTIONS },
         ]}
         columns={[
+          { key: "refCode", label: "Ref" },
           { key: "vehicle", label: "Vehicle" },
-          { key: "agent", label: "Agent" },
+          { key: "agentName", label: "Agent" },
           { key: "paymentDate", label: "Paid on", type: "date" },
           { key: "mode", label: "Paid by" },
           { key: "amount", label: "Amount", type: "inr", align: "right" },
@@ -77,6 +89,16 @@ export default async function ClaimsPage() {
           { key: "status", label: "Status", type: "chip" },
           { key: "submitted", label: "Added", type: "date" },
         ]}
+        edit={
+          canReview
+            ? {
+                drawerTitle: "Edit Claim",
+                fields: editFields,
+                action: updateClaim,
+                showWhen: { key: "status", in: ["pending"] },
+              }
+            : undefined
+        }
         rowActions={
           canReview
             ? [
@@ -88,10 +110,31 @@ export default async function ClaimsPage() {
                   showWhen: { key: "status", in: ["pending"] },
                   confirm: "Reject this claim? The vehicle can be claimed again afterwards.",
                 },
+                ...(isAdmin
+                  ? [
+                      {
+                        label: "Delete",
+                        action: deleteClaim,
+                        danger: true,
+                        showWhen: { key: "status", in: ["rejected"] },
+                        confirm: "Permanently delete this rejected claim? This cannot be undone.",
+                      },
+                    ]
+                  : []),
               ]
             : undefined
         }
-        primary={canCreate ? { label: "Add Claim", drawerTitle: "Add Claim", action: createClaim, fields } : undefined}
+        primary={
+          canCreate
+            ? {
+                label: "Add Claim",
+                drawerTitle: "Add Claim",
+                action: createClaim,
+                fields: createFields,
+                defaultValues: !isAdmin ? { agent: staff.id } : undefined,
+              }
+            : undefined
+        }
       />
     </div>
   );

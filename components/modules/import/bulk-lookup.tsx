@@ -12,7 +12,10 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
+import { CopyButton } from "@/components/ui/copy-button";
 import { Segmented } from "@/components/ui/segmented";
+import { toast } from "@/components/ui/toaster";
+import { cn } from "@/lib/cn";
 import { bulkLookupPolicies } from "@/lib/actions/import";
 
 interface BulkLookupProps {
@@ -55,7 +58,9 @@ export function BulkLookup({ customFields }: BulkLookupProps) {
   );
   const [format, setFormat] = useState<"csv" | "excel">("csv");
   const [loading, setLoading] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const [notice, setNotice] = useState<{ ok: boolean; message: string } | null>(null);
+  const [unmatchedList, setUnmatchedList] = useState<string[]>([]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -64,10 +69,7 @@ export function BulkLookup({ customFields }: BulkLookupProps) {
     ...customFields.map((c) => ({ key: c.key, label: c.label })),
   ];
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files || !e.target.files[0]) return;
-    const file = e.target.files[0];
-
+  const loadIdentifierFile = async (file: File) => {
     try {
       if (file.name.endsWith(".xlsx") || file.name.endsWith(".xls")) {
         const XLSX = await import("xlsx");
@@ -88,9 +90,15 @@ export function BulkLookup({ customFields }: BulkLookupProps) {
         setInputText(lines.join("\n"));
       }
       setNotice(null);
+      toast(`Loaded identifiers from ${file.name}.`);
     } catch (err: any) {
       setNotice({ ok: false, message: `Could not read file: ${err.message}` });
     }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || !e.target.files[0]) return;
+    await loadIdentifierFile(e.target.files[0]);
   };
 
   const toggleColumn = (key: string) => {
@@ -128,6 +136,7 @@ export function BulkLookup({ customFields }: BulkLookupProps) {
 
     setLoading(true);
     setNotice(null);
+    setUnmatchedList([]);
 
     try {
       const colList = Array.from(selectedCols);
@@ -138,10 +147,12 @@ export function BulkLookup({ customFields }: BulkLookupProps) {
         return;
       }
 
+      setUnmatchedList(res.unmatched);
+
       if (res.rows.length === 0) {
         setNotice({
           ok: false,
-          message: `0 records matched out of ${lines.length} identifiers searched.`,
+          message: `0 records matched out of ${res.searchedCount} unique identifiers searched.`,
         });
         return;
       }
@@ -169,9 +180,10 @@ export function BulkLookup({ customFields }: BulkLookupProps) {
           `bulk_lookup_export_${new Date().toISOString().slice(0, 10)}.xlsx`
         );
       } else {
-        // CSV
+        // CSV with formula-injection neutralization
         const escape = (val: any) => {
-          const s = val != null ? String(val) : "";
+          let s = val != null ? String(val) : "";
+          if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
           return s.includes(",") || s.includes('"') || s.includes("\n")
             ? `"${s.replace(/"/g, '""')}"`
             : s;
@@ -193,9 +205,11 @@ export function BulkLookup({ customFields }: BulkLookupProps) {
         URL.revokeObjectURL(url);
       }
 
+      const unmatchedNote =
+        res.unmatched.length > 0 ? ` (${res.unmatched.length} not found)` : "";
       setNotice({
         ok: true,
-        message: `Successfully matched and exported ${res.rows.length} of ${lines.length} vehicles.`,
+        message: `Matched and exported ${res.rows.length} policies across ${res.searchedCount} unique identifiers${unmatchedNote}.`,
       });
     } catch (err: any) {
       setNotice({ ok: false, message: `Lookup error: ${err.message}` });
@@ -249,9 +263,30 @@ export function BulkLookup({ customFields }: BulkLookupProps) {
             <textarea
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
-              placeholder="DL01AB1234&#10;HR26CD5678&#10;UP85XY9999"
+              onDragEnter={(e) => {
+                if (!e.dataTransfer?.types?.includes("Files")) return;
+                e.preventDefault();
+                setIsDragging(true);
+              }}
+              onDragOver={(e) => {
+                if (!e.dataTransfer?.types?.includes("Files")) return;
+                e.preventDefault();
+              }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={async (e) => {
+                e.preventDefault();
+                setIsDragging(false);
+                const dropped = e.dataTransfer.files?.[0];
+                if (dropped) await loadIdentifierFile(dropped);
+              }}
+              placeholder="DL01AB1234&#10;HR26CD5678&#10;UP85XY9999&#10;&#10;(Or drop a .csv / .xlsx / .txt file here)"
               rows={12}
-              className="w-full rounded-control border border-divider bg-surface-strong p-3 text-xs text-ink uppercase tracking-wide placeholder:text-ink-faint outline-none focus:border-accent-strong transition-colors"
+              className={cn(
+                "w-full rounded-control border p-3 text-xs text-ink uppercase tracking-wide placeholder:text-ink-faint outline-none transition-[border-color,background-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
+                isDragging
+                  ? "border-accent-strong bg-accent-soft/45"
+                  : "border-divider bg-surface-strong focus:border-accent-strong",
+              )}
             />
           </div>
 
@@ -318,12 +353,30 @@ export function BulkLookup({ customFields }: BulkLookupProps) {
 
         {notice && (
           <div
-            className={`mt-4 flex items-center gap-2 rounded-tile p-3 text-xs ${
+            className={`mt-4 flex flex-col gap-2 rounded-tile p-3 text-xs ${
               notice.ok ? "bg-positive-soft text-positive" : "bg-negative-soft text-negative"
             }`}
           >
-            {notice.ok ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
-            <span>{notice.message}</span>
+            <div className="flex items-center gap-2">
+              {notice.ok ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+              <span>{notice.message}</span>
+            </div>
+            {unmatchedList.length > 0 && (
+              <div className="mt-1 flex flex-wrap items-center justify-between gap-2 border-t border-divider/40 pt-2 text-[11px] text-ink">
+                <span className="truncate max-w-xl select-text">
+                  Not found ({unmatchedList.length}): {unmatchedList.slice(0, 10).join(", ")}
+                  {unmatchedList.length > 10 ? ` … (+${unmatchedList.length - 10} more)` : ""}
+                </span>
+                <CopyButton
+                  text={unmatchedList.join("\n")}
+                  label="Copy unmatched list"
+                  copiedLabel="Copied list"
+                  toastMessage="Copied unmatched identifiers."
+                  errorMessage="Could not copy automatically."
+                  className="shrink-0"
+                />
+              </div>
+            )}
           </div>
         )}
       </Card>

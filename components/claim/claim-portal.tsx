@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Chip } from "@/components/ui/chip";
+import { CopyButton } from "@/components/ui/copy-button";
 import { CustomSelect } from "@/components/ui/custom-select";
 import { DatePicker } from "@/components/ui/date-picker";
 import { CONTROL } from "@/components/ui/field";
@@ -47,6 +48,8 @@ export function ClaimPortal() {
   const [code, setCode] = useState("");
   const [employees, setEmployees] = useState<PortalEmployee[] | null>(null);
   const [lockError, setLockError] = useState<string | null>(null);
+  const [lockErrorPulse, setLockErrorPulse] = useState(0);
+  const [formErrorPulse, setFormErrorPulse] = useState(0);
 
   // Step 2: Form & Lookup State
   const [employeeId, setEmployeeId] = useState("");
@@ -67,6 +70,7 @@ export function ClaimPortal() {
   const [submitSuccess, setSubmitSuccess] = useState<{
     vehicle: string;
     message: string;
+    refCode: string;
     isUnknown: boolean;
   } | null>(null);
 
@@ -84,9 +88,11 @@ export function ClaimPortal() {
         setEmployees(res.employees);
       } else {
         setLockError(res.error);
+        setLockErrorPulse((n) => n + 1);
       }
     } catch {
       setLockError("Something went wrong. Please check your connection and try again.");
+      setLockErrorPulse((n) => n + 1);
     } finally {
       setBusy(null);
     }
@@ -143,13 +149,16 @@ export function ClaimPortal() {
         setSubmitSuccess({
           vehicle: cleanReg,
           message: res.message || "Claim submitted successfully.",
+          refCode: res.refCode || "",
           isUnknown: lookup.state === "unknown",
         });
       } else {
         setErrors(res.fieldErrors || { form: res.error || "Failed to submit claim." });
+        setFormErrorPulse((n) => n + 1);
       }
     } catch {
       setErrors({ form: "Network error occurred while submitting. Please try again." });
+      setFormErrorPulse((n) => n + 1);
     } finally {
       setBusy(null);
     }
@@ -206,7 +215,11 @@ export function ClaimPortal() {
           </label>
 
           {lockError && (
-            <div className="flex items-start gap-2 rounded-control bg-negative-soft p-3 text-xs text-negative">
+            <div
+              key={lockErrorPulse}
+              role="alert"
+              className="micro-shake flex items-start gap-2 rounded-control bg-negative-soft p-3 text-xs text-negative"
+            >
               <TriangleAlert size={16} className="mt-0.5 shrink-0" />
               <span>{lockError}</span>
             </div>
@@ -231,8 +244,8 @@ export function ClaimPortal() {
   if (submitSuccess) {
     const selectedAgentName = employees.find((e) => e.id === employeeId)?.name || "Agent";
     return (
-      <Card className="mx-auto w-full max-w-xl p-6 sm:p-8 text-center space-y-6">
-        <div className="mx-auto grid size-16 place-items-center rounded-full bg-positive-soft text-positive">
+      <Card className="reveal-down mx-auto w-full max-w-xl p-6 sm:p-8 text-center space-y-6">
+        <div className="check-pop mx-auto grid size-16 place-items-center rounded-full bg-positive-soft text-positive">
           <CheckCircle2 size={36} strokeWidth={2} />
         </div>
 
@@ -247,6 +260,20 @@ export function ClaimPortal() {
 
         {/* Claim Details Card */}
         <div className="rounded-tile border border-divider bg-surface-muted/60 p-4 text-left space-y-2.5">
+          {submitSuccess.refCode && (
+            <div className="flex items-center justify-between border-b border-divider/60 pb-2 text-xs">
+              <span className="text-ink-muted">Reference ID</span>
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-ink uppercase tracking-wider tabular-nums select-text">
+                  {submitSuccess.refCode}
+                </span>
+                <CopyButton
+                  text={submitSuccess.refCode}
+                  title="Copy reference ID"
+                />
+              </div>
+            </div>
+          )}
           <div className="flex items-center justify-between border-b border-divider/60 pb-2 text-xs">
             <span className="text-ink-muted">Vehicle Registration</span>
             <span className="font-bold text-ink uppercase tracking-wider tabular-nums">
@@ -296,7 +323,7 @@ export function ClaimPortal() {
   const canSubmit = isVehicleVerified && Boolean(employeeId);
 
   return (
-    <form onSubmit={handleSubmit} noValidate className="space-y-6">
+    <form onSubmit={handleSubmit} noValidate className="reveal-down space-y-6">
       {/* ------------------------------------------------------------------ */}
       {/* Card 1: Agent & Vehicle Registration Number (Spacious & Responsive) */}
       {/* ------------------------------------------------------------------ */}
@@ -309,7 +336,7 @@ export function ClaimPortal() {
         <div className="grid gap-5 sm:grid-cols-12 items-start">
           {/* Agent Selection (Spacious 5-columns) */}
           <div className="sm:col-span-5">
-            <label className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-1.5">
               <span className="text-xs font-medium text-ink-muted">
                 Agent / Employee Name <span className="text-negative">*</span>
               </span>
@@ -334,7 +361,7 @@ export function ClaimPortal() {
               ) : (
                 <span className="text-[11px] text-ink-muted">Claims will be credited to this profile.</span>
               )}
-            </label>
+            </div>
           </div>
 
           {/* Vehicle Registration Number (Spacious 7-columns with Indian Plate Aesthetic) */}
@@ -451,7 +478,7 @@ export function ClaimPortal() {
         {claimed && lookup?.ok && lookup.state === "claimed" && (
           <div
             role="alert"
-            className="flex items-start gap-3 rounded-tile bg-negative-soft p-4 text-negative"
+            className="reveal-down flex items-start gap-3 rounded-tile bg-negative-soft p-4 text-negative"
           >
             <TriangleAlert size={20} strokeWidth={2} className="mt-0.5 shrink-0" />
             <div>
@@ -466,7 +493,7 @@ export function ClaimPortal() {
 
         {/* State C: Known Vehicle (Existing Policy in SecureDrive CRM) */}
         {known && lookup?.ok && lookup.state === "known" && (
-          <div className="space-y-4">
+          <div className="reveal-down space-y-4">
             <div className="flex items-center gap-2 rounded-tile bg-positive-soft px-3.5 py-2.5 text-xs text-positive font-medium">
               <CheckCircle2 size={16} strokeWidth={2} className="shrink-0" />
               <span>
@@ -505,7 +532,7 @@ export function ClaimPortal() {
 
         {/* State D: Unknown Vehicle (Requires customer details for admin verification) */}
         {unknown && lookup?.ok && lookup.state === "unknown" && (
-          <div className="space-y-4">
+          <div className="reveal-down space-y-4">
             <div className="flex items-start gap-3 rounded-tile bg-warning-soft p-4 text-warning">
               <TriangleAlert size={20} strokeWidth={2} className="mt-0.5 shrink-0" />
               <div>
@@ -557,7 +584,7 @@ export function ClaimPortal() {
                 )}
               </label>
 
-              <label className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-1.5">
                 <span className="text-xs font-medium text-ink-muted">
                   Vehicle Category <span className="text-negative">*</span>
                 </span>
@@ -571,9 +598,9 @@ export function ClaimPortal() {
                 {errors.vehicleGroup && (
                   <span className="text-xs text-negative">{errors.vehicleGroup}</span>
                 )}
-              </label>
+              </div>
 
-              <label className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-1.5">
                 <span className="text-xs font-medium text-ink-muted">
                   SAOD Due Date <span className="text-negative">*</span>
                 </span>
@@ -586,7 +613,7 @@ export function ClaimPortal() {
                 {errors.saodDueDate && (
                   <span className="text-xs text-negative">{errors.saodDueDate}</span>
                 )}
-              </label>
+              </div>
             </div>
           </div>
         )}
@@ -602,7 +629,7 @@ export function ClaimPortal() {
         />
 
         <div className="grid gap-4 sm:grid-cols-3">
-          <label className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-1.5">
             <span className="text-xs font-medium text-ink-muted">
               Payment Date <span className="text-negative">*</span>
             </span>
@@ -617,9 +644,9 @@ export function ClaimPortal() {
             ) : (
               <span className="text-[11px] text-ink-faint">Date payment was received.</span>
             )}
-          </label>
+          </div>
 
-          <label className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-1.5">
             <span className="text-xs font-medium text-ink-muted">
               Payment Mode <span className="text-negative">*</span>
             </span>
@@ -633,7 +660,7 @@ export function ClaimPortal() {
             {errors.paymentMode && (
               <span className="text-xs text-negative">{errors.paymentMode}</span>
             )}
-          </label>
+          </div>
 
           <label className="flex flex-col gap-1.5">
             <span className="text-xs font-medium text-ink-muted">Transaction Remarks / UTR</span>
@@ -652,7 +679,11 @@ export function ClaimPortal() {
 
       {/* Global Form Errors */}
       {errors.form && (
-        <div className="flex items-center gap-2 rounded-control bg-negative-soft p-3 text-xs text-negative">
+        <div
+          key={formErrorPulse}
+          role="alert"
+          className="micro-shake flex items-center gap-2 rounded-control bg-negative-soft p-3 text-xs text-negative"
+        >
           <TriangleAlert size={16} className="shrink-0" />
           <span>{errors.form}</span>
         </div>

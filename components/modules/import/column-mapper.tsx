@@ -89,16 +89,25 @@ const SYNONYMS: Record<string, string[]> = {
   vehicle_engine_no: ["engine", "engine no", "engine_no", "motor no"],
   vehicle_cc: ["cc", "cubic capacity", "cubic_capacity", "engine cc"],
   seating_capacity: ["seating capacity", "seating cap", "seating_capacity", "seats"],
+  vehicle_mfy: ["mfy", "mfg year", "manufacturing year", "year of manufacture", "vehicle_mfy", "make year"],
   rto_location: ["rto", "rto location", "rto_location", "city rto"],
   pin: ["pin", "pincode", "postal code", "zip"],
   pin_2: ["pin 2", "pin_2", "second pin"],
 };
 
 function autoMatchHeader(header: string): string {
-  const clean = header.toLowerCase().replace(/[^a-z0-9]/g, " ").trim();
+  const clean = header.toLowerCase().replace(/[^a-z0-9]/g, " ").replace(/\s+/g, " ").trim();
+  if (!clean) return "";
+  // Prefer exact synonym match first
   for (const [targetKey, syns] of Object.entries(SYNONYMS)) {
-    if (syns.some((s) => clean === s || clean.includes(s) || s.includes(clean))) {
-      return targetKey;
+    if (syns.some((s) => clean === s)) return targetKey;
+  }
+  // Then whole-word or long substring match (avoid 1-2 char header false positives)
+  if (clean.length >= 3) {
+    for (const [targetKey, syns] of Object.entries(SYNONYMS)) {
+      if (syns.some((s) => (s.length >= 4 && clean.includes(s)) || s.includes(clean))) {
+        return targetKey;
+      }
     }
   }
   return ""; // Unmapped / Ignore
@@ -130,9 +139,12 @@ export function ColumnMapper({ customFields }: ColumnMapperProps) {
   const [totalChunks, setTotalChunks] = useState(0);
   const [stats, setStats] = useState({ inserted: 0, updated: 0, skipped: 0 });
   const [errorLogs, setErrorLogs] = useState<string[]>([]);
+  const [warningLogs, setWarningLogs] = useState<string[]>([]);
   const [isAborted, setIsAborted] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const dragDepthRef = useRef(0);
 
   // All available target options (standard + dynamic custom fields)
   const availableTargetOptions = useMemo(() => {
@@ -152,10 +164,8 @@ export function ColumnMapper({ customFields }: ColumnMapperProps) {
     return list;
   }, [customFields]);
 
-  // Handle file reading
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files || !e.target.files[0]) return;
-    const selectedFile = e.target.files[0];
+  // Shared file parser for both click-select and drag-and-drop
+  const processSelectedFile = async (selectedFile: File) => {
     setFile(selectedFile);
 
     try {
@@ -205,6 +215,19 @@ export function ColumnMapper({ customFields }: ColumnMapperProps) {
     }
   };
 
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || !e.target.files[0]) return;
+    await processSelectedFile(e.target.files[0]);
+  };
+
+  const handleFileDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    dragDepthRef.current = 0;
+    setIsDragging(false);
+    const dropped = e.dataTransfer.files?.[0];
+    if (dropped) await processSelectedFile(dropped);
+  };
+
   const handleMappingChange = (header: string, targetKey: string) => {
     setMappings((prev) => ({
       ...prev,
@@ -244,6 +267,7 @@ export function ColumnMapper({ customFields }: ColumnMapperProps) {
     setStep(3);
     setProcessedChunks(0);
     setErrorLogs([]);
+    setWarningLogs([]);
     setStats({ inserted: 0, updated: 0, skipped: 0 });
 
     // 1. Initialize batch in database
@@ -275,6 +299,7 @@ export function ColumnMapper({ customFields }: ColumnMapperProps) {
     let accumulatedUpdated = 0;
     let accumulatedSkipped = 0;
     const accumulatedErrors: string[] = [];
+    const accumulatedWarnings = new Set<string>();
 
     // 3. Process chunks sequentially
     for (let c = 0; c < total; c++) {
@@ -292,6 +317,10 @@ export function ColumnMapper({ customFields }: ColumnMapperProps) {
         accumulatedSkipped += chunkRes.skipped;
         if (chunkRes.errors && chunkRes.errors.length > 0) {
           accumulatedErrors.push(...chunkRes.errors);
+        }
+        if (chunkRes.warnings && chunkRes.warnings.length > 0) {
+          chunkRes.warnings.forEach((w) => accumulatedWarnings.add(w));
+          setWarningLogs(Array.from(accumulatedWarnings));
         }
 
         setStats({
@@ -340,11 +369,41 @@ export function ColumnMapper({ customFields }: ColumnMapperProps) {
 
             <div
               onClick={() => fileInputRef.current?.click()}
-              className="cursor-pointer rounded-tile border-2 border-dashed border-divider p-8 hover:border-ink hover:bg-surface-muted/30 transition-all"
+              onDragEnter={(e) => {
+                if (!e.dataTransfer?.types?.includes("Files")) return;
+                e.preventDefault();
+                dragDepthRef.current += 1;
+                setIsDragging(true);
+              }}
+              onDragOver={(e) => {
+                if (!e.dataTransfer?.types?.includes("Files")) return;
+                e.preventDefault();
+              }}
+              onDragLeave={() => {
+                dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+                if (dragDepthRef.current === 0) setIsDragging(false);
+              }}
+              onDrop={handleFileDrop}
+              className={cn(
+                "cursor-pointer rounded-tile border-2 border-dashed p-8 transition-[border-color,background-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
+                isDragging
+                  ? "border-accent-strong bg-accent-soft/45"
+                  : "border-divider hover:border-ink/60 hover:bg-surface-muted/30",
+              )}
             >
-              <FileSpreadsheet size={32} className="mx-auto text-ink-faint mb-2" />
-              <p className="text-xs font-semibold text-ink">Click to browse your computer</p>
-              <p className="text-[11px] text-ink-faint mt-0.5">Supports files up to 200,000+ rows</p>
+              <div className="pointer-events-none select-none">
+                <FileSpreadsheet
+                  size={32}
+                  className={cn(
+                    "mx-auto mb-2 transition-[color,transform] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
+                    isDragging ? "-translate-y-0.5 text-ink" : "text-ink-faint",
+                  )}
+                />
+                <p className="text-xs font-semibold text-ink">Click or drop spreadsheet here to upload</p>
+                <p className="text-[11px] text-ink-faint mt-0.5">
+                  Supports CSV, Excel (.xlsx, .xls), JSON — up to 200,000+ rows
+                </p>
+              </div>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -359,7 +418,7 @@ export function ColumnMapper({ customFields }: ColumnMapperProps) {
 
       {/* Step 2: Smart Column Mapper & Preview */}
       {step === 2 && file && (
-        <div className="space-y-4">
+        <div className="reveal-down space-y-4">
           {/* Summary Banner */}
           <Card className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
@@ -430,7 +489,7 @@ export function ColumnMapper({ customFields }: ColumnMapperProps) {
               }
             />
 
-            <div className="overflow-x-auto max-h-[380px]">
+            <div className="overflow-x-auto max-h-[min(420px,52vh)]">
               <table className="w-full text-left text-xs">
                 <thead className="sticky top-0 bg-surface border-b border-divider text-[10px] font-semibold text-ink-muted uppercase tracking-[0.06em]">
                   <tr>
@@ -511,7 +570,7 @@ export function ColumnMapper({ customFields }: ColumnMapperProps) {
 
       {/* Step 3: Chunked Progress Screen */}
       {step === 3 && (
-        <Card className="p-8 text-center space-y-6">
+        <Card className="reveal-down p-8 text-center space-y-6">
           <div className="max-w-md mx-auto space-y-3">
             <div className="flex justify-center">
               <Spinner size={32} />
@@ -564,9 +623,9 @@ export function ColumnMapper({ customFields }: ColumnMapperProps) {
 
       {/* Step 4: Finished Summary */}
       {step === 4 && (
-        <Card className="p-8 text-center space-y-6">
+        <Card className="reveal-down p-8 text-center space-y-6">
           <div className="max-w-md mx-auto space-y-4">
-            <div className="mx-auto grid size-12 place-items-center rounded-full bg-positive-soft text-positive">
+            <div className="check-pop mx-auto grid size-12 place-items-center rounded-full bg-positive-soft text-positive">
               <CheckCircle2 size={24} />
             </div>
             <div>
@@ -592,12 +651,26 @@ export function ColumnMapper({ customFields }: ColumnMapperProps) {
               </div>
             </div>
 
-            {/* Error logs review */}
+            {/* Warnings & Error logs review */}
+            {warningLogs.length > 0 && (
+              <div className="rounded-tile bg-warning-soft p-3 text-left text-xs text-warning space-y-1">
+                <p className="font-semibold">Data notes:</p>
+                {warningLogs.map((w, i) => (
+                  <p key={i}>• {w}</p>
+                ))}
+              </div>
+            )}
+
             {errorLogs.length > 0 && (
               <div className="rounded-tile bg-negative-soft p-3 text-left">
                 <p className="text-xs font-semibold text-negative mb-1">
                   Note: {errorLogs.length} rows were skipped due to format issues.
                 </p>
+                <div className="max-h-28 overflow-y-auto space-y-0.5 text-[11px] text-negative">
+                  {errorLogs.slice(0, 20).map((err, i) => (
+                    <p key={i}>• {err}</p>
+                  ))}
+                </div>
               </div>
             )}
 

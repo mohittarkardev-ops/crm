@@ -7,7 +7,7 @@ import { requirePermission } from "@/lib/rbac/server";
 
 export default async function QuotesPage() {
   await requirePermission("quotes.view");
-  const { rows, stats } = await getQuotes();
+  const { rows, totalCount, stats } = await getQuotes();
 
   return (
     <div className="space-y-4">
@@ -21,6 +21,8 @@ export default async function QuotesPage() {
       <ModulePage
         index={4}
         rows={rows}
+        totalCount={totalCount}
+        exportName="quote-requests"
         emptyLabel="No quote requests yet"
         rowHref="/quotes"
         search="Search user or policy…"

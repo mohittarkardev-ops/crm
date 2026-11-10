@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { signIn, type LoginState } from "@/app/login/actions";
 import { Button } from "@/components/ui/button";
 import { CONTROL } from "@/components/ui/field";
@@ -10,6 +10,11 @@ const initialState: LoginState = {};
 
 export function LoginForm() {
   const [state, formAction, pending] = useActionState(signIn, initialState);
+  const [errorPulse, setErrorPulse] = useState(0);
+
+  useEffect(() => {
+    if (state.error) setErrorPulse((n) => n + 1);
+  }, [state]);
 
   return (
     <form action={formAction} className="space-y-4">
@@ -21,7 +26,7 @@ export function LoginForm() {
           autoComplete="email"
           required
           autoFocus
-          className={cn(CONTROL, "h-10")}
+          className={cn(CONTROL, "h-10", state.error && "border-negative/60")}
         />
       </label>
 
@@ -32,12 +37,12 @@ export function LoginForm() {
           type="password"
           autoComplete="current-password"
           required
-          className={cn(CONTROL, "h-10")}
+          className={cn(CONTROL, "h-10", state.error && "border-negative/60")}
         />
       </label>
 
       {state.error && (
-        <p role="alert" className="rounded-control bg-negative-soft px-3 py-2 text-xs text-negative">
+        <p key={errorPulse} role="alert" className="micro-shake rounded-control bg-negative-soft px-3 py-2 text-xs text-negative">
           {state.error}
         </p>
       )}

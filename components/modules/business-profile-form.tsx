@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useRef } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { PendingBar } from "@/components/ui/pending-bar";
 import { FieldGrid } from "@/components/ui/field";
@@ -21,11 +21,20 @@ const FIELDS: FieldDef[] = [
 export function BusinessProfileForm({ profile }: { profile: BusinessProfile }) {
   const [state, formAction, pending] = useActionState(saveBusinessProfile, { ok: false } as ActionState);
   const handled = useRef<ActionState | null>(null);
+  const [savedFlash, setSavedFlash] = useState(false);
+  const [errorPulse, setErrorPulse] = useState(0);
 
   useEffect(() => {
-    if (!state.ok || handled.current === state) return;
-    handled.current = state;
-    toast(state.message ?? "Saved.");
+    if (state.ok && handled.current !== state) {
+      handled.current = state;
+      toast(state.message ?? "Saved.");
+      setSavedFlash(true);
+      const t = window.setTimeout(() => setSavedFlash(false), 1600);
+      return () => window.clearTimeout(t);
+    }
+    if (!state.ok && (state.error || state.fieldErrors)) {
+      setErrorPulse((n) => n + 1);
+    }
   }, [state]);
 
   const stored: Record<string, string> = {
@@ -41,13 +50,13 @@ export function BusinessProfileForm({ profile }: { profile: BusinessProfile }) {
     <form action={formAction} noValidate>
       <PendingBar active={pending} className="mb-3" />
       {state.error && (
-        <p role="alert" className="mb-4 rounded-control bg-negative-soft px-3 py-2 text-xs text-negative">
+        <p key={errorPulse} role="alert" className="micro-shake mb-4 rounded-control bg-negative-soft px-3 py-2 text-xs text-negative">
           {state.error}
         </p>
       )}
       <FieldGrid key={errorKey} fields={FIELDS} errors={state.fieldErrors} values={state.values ?? stored} />
       <div className="mt-5 flex justify-end">
-        <Button type="submit" loading={pending}>
+        <Button type="submit" loading={pending} saved={savedFlash} savedLabel="Saved">
           Save
         </Button>
       </div>

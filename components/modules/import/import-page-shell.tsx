@@ -20,7 +20,9 @@ export function ImportPageShell({
   canImport,
   canLookup,
 }: ImportPageShellProps) {
-  const [activeTab, setActiveTab] = useState<"import" | "lookup" | "history">("import");
+  const [activeTab, setActiveTab] = useState<"import" | "lookup" | "history">(
+    canImport ? "import" : canLookup ? "lookup" : "history",
+  );
 
   const tabOptions = [
     ...(canImport ? [{ value: "import" as const, label: "Bulk Import" }] : []),

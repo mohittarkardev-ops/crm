@@ -1,10 +1,11 @@
 "use client";
 
 import React, { useState } from "react";
-import { Plus, Edit2, Trash2, ShieldCheck, Users, KeyRound, ShieldAlert } from "lucide-react";
+import { Plus, Edit2, Trash2, ShieldCheck, Users, KeyRound } from "lucide-react";
 import { Card, CardHeader } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Button, buttonStyles } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
+import { ConfirmButton } from "@/components/ui/confirm-button";
 import { toast } from "@/components/ui/toaster";
 import { type RoleItem } from "@/lib/data/rbac";
 import { RoleEditorDrawer } from "./role-editor-drawer";
@@ -32,10 +33,6 @@ export function RolesTable({ roles }: RolesTableProps) {
   const handleDelete = async (role: RoleItem) => {
     if (role.isSystem) {
       toast(`System role "${role.name}" cannot be deleted.`, "error");
-      return;
-    }
-
-    if (!window.confirm(`Delete role "${role.name}"? Staff currently assigned to this role will lose their custom role permissions.`)) {
       return;
     }
 
@@ -67,9 +64,9 @@ export function RolesTable({ roles }: RolesTableProps) {
       />
 
       <div className="overflow-x-auto">
-        <table className="w-full text-left text-xs whitespace-nowrap">
+        <table className="w-full text-left text-xs">
           <thead>
-            <tr className="border-b border-divider text-[10px] font-semibold text-ink-muted uppercase tracking-[0.06em]">
+            <tr className="border-b border-divider text-[10px] font-semibold text-ink-muted uppercase tracking-[0.06em] whitespace-nowrap">
               <th className="px-4 pb-2.5">Role Name</th>
               <th className="px-4 pb-2.5">Description</th>
               <th className="px-4 pb-2.5 text-center">Type</th>
@@ -83,7 +80,7 @@ export function RolesTable({ roles }: RolesTableProps) {
               const isAdmin = r.name === "Admin";
               return (
                 <tr key={r.id} className="h-14 border-t border-divider transition-colors hover:bg-accent-soft/40">
-                  <td className="px-4 py-3 font-semibold text-ink">
+                  <td className="px-4 py-3 font-semibold text-ink whitespace-nowrap">
                     <div className="flex items-center gap-2">
                       {r.isSystem ? (
                         <ShieldCheck size={15} className="text-ink shrink-0" />
@@ -93,21 +90,21 @@ export function RolesTable({ roles }: RolesTableProps) {
                       <span>{r.name}</span>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-ink-muted max-w-sm truncate">
+                  <td className="px-4 py-3 text-ink-muted max-w-xs truncate" title={r.description || undefined}>
                     {r.description || <span className="text-ink-faint italic">—</span>}
                   </td>
-                  <td className="px-4 py-3 text-center">
+                  <td className="px-4 py-3 text-center whitespace-nowrap">
                     <Chip tone={r.isSystem ? "accent" : "neutral"}>
                       {r.isSystem ? "System" : "Custom"}
                     </Chip>
                   </td>
-                  <td className="px-4 py-3 text-center font-medium text-ink tabular-nums">
+                  <td className="px-4 py-3 text-center font-medium text-ink tabular-nums whitespace-nowrap">
                     <span className="inline-flex items-center gap-1">
                       <Users size={12} className="text-ink-muted" />
                       {r.staffCount}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-center">
+                  <td className="px-4 py-3 text-center whitespace-nowrap">
                     {isAdmin ? (
                       <Chip tone="positive">All Access</Chip>
                     ) : (
@@ -116,7 +113,7 @@ export function RolesTable({ roles }: RolesTableProps) {
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="px-4 py-3 text-right whitespace-nowrap">
                     <div className="flex items-center justify-end gap-1">
                       <Button
                         variant="ghost"
@@ -127,15 +124,18 @@ export function RolesTable({ roles }: RolesTableProps) {
                         Edit
                       </Button>
                       {!r.isSystem && (
-                        <Button
-                          variant="ghost"
-                          onClick={() => handleDelete(r)}
+                        <ConfirmButton
+                          title={`Delete role "${r.name}"?`}
+                          description="Staff currently assigned to this role will lose these custom role permissions."
+                          confirmLabel="Delete role"
                           loading={deletingId === r.id}
-                          className="h-7 px-2 text-xs text-negative hover:bg-negative-soft hover:text-negative"
+                          disabled={deletingId !== null}
+                          onConfirm={() => handleDelete(r)}
+                          className={buttonStyles("ghost", "h-7 px-2 text-xs text-negative hover:bg-negative-soft hover:text-negative")}
                         >
-                          <Trash2 size={12} />
+                          {deletingId !== r.id && <Trash2 size={12} />}
                           Delete
-                        </Button>
+                        </ConfirmButton>
                       )}
                     </div>
                   </td>

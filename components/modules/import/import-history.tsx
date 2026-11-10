@@ -1,12 +1,14 @@
 "use client";
 
 import React, { useState } from "react";
-import { History, RotateCcw, CheckCircle2, AlertCircle } from "lucide-react";
+import { RotateCcw, CheckCircle2, AlertCircle } from "lucide-react";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Chip } from "@/components/ui/chip";
-import { Button } from "@/components/ui/button";
+import { buttonStyles } from "@/components/ui/button";
+import { ConfirmButton } from "@/components/ui/confirm-button";
 import type { ImportBatchRecord } from "@/lib/import-fields";
 import { undoImportBatch } from "@/lib/actions/import";
+import { cn } from "@/lib/cn";
 import { formatDate } from "@/lib/format";
 
 interface ImportHistoryProps {
@@ -17,13 +19,10 @@ interface ImportHistoryProps {
 export function ImportHistory({ batches: initialBatches, canManage }: ImportHistoryProps) {
   const [batches, setBatches] = useState<ImportBatchRecord[]>(initialBatches);
   const [undoingId, setUndoingId] = useState<string | null>(null);
+  const [flashedId, setFlashedId] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ ok: boolean; message: string } | null>(null);
 
   const handleUndo = async (batchId: string) => {
-    if (!window.confirm("Are you sure you want to rollback and undo this import? All policies and orphan clients created by this batch will be permanently removed.")) {
-      return;
-    }
-
     setUndoingId(batchId);
     setNotice(null);
 
@@ -33,6 +32,8 @@ export function ImportHistory({ batches: initialBatches, canManage }: ImportHist
         setBatches((prev) =>
           prev.map((b) => (b.id === batchId ? { ...b, status: "undone" } : b))
         );
+        setFlashedId(batchId);
+        window.setTimeout(() => setFlashedId((cur) => (cur === batchId ? null : cur)), 1100);
         setNotice({ ok: true, message: res.message });
       } else {
         setNotice({ ok: false, message: res.message });
@@ -67,9 +68,9 @@ export function ImportHistory({ batches: initialBatches, canManage }: ImportHist
       )}
 
       <div className="overflow-x-auto">
-        <table className="w-full text-left text-xs whitespace-nowrap">
+        <table className="w-full text-left text-xs">
           <thead>
-            <tr className="border-b border-divider text-[10px] font-semibold text-ink-muted uppercase tracking-[0.06em]">
+            <tr className="border-b border-divider text-[10px] font-semibold text-ink-muted uppercase tracking-[0.06em] whitespace-nowrap">
               <th className="px-4 pb-2.5">Date</th>
               <th className="px-4 pb-2.5">File Name</th>
               <th className="px-4 pb-2.5 text-right">Total</th>
@@ -83,26 +84,32 @@ export function ImportHistory({ batches: initialBatches, canManage }: ImportHist
           </thead>
           <tbody className="divide-y divide-divider/60">
             {batches.map((b) => (
-              <tr key={b.id} className="h-12 border-t border-divider transition-colors hover:bg-accent-soft/40">
-                <td className="px-4 py-2.5 font-medium text-ink">
+              <tr
+                key={b.id}
+                className={cn(
+                  "h-12 border-t border-divider transition-colors hover:bg-accent-soft/40",
+                  flashedId === b.id && "flash-accent",
+                )}
+              >
+                <td className="px-4 py-2.5 font-medium text-ink whitespace-nowrap">
                   {formatDate(b.createdAt.slice(0, 10))}
                 </td>
-                <td className="px-4 py-2.5 text-ink text-xs truncate max-w-xs">
+                <td className="px-4 py-2.5 text-ink text-xs truncate max-w-[200px]" title={b.fileName || undefined}>
                   {b.fileName || "—"}
                 </td>
-                <td className="px-4 py-2.5 text-right font-semibold text-ink tabular-nums">
+                <td className="px-4 py-2.5 text-right font-semibold text-ink tabular-nums whitespace-nowrap">
                   {b.totalRows.toLocaleString("en-IN")}
                 </td>
-                <td className="px-4 py-2.5 text-right text-positive font-medium tabular-nums">
+                <td className="px-4 py-2.5 text-right text-positive font-medium tabular-nums whitespace-nowrap">
                   {b.insertedRows.toLocaleString("en-IN")}
                 </td>
-                <td className="px-4 py-2.5 text-right text-ink font-medium tabular-nums">
+                <td className="px-4 py-2.5 text-right text-ink font-medium tabular-nums whitespace-nowrap">
                   {b.updatedRows.toLocaleString("en-IN")}
                 </td>
-                <td className="px-4 py-2.5 text-right text-ink-muted tabular-nums">
+                <td className="px-4 py-2.5 text-right text-ink-muted tabular-nums whitespace-nowrap">
                   {b.skippedRows.toLocaleString("en-IN")}
                 </td>
-                <td className="px-4 py-2.5">
+                <td className="px-4 py-2.5 whitespace-nowrap">
                   <Chip
                     tone={
                       b.status === "done"
@@ -117,21 +124,24 @@ export function ImportHistory({ batches: initialBatches, canManage }: ImportHist
                     {b.status}
                   </Chip>
                 </td>
-                <td className="px-4 py-2.5 text-ink-muted">
+                <td className="px-4 py-2.5 text-ink-muted whitespace-nowrap">
                   {b.createdBy?.full_name || "—"}
                 </td>
                 {canManage && (
-                  <td className="px-4 py-2.5 text-right">
+                  <td className="px-4 py-2.5 text-right whitespace-nowrap">
                     {b.status === "done" && (
-                      <Button
-                        variant="ghost"
-                        onClick={() => handleUndo(b.id)}
+                      <ConfirmButton
+                        title="Rollback import batch?"
+                        description="All policies and orphan clients created in this batch will be permanently removed."
+                        confirmLabel="Rollback"
                         loading={undoingId === b.id}
-                        className="h-7 px-2 text-xs text-negative hover:bg-negative-soft hover:text-negative"
+                        disabled={undoingId !== null}
+                        onConfirm={() => handleUndo(b.id)}
+                        className={buttonStyles("ghost", "h-7 px-2 text-xs text-negative hover:bg-negative-soft hover:text-negative")}
                       >
-                        <RotateCcw size={12} />
+                        {undoingId !== b.id && <RotateCcw size={12} />}
                         Undo
-                      </Button>
+                      </ConfirmButton>
                     )}
                   </td>
                 )}

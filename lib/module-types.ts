@@ -1,4 +1,4 @@
-export type ColumnType = "text" | "person" | "chip" | "inr" | "date" | "number";
+export type ColumnType = "text" | "person" | "chip" | "inr" | "date" | "number" | "image" | "insurer";
 
 export type Column = {
   key: string;
@@ -9,7 +9,13 @@ export type Column = {
 
 export type Row = { id: string } & Record<string, string | number | null | undefined>;
 
-export type Option = { value: string; label: string };
+export type Option = {
+  value: string;
+  label: string;
+  hint?: string;
+  logoUrl?: string | null;
+  showBadge?: boolean;
+};
 
 export type FilterDef = { key: string; label: string; options: Option[] };
 
@@ -63,6 +69,8 @@ export type PrimaryAction = {
   label: string;
   drawerTitle: string;
   fields: FieldDef[];
+  /** Optional initial values when opening the Create drawer. */
+  defaultValues?: Record<string, string>;
   /** Server action that validates and saves the form. */
   action: FormAction;
   /** Optional "Check recipients" step shown next to Save. */
@@ -87,6 +95,8 @@ export type EditAction = {
   drawerTitle: string;
   fields: FieldDef[];
   action: (id: string, previous: ActionState, formData: FormData) => Promise<ActionState>;
+  /** Only show the Edit button when row[key] is one of these values (e.g. pending claims only). */
+  showWhen?: { key: string; in: string[] };
 };
 
 export type TabsDef = { key: string; label: string; options: Option[] };

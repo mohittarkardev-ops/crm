@@ -2,11 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
-import { ChevronDown, LogOut, Search } from "lucide-react";
+import { ChevronDown, LogOut } from "lucide-react";
 import { signOut } from "@/app/login/actions";
 import { AutoRefresh } from "@/components/layout/auto-refresh";
+import { GlobalSearch } from "@/components/layout/global-search";
 import { NotificationBell } from "@/components/layout/notification-bell";
+import { cn } from "@/lib/cn";
 import { findNavItem } from "@/lib/nav";
+import type { PermissionKey } from "@/lib/rbac/permissions";
 
 export type Account = { id: string; name: string; email: string; role: "admin" | "staff" | null };
 
@@ -20,8 +23,8 @@ function initials(name: string) {
     .toUpperCase();
 }
 
-/** Page title on the left; search, bell and account menu on the right (design.md section 3). */
-export function Topbar({ account }: { account: Account }) {
+/** Page title on the left; global search, bell and account menu on the right (design.md section 3). */
+export function Topbar({ account, allowed }: { account: Account; allowed?: PermissionKey[] }) {
   const pathname = usePathname();
   const title = findNavItem(pathname)?.label ?? (pathname.startsWith("/no-access") ? "No access" : "Dashboard");
   const [menuOpen, setMenuOpen] = useState(false);
@@ -50,15 +53,7 @@ export function Topbar({ account }: { account: Account }) {
 
       <div className="flex items-center gap-3">
         <AutoRefresh />
-        <label className="glass hidden h-10 w-64 items-center gap-2 rounded-control px-3 text-ink-faint focus-within:border-accent md:flex">
-          <Search size={16} strokeWidth={1.75} aria-hidden="true" />
-          <input
-            type="search"
-            aria-label="Search"
-            placeholder="Search clients, policies…"
-            className="w-full bg-transparent text-sm text-ink outline-none placeholder:text-ink-faint"
-          />
-        </label>
+        <GlobalSearch allowed={allowed} />
 
         <NotificationBell staffId={account.id} />
 
@@ -68,7 +63,7 @@ export function Topbar({ account }: { account: Account }) {
             aria-label="Account menu"
             aria-expanded={menuOpen}
             onClick={() => setMenuOpen((open) => !open)}
-            className="glass flex h-10 items-center gap-2.5 rounded-control py-1 pl-1 pr-3 transition-colors hover:bg-surface-strong"
+            className="glass flex h-10 items-center gap-2.5 rounded-control py-1 pl-1 pr-3 transition-[background-color,transform] duration-150 hover:bg-surface-strong active:scale-[0.985]"
           >
             <span className="grid size-8 place-items-center rounded-full bg-accent text-xs font-semibold text-ink">
               {initials(account.name)}
@@ -77,7 +72,12 @@ export function Topbar({ account }: { account: Account }) {
               <span className="block text-xs font-semibold leading-4 text-ink">{account.name}</span>
               <span className="block text-[11px] leading-[14px] text-ink-muted">{roleLabel}</span>
             </span>
-            <ChevronDown size={14} strokeWidth={1.75} className="text-ink-muted" aria-hidden="true" />
+            <ChevronDown
+              size={14}
+              strokeWidth={1.75}
+              className={cn("text-ink-muted transition-transform duration-200", menuOpen && "rotate-180 text-ink")}
+              aria-hidden="true"
+            />
           </button>
 
           {menuOpen && (

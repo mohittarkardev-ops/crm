@@ -11,18 +11,8 @@ const VEHICLE_GROUPS = ["2W", "4W", "CV"];
 // Which policy type a vehicle group becomes when approving a claim creates a new policy.
 const TYPE_FOR_GROUP: Record<string, string> = { "2W": "bike", "4W": "car", CV: "other" };
 
-/**
- * Adds a claim: an agent says "I got this payment for this vehicle". If the vehicle is already in Policies the claim
- * links to it. If not, the customer name, mobile, vehicle group and own-damage due date are needed so that approving
- * the claim can create the policy. One open claim per vehicle (also enforced by the database).
- */
-export async function createClaim(_previous: ActionState, formData: FormData): Promise<ActionState> {
-  const auth = await authorize("claims.create");
-  if (!auth.staff) return auth.error;
-  const staff = auth.staff;
-  const values = formValues(formData);
-
-  const agentId = text(formData, "agent");
+function parseClaimForm(formData: FormData, forcedAgentId?: string) {
+  const agentId = forcedAgentId ?? text(formData, "agent");
   const reg = text(formData, "vehicleRegNo").toUpperCase().replace(/\s+/g, "");
   const paymentDate = parseDate(text(formData, "paymentDate"));
   const mode = text(formData, "paymentMode");
@@ -36,44 +26,98 @@ export async function createClaim(_previous: ActionState, formData: FormData): P
   const fieldErrors: Record<string, string> = {};
   if (!UUID.test(agentId)) fieldErrors.agent = "Choose the agent.";
   if (!/^[A-Z0-9-]{4,15}$/.test(reg)) fieldErrors.vehicleRegNo = "Enter a valid registration number.";
-  if (!paymentDate || paymentDate > todayIST()) fieldErrors.paymentDate = "Enter the payment date (not in the future).";
+  if (!paymentDate || paymentDate > todayIST()) {
+    fieldErrors.paymentDate = "Enter the payment date (not in the future).";
+  }
   if (!PAYMENT_MODES.includes(mode)) fieldErrors.paymentMode = "Choose how it was paid.";
+
   let amount: number | null = null;
   if (amountRaw) {
     amount = Number(amountRaw);
-    if (!Number.isFinite(amount) || amount < 0 || amount > 1_000_000_000) fieldErrors.amount = "Enter a valid amount.";
+    if (!Number.isFinite(amount) || amount < 0 || amount > 1_000_000_000) {
+      fieldErrors.amount = "Enter a valid amount.";
+    }
   }
   if (remarks.length > 500) fieldErrors.remarks = "Use 500 characters or fewer.";
+
   const mobile = mobileRaw ? normalizeMobile(mobileRaw) : null;
   if (mobileRaw && !mobile) fieldErrors.customerMobile = "Enter a valid 10-digit Indian mobile number.";
   const saod = saodRaw ? parseDate(saodRaw) : null;
   if (saodRaw && !saod) fieldErrors.saodDueDate = "Enter a valid date.";
   if (group && !VEHICLE_GROUPS.includes(group)) fieldErrors.vehicleGroup = "Choose 2W, 4W or CV.";
   if (customerName.length > 120) fieldErrors.customerName = "Name is too long.";
+
+  return {
+    fieldErrors,
+    parsed: {
+      agentId,
+      reg,
+      paymentDate: paymentDate!,
+      mode,
+      amount,
+      remarks,
+      customerName,
+      mobile,
+      group,
+      saod,
+    },
+  };
+}
+
+/**
+ * Adds a claim: an agent says "I got this payment for this vehicle". Non-admin staff can only credit claims
+ * to themselves. One open claim per vehicle (also enforced by the database).
+ */
+export async function createClaim(_previous: ActionState, formData: FormData): Promise<ActionState> {
+  const auth = await authorize("claims.create");
+  if (!auth.staff) return auth.error;
+  const staff = auth.staff;
+  const values = formValues(formData);
+
+  const forcedAgentId = staff.role === "admin" ? undefined : staff.id;
+  const { fieldErrors, parsed } = parseClaimForm(formData, forcedAgentId);
   if (Object.keys(fieldErrors).length > 0) return fail("Please fix the highlighted fields.", { fieldErrors, values });
 
   const db = await createClient();
 
-  const agent = await db.from("staff_users").select("id, full_name").eq("id", agentId).eq("is_active", true).maybeSingle();
+  const agent = await db
+    .from("staff_users")
+    .select("id, full_name")
+    .eq("id", parsed.agentId)
+    .eq("is_active", true)
+    .maybeSingle();
   if (agent.error) return fail(dbMessage(agent.error), { values });
   if (!agent.data) return fail("That agent could not be found.", { fieldErrors: { agent: "Not available." }, values });
 
-  const open = await db.from("claims").select("id").eq("vehicle_reg_no", reg).neq("status", "rejected").limit(1);
+  const open = await db
+    .from("claims")
+    .select("id")
+    .eq("vehicle_reg_no", parsed.reg)
+    .neq("status", "rejected")
+    .limit(1);
   if (open.error) return fail(dbMessage(open.error), { values });
   if ((open.data ?? []).length > 0) {
-    return fail("A claim for this vehicle is already open.", { fieldErrors: { vehicleRegNo: "Already claimed." }, values });
+    return fail("A claim for this vehicle is already open.", {
+      fieldErrors: { vehicleRegNo: "Already claimed." },
+      values,
+    });
   }
 
-  const known = await db.from("policies").select("id").eq("vehicle_reg_no", reg).order("due_date", { ascending: false }).limit(1);
+  const known = await db
+    .from("policies")
+    .select("id")
+    .eq("vehicle_reg_no", parsed.reg)
+    .order("due_date", { ascending: false })
+    .limit(1);
   if (known.error) return fail(dbMessage(known.error), { values });
   const policyId = ((known.data ?? [])[0]?.id as string | undefined) ?? null;
 
   if (!policyId) {
     const missing: Record<string, string> = {};
-    if (customerName.length < 2) missing.customerName = "Needed for a new vehicle.";
-    if (!mobile) missing.customerMobile = "Needed for a new vehicle.";
-    if (!group) missing.vehicleGroup = "Needed for a new vehicle.";
-    if (!saod) missing.saodDueDate = "Needed for a new vehicle.";
+    if (parsed.customerName.length < 2) missing.customerName = "Needed for a new vehicle.";
+    if (!parsed.mobile) missing.customerMobile = "Needed for a new vehicle.";
+    if (!parsed.group) missing.vehicleGroup = "Needed for a new vehicle.";
+    if (!parsed.saod) missing.saodDueDate = "Needed for a new vehicle.";
     if (Object.keys(missing).length > 0) {
       return fail("This vehicle is not in Policies yet. Add the customer details below so a policy can be created.", {
         fieldErrors: missing,
@@ -87,28 +131,131 @@ export async function createClaim(_previous: ActionState, formData: FormData): P
     .insert({
       staff_id: agent.data.id,
       employee_name: agent.data.full_name,
-      vehicle_reg_no: reg,
+      vehicle_reg_no: parsed.reg,
       policy_id: policyId,
-      payment_date: paymentDate,
-      payment_mode: mode,
-      payment_amount: amount,
-      remarks: remarks || null,
-      customer_name: customerName || null,
-      customer_mobile: mobile,
-      saod_due_date: saod,
-      vehicle_category: group || null,
+      payment_date: parsed.paymentDate,
+      payment_mode: parsed.mode,
+      payment_amount: parsed.amount,
+      remarks: parsed.remarks || null,
+      customer_name: parsed.customerName || null,
+      customer_mobile: parsed.mobile,
+      saod_due_date: parsed.saod,
+      vehicle_category: parsed.group || null,
     })
     .select("id")
     .single();
   if (inserted.error) {
     if (inserted.error.code === "23505") {
-      return fail("A claim for this vehicle is already open.", { fieldErrors: { vehicleRegNo: "Already claimed." }, values });
+      return fail("A claim for this vehicle is already open.", {
+        fieldErrors: { vehicleRegNo: "Already claimed." },
+        values,
+      });
     }
     return fail(dbMessage(inserted.error), { values });
   }
 
-  await audit(db, staff.id, "claim.create", "claim", inserted.data.id as string);
-  return done(`Claim added for ${reg}.`);
+  const claimId = inserted.data.id as string;
+  await audit(db, staff.id, "claim.create", "claim", claimId);
+  return done(`Claim CLM-${claimId.slice(0, 8).toUpperCase()} added for ${parsed.reg}.`);
+}
+
+/** Edits a pending claim (reviewer/admin only). Approved or rejected claims cannot be modified. */
+export async function updateClaim(id: string, _previous: ActionState, formData: FormData): Promise<ActionState> {
+  const auth = await authorize("claims.approve");
+  if (!auth.staff) return auth.error;
+  const staff = auth.staff;
+  if (!UUID.test(id)) return fail("That claim could not be found.");
+  const values = formValues(formData);
+
+  const { fieldErrors, parsed } = parseClaimForm(formData);
+  if (Object.keys(fieldErrors).length > 0) return fail("Please fix the highlighted fields.", { fieldErrors, values });
+
+  const db = await createClient();
+  const existing = await db.from("claims").select("id, status").eq("id", id).maybeSingle();
+  if (existing.error) return fail(dbMessage(existing.error), { values });
+  if (!existing.data) return fail("That claim could not be found.", { values });
+  if (existing.data.status !== "pending") return fail("Only pending claims can be edited.", { values });
+
+  const agent = await db
+    .from("staff_users")
+    .select("id, full_name")
+    .eq("id", parsed.agentId)
+    .eq("is_active", true)
+    .maybeSingle();
+  if (agent.error) return fail(dbMessage(agent.error), { values });
+  if (!agent.data) return fail("That agent could not be found.", { fieldErrors: { agent: "Not available." }, values });
+
+  const open = await db
+    .from("claims")
+    .select("id")
+    .eq("vehicle_reg_no", parsed.reg)
+    .neq("status", "rejected")
+    .neq("id", id)
+    .limit(1);
+  if (open.error) return fail(dbMessage(open.error), { values });
+  if ((open.data ?? []).length > 0) {
+    return fail("Another claim for this vehicle is already open.", {
+      fieldErrors: { vehicleRegNo: "Already claimed." },
+      values,
+    });
+  }
+
+  const known = await db
+    .from("policies")
+    .select("id")
+    .eq("vehicle_reg_no", parsed.reg)
+    .order("due_date", { ascending: false })
+    .limit(1);
+  if (known.error) return fail(dbMessage(known.error), { values });
+  const policyId = ((known.data ?? [])[0]?.id as string | undefined) ?? null;
+
+  if (!policyId) {
+    const missing: Record<string, string> = {};
+    if (parsed.customerName.length < 2) missing.customerName = "Needed for a new vehicle.";
+    if (!parsed.mobile) missing.customerMobile = "Needed for a new vehicle.";
+    if (!parsed.group) missing.vehicleGroup = "Needed for a new vehicle.";
+    if (!parsed.saod) missing.saodDueDate = "Needed for a new vehicle.";
+    if (Object.keys(missing).length > 0) {
+      return fail("This vehicle is not in Policies yet. Fill in the customer details below.", {
+        fieldErrors: missing,
+        values,
+      });
+    }
+  }
+
+  const updated = await db
+    .from("claims")
+    .update({
+      staff_id: agent.data.id,
+      employee_name: agent.data.full_name,
+      vehicle_reg_no: parsed.reg,
+      policy_id: policyId,
+      payment_date: parsed.paymentDate,
+      payment_mode: parsed.mode,
+      payment_amount: parsed.amount,
+      remarks: parsed.remarks || null,
+      customer_name: parsed.customerName || null,
+      customer_mobile: parsed.mobile,
+      saod_due_date: parsed.saod,
+      vehicle_category: parsed.group || null,
+    })
+    .eq("id", id)
+    .eq("status", "pending")
+    .select("id");
+
+  if (updated.error) {
+    if (updated.error.code === "23505") {
+      return fail("Another claim for this vehicle is already open.", {
+        fieldErrors: { vehicleRegNo: "Already claimed." },
+        values,
+      });
+    }
+    return fail(dbMessage(updated.error), { values });
+  }
+  if ((updated.data ?? []).length === 0) return fail("This claim was already reviewed.", { values });
+
+  await audit(db, staff.id, "claim.update", "claim", id);
+  return done(`Claim updated for ${parsed.reg}.`);
 }
 
 /**
@@ -175,6 +322,7 @@ export async function approveClaim(id: string): Promise<ActionState> {
         vehicle_reg_no: claim.vehicle_reg_no,
         vehicle_category: group,
         source: "advisor_added",
+        verification_status: "verified",
       })
       .select("id")
       .single();
@@ -217,4 +365,26 @@ export async function rejectClaim(id: string): Promise<ActionState> {
 
   await audit(db, staff.id, "claim.reject", "claim", id);
   return done("Claim rejected.");
+}
+
+/** Permanently deletes a rejected claim. Admin only (enforced by database RLS as well). */
+export async function deleteClaim(id: string): Promise<ActionState> {
+  const auth = await authorize("claims.approve");
+  if (!auth.staff) return auth.error;
+  const staff = auth.staff;
+  if (staff.role !== "admin") return fail("Only admins can permanently delete claims.");
+  if (!UUID.test(id)) return fail("That claim could not be found.");
+
+  const db = await createClient();
+  const found = await db.from("claims").select("id, status").eq("id", id).maybeSingle();
+  if (found.error) return fail(dbMessage(found.error));
+  if (!found.data) return fail("That claim could not be found.");
+  if (found.data.status !== "rejected") return fail("Only rejected claims can be deleted.");
+
+  const removed = await db.from("claims").delete().eq("id", id).eq("status", "rejected").select("id");
+  if (removed.error) return fail(dbMessage(removed.error));
+  if ((removed.data ?? []).length === 0) return fail("That claim could not be deleted.");
+
+  await audit(db, staff.id, "claim.delete", "claim", id);
+  return done("Rejected claim deleted.");
 }

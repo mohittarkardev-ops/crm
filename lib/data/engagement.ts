@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
-import { countOf, dateIST, one, rowsOf } from "@/lib/data/helpers";
-import type { Row } from "@/lib/module-types";
+import { countOf, dateIST, one, pagedRows } from "@/lib/data/helpers";
+import type { Option, Row } from "@/lib/module-types";
 
 type Named<T> = T | T[] | null;
 type Person = Named<{ full_name: string | null; mobile_number: string; is_advisor_client?: boolean }>;
@@ -24,16 +24,23 @@ type QuoteRecord = {
 
 export async function getQuotes() {
   const db = await createClient();
-  const res = await db
-    .from("quote_requests")
-    .select(
-      "id, status, created_at, users(full_name, mobile_number, is_advisor_client), policies(policy_number, policy_types(code))",
-    )
-    .order("created_at", { ascending: false })
-    .limit(1000);
+  const [records, totalRes] = await Promise.all([
+    pagedRows<QuoteRecord>(
+      (from, to) =>
+        db
+          .from("quote_requests")
+          .select(
+            "id, status, created_at, users(full_name, mobile_number, is_advisor_client), policies(policy_number, policy_types(code))",
+          )
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false })
+          .range(from, to),
+      "Quote requests",
+    ),
+    db.from("quote_requests").select("id", head),
+  ]);
 
   const counts: Record<string, number> = { new: 0, pending: 0, in_progress: 0, completed: 0, closed: 0, renewed: 0 };
-  const records = rowsOf<QuoteRecord>(res, "Quote requests");
 
   const rows: Row[] = records.map((q) => {
     counts[q.status] = (counts[q.status] ?? 0) + 1;
@@ -52,6 +59,7 @@ export async function getQuotes() {
 
   return {
     rows,
+    totalCount: countOf(totalRes, "Quote requests count"),
     stats: {
       total: records.length,
       new: counts.new,
@@ -75,20 +83,44 @@ type NotificationRecord = {
   users: Person;
 };
 
+type TemplateRecord = {
+  id: string;
+  name: string;
+  title: string;
+  body: string;
+  type: string | null;
+  created_at: string;
+};
+
 export async function getNotifications() {
   const db = await createClient();
-  const [list, all, read, templates] = await Promise.all([
-    db
-      .from("notifications")
-      .select("id, title, kind, sent_at, is_read, users(full_name, mobile_number)")
-      .order("sent_at", { ascending: false })
-      .limit(1000),
+  const [records, all, read, templatesList, tokensCount] = await Promise.all([
+    pagedRows<NotificationRecord>(
+      (from, to) =>
+        db
+          .from("notifications")
+          .select("id, title, kind, sent_at, is_read, users(full_name, mobile_number)")
+          .order("sent_at", { ascending: false })
+          .order("id", { ascending: false })
+          .range(from, to),
+      "Notifications",
+    ),
     db.from("notifications").select("id", head),
     db.from("notifications").select("id", head).eq("is_read", true),
-    db.from("templates").select("id", head),
+    pagedRows<TemplateRecord>(
+      (from, to) =>
+        db
+          .from("templates")
+          .select("id, name, title, body, type, created_at")
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false })
+          .range(from, to),
+      "Notification templates",
+    ),
+    db.from("device_tokens").select("id", head),
   ]);
 
-  const rows: Row[] = rowsOf<NotificationRecord>(list, "Notifications").map((n) => ({
+  const rows: Row[] = records.map((n) => ({
     id: n.id,
     title: n.title,
     recipient: personName(n.users),
@@ -97,15 +129,35 @@ export async function getNotifications() {
     read: n.is_read ? "read" : "unread",
   }));
 
+  const templateRows: Row[] = templatesList.map((t) => ({
+    id: t.id,
+    name: t.name,
+    title: t.title,
+    body: t.body,
+    type: t.type ?? "broadcast",
+    createdOn: dateIST(t.created_at),
+  }));
+
+  const templateOptions: Option[] = [
+    { value: "", label: "Custom message (no template)" },
+    ...templatesList.map((t) => ({ value: t.id, label: `${t.name} — ${t.title}` })),
+  ];
+
   const total = countOf(all, "Notifications count");
   const readCount = countOf(read, "Read notifications count");
+  const deviceTokenCount = tokensCount.error ? 0 : (tokensCount.count ?? 0);
+
   return {
     rows,
+    totalCount: total,
+    templateRows,
+    templateOptions,
+    deviceTokenCount,
     stats: {
       sent: total,
       unread: total - readCount,
       readRate: total ? Math.round((readCount / total) * 100) : 0,
-      templates: countOf(templates, "Templates count"),
+      templates: templateRows.length,
     },
   };
 }
@@ -120,23 +172,37 @@ type PlacementRecord = {
   starts_at: string | null;
   ends_at: string | null;
   body: string | null;
+  image_url: string | null;
   cta_label: string | null;
   action_url: string | null;
+  sort_order: number | null;
 };
 
 export async function getPlacements() {
   const db = await createClient();
-  const res = await db
-    .from("placements")
-    .select("id, slot_name, title, is_active, starts_at, ends_at, body, cta_label, action_url")
-    .order("sort_order", { ascending: true })
-    .limit(1000);
+  const [records, dbNowRes, totalRes] = await Promise.all([
+    pagedRows<PlacementRecord>(
+      (from, to) =>
+        db
+          .from("placements")
+          .select("id, slot_name, title, is_active, starts_at, ends_at, body, image_url, cta_label, action_url, sort_order")
+          .order("sort_order", { ascending: true })
+          .order("created_at", { ascending: false })
+          .range(from, to),
+      "Placements",
+    ),
+    // Use Postgres `now()` when migration 0011 is applied so CRM status matches mobile RLS clock exactly.
+    db.rpc("get_db_now"),
+    db.from("placements").select("id", head),
+  ]);
 
-  const now = Date.now();
+  const parsedDbNow = !dbNowRes.error && typeof dbNowRes.data === "string" ? Date.parse(dbNowRes.data) : NaN;
+  const now = Number.isFinite(parsedDbNow) ? parsedDbNow : Date.now();
+
   const counts: Record<string, number> = { live: 0, scheduled: 0, off: 0, ended: 0 };
-  const slots = new Set<string>();
+  const slots = new Set<string>(["home_banner"]);
 
-  const rows: Row[] = rowsOf<PlacementRecord>(res, "Placements").map((p) => {
+  const rows: Row[] = records.map((p) => {
     const status = !p.is_active
       ? "off"
       : p.starts_at && Date.parse(p.starts_at) > now
@@ -151,16 +217,23 @@ export async function getPlacements() {
       slot: p.slot_name,
       title: p.title,
       body: p.body,
+      imageUrl: p.image_url,
       ctaLabel: p.cta_label,
       actionUrl: p.action_url,
       startsOn: dateIST(p.starts_at),
       endsOn: dateIST(p.ends_at),
+      sortOrder: p.sort_order ?? 0,
       status,
     };
   });
 
   const slotOptions = [...slots].sort().map((value) => ({ value, label: value.replace(/_/g, " ") }));
-  return { rows, stats: counts, slotOptions };
+  return {
+    rows,
+    totalCount: countOf(totalRes, "Placements count"),
+    stats: counts,
+    slotOptions,
+  };
 }
 
 /* ---------------------------------- Support --------------------------------- */
@@ -175,14 +248,21 @@ type TicketRecord = {
 
 export async function getSupport() {
   const db = await createClient();
-  const res = await db
-    .from("support_tickets")
-    .select("id, subject, status, created_at, users(full_name, mobile_number)")
-    .order("created_at", { ascending: false })
-    .limit(1000);
+  const [records, totalRes] = await Promise.all([
+    pagedRows<TicketRecord>(
+      (from, to) =>
+        db
+          .from("support_tickets")
+          .select("id, subject, status, created_at, users(full_name, mobile_number)")
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false })
+          .range(from, to),
+      "Support tickets",
+    ),
+    db.from("support_tickets").select("id", head),
+  ]);
 
   const counts: Record<string, number> = { open: 0, in_progress: 0, resolved: 0 };
-  const records = rowsOf<TicketRecord>(res, "Support tickets");
 
   const rows: Row[] = records.map((t) => {
     counts[t.status] = (counts[t.status] ?? 0) + 1;
@@ -198,6 +278,7 @@ export async function getSupport() {
 
   return {
     rows,
+    totalCount: countOf(totalRes, "Support tickets count"),
     stats: {
       total: records.length,
       open: counts.open,

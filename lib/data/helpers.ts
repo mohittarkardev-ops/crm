@@ -10,6 +10,26 @@ export function rowsOf<T>(res: { data: unknown; error: Failure }, label: string)
   return (res.data ?? []) as T[];
 }
 
+/**
+ * Fetches rows in 1,000-row PostgREST pages using `.range(from, to)` so CRM lists are not
+ * silently capped at 1,000 rows. Stops cleanly once fewer than 1,000 rows come back or `maxRows` is reached.
+ */
+export async function pagedRows<T>(
+  fetchRange: (from: number, to: number) => PromiseLike<{ data: unknown; error: Failure }>,
+  label: string,
+  maxRows = 10_000,
+): Promise<T[]> {
+  const out: T[] = [];
+  for (let from = 0; out.length < maxRows; from += 1000) {
+    const res = await fetchRange(from, from + 999);
+    const chunk = rowsOf<T>(res, label);
+    out.push(...chunk);
+    if (chunk.length < 1000) break;
+  }
+  if (out.length > maxRows) out.length = maxRows;
+  return out;
+}
+
 /** Returns the count of a `{ count: "exact", head: true }` query. */
 export function countOf(res: { count: number | null; error: Failure }, label: string): number {
   if (res.error) throw new Error(`${label}: ${res.error.message}`);

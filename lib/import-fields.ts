@@ -41,6 +41,7 @@ export const STANDARD_IMPORT_FIELDS: TargetFieldDef[] = [
   { key: "vehicle_engine_no", label: "Engine Number", type: "text" },
   { key: "vehicle_cc", label: "Cubic Capacity (CC)", type: "text" },
   { key: "seating_capacity", label: "Seating Capacity", type: "text" },
+  { key: "vehicle_mfy", label: "Manufacturing Year", type: "text", hint: "e.g. 2022" },
   { key: "rto_location", label: "RTO Location", type: "text" },
   { key: "pin", label: "Pincode", type: "text" },
   { key: "pin_2", label: "Second PIN", type: "text" },

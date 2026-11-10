@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { CONTROL } from "@/components/ui/field";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toaster";
+import { useSlidingPill } from "@/components/ui/use-sliding-pill";
 import { cn } from "@/lib/cn";
 import type { ActionState } from "@/lib/module-types";
 import { VERIFICATION_OPTIONS } from "@/lib/options";
@@ -29,7 +30,10 @@ export function VerificationControl({
   const [rejecting, setRejecting] = useState(false);
   const [note, setNote] = useState(reason ?? "");
   const [error, setError] = useState("");
-  const active = busy ?? current;
+  const [errorPulse, setErrorPulse] = useState(0);
+  const active = busy ?? (rejecting ? "rejected" : current);
+  const groupRef = useRef<HTMLDivElement>(null);
+  const { rect, animated } = useSlidingPill(groupRef, active);
 
   async function save(status: string, why?: string) {
     if (busy) return;
@@ -42,6 +46,7 @@ export function VerificationControl({
         setRejecting(false);
       } else if (status === "rejected") {
         setError(result.error ?? "Could not reject this policy.");
+        setErrorPulse((n) => n + 1);
       } else {
         toast(result.error ?? "Could not save this change.", "error");
       }
@@ -65,21 +70,47 @@ export function VerificationControl({
 
   return (
     <div className="space-y-3">
-      <div role="group" aria-label="Verification" className="inline-flex flex-wrap overflow-hidden rounded-[4px] border border-ink">
+      <div
+        ref={groupRef}
+        role="group"
+        aria-label="Verification"
+        className="relative inline-flex flex-wrap overflow-hidden rounded-[4px] border border-ink"
+      >
+        {rect && (
+          <span
+            aria-hidden="true"
+            style={{
+              left: 0,
+              top: 0,
+              width: rect.width,
+              height: rect.height,
+              transform: `translate3d(${rect.left}px, ${rect.top}px, 0)`,
+            }}
+            className={cn(
+              "pointer-events-none absolute z-0 bg-ink",
+              animated && "transition-[transform,width,height] duration-200 ease-[cubic-bezier(0.2,0.8,0.2,1)]",
+            )}
+          />
+        )}
         {VERIFICATION_OPTIONS.map((option) => {
           const selected = option.value === active;
           return (
             <button
               key={option.value}
               type="button"
+              data-pill-key={option.value}
               aria-pressed={selected}
               disabled={busy !== null || readOnly}
               onClick={() => pick(option.value)}
               className={cn(
-                "h-8 px-3 text-xs font-medium transition-colors duration-150",
+                "relative z-10 h-8 px-3 text-xs font-medium transition-colors duration-150",
                 busy !== null && "cursor-wait",
                 readOnly && "cursor-default",
-                selected ? "bg-ink text-white" : "bg-transparent text-ink hover:bg-surface-muted",
+                selected
+                  ? rect
+                    ? "bg-transparent text-white"
+                    : "bg-ink text-white"
+                  : "bg-transparent text-ink hover:bg-surface-muted/70",
               )}
             >
               {busy === option.value && <Spinner size={12} className="mr-1.5 inline-block align-[-2px]" />}
@@ -90,7 +121,7 @@ export function VerificationControl({
       </div>
 
       {rejecting && (
-        <div className="space-y-2 rounded-tile bg-surface-muted p-3">
+        <div className="reveal-down space-y-2 rounded-tile bg-surface-muted p-3">
           <label className="flex flex-col gap-1.5">
             <span className="text-xs font-medium text-ink-muted">
               Reason for rejection <span className="text-negative">*</span>
@@ -106,7 +137,7 @@ export function VerificationControl({
           </label>
           <p className="text-xs text-ink-faint">The user is notified in the app with this reason.</p>
           {error && (
-            <p role="alert" className="text-xs text-negative">
+            <p key={errorPulse} role="alert" className="micro-shake text-xs text-negative">
               {error}
             </p>
           )}

@@ -77,6 +77,7 @@ export type PolicyDetail = {
   policyNumber: string;
   category: string;
   insurer: string | null;
+  insurerLogoUrl: string | null;
   planType: string | null;
   premium: number | null;
   startDate: string | null;
@@ -109,7 +110,7 @@ export async function getPolicyDetail(id: string): Promise<PolicyDetail> {
   const { data, error } = await db
     .from("policies")
     .select(
-      `*, users(${USER_FIELDS}), insurers(name), policy_types(code), policy_documents(${DOC_FIELDS}), renewals(id, status, renewal_date, created_at), quote_requests(id, status, created_at)`,
+      `*, users(${USER_FIELDS}), insurers(name, logo_url), policy_types(code), policy_documents(${DOC_FIELDS}), renewals(id, status, renewal_date, created_at), quote_requests(id, status, created_at)`,
     )
     .eq("id", id)
     .maybeSingle();
@@ -123,7 +124,7 @@ export async function getPolicyDetail(id: string): Promise<PolicyDetail> {
     due_date: string;
     premium_amount: number | string | null;
     users: Named<UserRecord>;
-    insurers: Named<{ name: string }>;
+    insurers: Named<{ name: string; logo_url: string | null }>;
     policy_types: Named<{ code: string | null }>;
     policy_documents: DocumentRecord[] | null;
     renewals: { id: string; status: string | null; renewal_date: string | null; created_at: string }[] | null;
@@ -159,6 +160,7 @@ export async function getPolicyDetail(id: string): Promise<PolicyDetail> {
     policyNumber: p.policy_number,
     category: one(p.policy_types)?.code ?? "other",
     insurer: one(p.insurers)?.name ?? text("insurer_name"),
+    insurerLogoUrl: one(p.insurers)?.logo_url ?? null,
     planType: text("plan_type"),
     premium: p.premium_amount === null ? null : Number(p.premium_amount),
     startDate: text("start_date"),

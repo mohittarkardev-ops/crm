@@ -36,7 +36,14 @@ export type PortalSubmitInput = {
   saodDueDate: string;
 };
 
-export type PortalResult = { ok: boolean; message?: string; error?: string; fieldErrors?: Record<string, string> };
+export type PortalResult = {
+  ok: boolean;
+  message?: string;
+  claimId?: string;
+  refCode?: string;
+  error?: string;
+  fieldErrors?: Record<string, string>;
+};
 
 function normalizeReg(value: string) {
   return value.toUpperCase().replace(/\s+/g, "");
@@ -203,8 +210,11 @@ export async function submitPortalClaim(code: string, input: PortalSubmitInput):
     return { ok: false, error: "Could not save the claim. Please try again." };
   }
 
+  const claimId = inserted.data.id as string;
+  const refCode = `CLM-${claimId.slice(0, 8).toUpperCase()}`;
+
   try {
-    await db.from("audit_logs").insert({ staff_id: agent.data.id, action: "claim.submit", entity: "claim", entity_id: inserted.data.id });
+    await db.from("audit_logs").insert({ staff_id: agent.data.id, action: "claim.submit", entity: "claim", entity_id: claimId });
   } catch {
     /* the audit trail must not break a save */
   }
@@ -212,8 +222,10 @@ export async function submitPortalClaim(code: string, input: PortalSubmitInput):
 
   return {
     ok: true,
+    claimId,
+    refCode,
     message: policyId
-      ? `Claim submitted for ${reg}. The admin will review it.`
-      : `Sent for admin approval. ${reg} will be verified and added by the admin.`,
+      ? `Claim ${refCode} submitted for ${reg}. The admin will review it.`
+      : `Claim ${refCode} sent for admin approval. ${reg} will be verified and added by the admin.`,
   };
 }

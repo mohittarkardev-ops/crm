@@ -104,7 +104,7 @@ export function StaffPermissionsDrawer({
       onClose={onClose}
       title={`Permissions: ${staff?.name || "Staff"}`}
     >
-      <form onSubmit={handleSave} className="space-y-5 pb-6">
+      <form onSubmit={handleSave} className="space-y-5">
         {/* Info Header */}
         <div className="rounded-tile border border-divider p-3 bg-surface-muted/30 text-xs text-ink-muted">
           <p className="font-semibold text-ink">{staff?.name}</p>
@@ -160,7 +160,7 @@ export function StaffPermissionsDrawer({
               )}
             </div>
 
-            <div className="space-y-4 max-h-[440px] overflow-y-auto pr-1">
+            <div className="space-y-4">
               {MODULES.map((mod) => {
                 return (
                   <div key={mod.key} className="rounded-tile border border-divider p-3 bg-surface-strong">
@@ -252,7 +252,7 @@ export function StaffPermissionsDrawer({
           </div>
         )}
 
-        <div className="flex items-center justify-end gap-2 pt-4 border-t border-divider">
+        <div className="sticky bottom-0 -mx-6 -mb-5 mt-6 flex items-center justify-end gap-2 border-t border-divider bg-surface-strong px-6 py-4">
           <Button variant="secondary" onClick={onClose} disabled={loading}>
             Cancel
           </Button>

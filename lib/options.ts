@@ -63,6 +63,12 @@ export const NOTIFICATION_KIND_OPTIONS: Option[] = [
   { value: "announcement", label: "Announcement" },
 ];
 
+export const TEMPLATE_TYPE_OPTIONS: Option[] = [
+  { value: "broadcast", label: "Broadcast" },
+  { value: "automated", label: "Automated" },
+  { value: "user_specific", label: "One user" },
+];
+
 export const READ_OPTIONS: Option[] = [
   { value: "read", label: "Read" },
   { value: "unread", label: "Unread" },

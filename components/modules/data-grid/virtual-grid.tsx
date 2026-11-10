@@ -11,6 +11,7 @@ import {
   TableProperties,
   RotateCcw,
   Check,
+  X,
 } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Button, buttonStyles } from "@/components/ui/button";
@@ -23,6 +24,7 @@ import { SmartHeader } from "./smart-header";
 import { InlineCell } from "./inline-cell";
 import {
   type CustomField,
+  type GridCursor,
   type GridFilter,
   type GridRow,
   type SortDir,
@@ -34,7 +36,7 @@ import { formatDate } from "@/lib/format";
 
 interface VirtualGridProps {
   initialRows: GridRow[];
-  initialCursor: { dueDate: string | null; id: string } | null;
+  initialCursor: GridCursor | null;
   initialTotal: number;
   customFields: CustomField[];
   canEdit: boolean;
@@ -50,7 +52,7 @@ export function VirtualGrid({
   canExport,
 }: VirtualGridProps) {
   const [rows, setRows] = useState<GridRow[]>(initialRows);
-  const [nextCursor, setNextCursor] = useState<{ dueDate: string | null; id: string } | null>(
+  const [nextCursor, setNextCursor] = useState<GridCursor | null>(
     initialCursor
   );
   const [totalCount, setTotalCount] = useState<number>(initialTotal);
@@ -75,8 +77,18 @@ export function VirtualGrid({
   const [loadingMore, setLoadingMore] = useState(false);
   const [isSearching, startSearchTransition] = useTransition();
   const [isExporting, setIsExporting] = useState<"csv" | "excel" | null>(null);
+  const [exportSaved, setExportSaved] = useState<"csv" | "excel" | null>(null);
+  const exportSavedTimer = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (exportSavedTimer.current) window.clearTimeout(exportSavedTimer.current);
+    };
+  }, []);
 
   const containerRef = useRef<HTMLDivElement>(null);
+  // The server already sent the first page, so the first run of the reload effect is skipped.
+  const skipInitialReload = useRef(true);
 
   // Close header menus when clicking outside
   useEffect(() => {
@@ -84,6 +96,7 @@ export function VirtualGrid({
       const target = e.target as Element;
       if (
         target.closest(".header-menu-container") ||
+        target.closest(".header-menu-panel") ||
         target.closest('[role="dialog"]') ||
         target.closest('[role="listbox"]') ||
         target.closest(".pop-in")
@@ -143,6 +156,10 @@ export function VirtualGrid({
 
   // Trigger reload on search, sort, or filter change
   useEffect(() => {
+    if (skipInitialReload.current) {
+      skipInitialReload.current = false;
+      return;
+    }
     void reloadGrid();
   }, [debouncedSearch, sortConfig, columnFilters, reloadGrid]);
 
@@ -226,7 +243,13 @@ export function VirtualGrid({
   };
 
   // Inline edit save local update
-  const handleCellSaved = (id: string, field: string, newValue: string, isCustom: boolean) => {
+  const handleCellSaved = (
+    id: string,
+    field: string,
+    newValue: string,
+    isCustom: boolean,
+    meta?: Record<string, string>,
+  ) => {
     setRows((prev) =>
       prev.map((r) => {
         if (r.id !== id) return r;
@@ -251,10 +274,13 @@ export function VirtualGrid({
         };
         const prop = mapping[field];
         if (!prop) return r;
-        return {
+        const nextRow: GridRow = {
           ...r,
           [prop]: field === "idv" ? (newValue ? Number(newValue) : null) : newValue || null,
         };
+        if (meta?.dueDate) nextRow.dueDate = meta.dueDate;
+        if (meta?.status) nextRow.status = meta.status;
+        return nextRow;
       })
     );
   };
@@ -286,7 +312,14 @@ export function VirtualGrid({
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
-      toast("CSV export complete.");
+      toast(
+        res.truncated
+          ? `Exported first ${res.exportedCount.toLocaleString("en-IN")} rows (export limit reached). Narrow filters for more.`
+          : `CSV export complete (${res.exportedCount.toLocaleString("en-IN")} rows).`,
+      );
+      setExportSaved("csv");
+      if (exportSavedTimer.current) window.clearTimeout(exportSavedTimer.current);
+      exportSavedTimer.current = window.setTimeout(() => setExportSaved(null), 1600);
     } catch (err) {
       console.error("Export error:", err);
       toast("Failed to export data.", "error");
@@ -341,7 +374,14 @@ export function VirtualGrid({
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
       }
-      toast("Excel export complete.");
+      toast(
+        res.truncated
+          ? `Exported first ${res.exportedCount.toLocaleString("en-IN")} rows (export limit reached).`
+          : `Excel export complete (${res.exportedCount.toLocaleString("en-IN")} rows).`,
+      );
+      setExportSaved("excel");
+      if (exportSavedTimer.current) window.clearTimeout(exportSavedTimer.current);
+      exportSavedTimer.current = window.setTimeout(() => setExportSaved(null), 1600);
     } catch (err) {
       console.error("Export error:", err);
       toast("Failed to export Excel.", "error");
@@ -384,7 +424,7 @@ export function VirtualGrid({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search reg no, owner, mobile, policy no..."
-              className={cn(CONTROL, "h-10 pl-9 pr-9 text-xs")}
+              className={cn(CONTROL, "h-10 pl-9 pr-9 text-sm")}
             />
             {isSearching && (
               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-muted">
@@ -399,7 +439,7 @@ export function VirtualGrid({
               <Button
                 variant="ghost"
                 onClick={handleResetFilters}
-                className="h-8 px-3 text-xs text-ink-muted hover:text-ink"
+                className="text-ink-muted hover:text-ink"
               >
                 <RotateCcw size={14} />
                 Reset filters
@@ -412,20 +452,24 @@ export function VirtualGrid({
                   variant="secondary"
                   onClick={handleExportCsv}
                   loading={isExporting === "csv"}
+                  saved={exportSaved === "csv"}
+                  savedLabel="Exported"
                   disabled={isExporting !== null}
-                  className="h-8 px-3 text-xs"
+                  className="whitespace-nowrap"
                 >
-                  <Download size={14} />
+                  {exportSaved !== "csv" && <Download size={14} />}
                   {selectedIds.size > 0 ? `CSV (${selectedIds.size})` : "Export CSV"}
                 </Button>
                 <Button
                   variant="secondary"
                   onClick={handleExportExcel}
                   loading={isExporting === "excel"}
+                  saved={exportSaved === "excel"}
+                  savedLabel="Exported"
                   disabled={isExporting !== null}
-                  className="h-8 px-3 text-xs"
+                  className="whitespace-nowrap"
                 >
-                  <FileSpreadsheet size={14} />
+                  {exportSaved !== "excel" && <FileSpreadsheet size={14} />}
                   {selectedIds.size > 0 ? `Excel (${selectedIds.size})` : "Export Excel"}
                 </Button>
               </>
@@ -433,7 +477,7 @@ export function VirtualGrid({
 
             <Link
               href="/policies"
-              className={buttonStyles("secondary", "h-8 px-3 text-xs inline-flex items-center")}
+              className={buttonStyles("secondary")}
             >
               <FileText size={14} />
               Policies List
@@ -461,10 +505,13 @@ export function VirtualGrid({
       </Card>
 
       {/* Virtual Table Card */}
-      <div className="rounded-card border border-divider bg-surface shadow-card overflow-hidden">
+      <div className="glass rounded-card shadow-card overflow-hidden">
         <div
           ref={containerRef}
-          className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-280px)] min-h-[400px] select-text"
+          className={cn(
+            "overflow-auto max-h-[calc(100vh-260px)] min-h-[240px] select-text transition-opacity",
+            isSearching && "opacity-60",
+          )}
         >
           <table className="w-full border-collapse text-left text-xs whitespace-nowrap">
             <thead className="sticky top-0 z-20 border-b border-divider bg-surface-muted/95 backdrop-blur">
@@ -569,6 +616,7 @@ export function VirtualGrid({
                     label={col.headerLabel}
                     fieldKey={col.accessorKey}
                     isCustom={true}
+                    sortable={false}
                     filterType={
                       col.dataType === "date"
                         ? "date_range"
@@ -586,6 +634,7 @@ export function VirtualGrid({
                 <SmartHeader
                   label="Status"
                   fieldKey="status"
+                  sortable={false}
                   filterType="in_array"
                   options={["Active", "Expiring Soon", "Expired"]}
                   {...headerProps}
@@ -655,7 +704,7 @@ export function VirtualGrid({
                         field="vehicle_reg_no"
                         value={record.vehicleRegNo}
                         canEdit={canEdit}
-                        onSaved={(f, v) => handleCellSaved(record.id, f, v, false)}
+                        onSaved={(f, v, c, m) => handleCellSaved(record.id, f, v, c, m)}
                       />
                     </td>
 
@@ -675,7 +724,7 @@ export function VirtualGrid({
                         field="owner_name"
                         value={record.ownerName}
                         canEdit={canEdit}
-                        onSaved={(f, v) => handleCellSaved(record.id, f, v, false)}
+                        onSaved={(f, v, c, m) => handleCellSaved(record.id, f, v, c, m)}
                       />
                     </td>
 
@@ -686,7 +735,7 @@ export function VirtualGrid({
                         field="holder_mobile"
                         value={record.holderMobile}
                         canEdit={canEdit}
-                        onSaved={(f, v) => handleCellSaved(record.id, f, v, false)}
+                        onSaved={(f, v, c, m) => handleCellSaved(record.id, f, v, c, m)}
                       />
                     </td>
 
@@ -697,7 +746,7 @@ export function VirtualGrid({
                         field="vehicle_make"
                         value={record.vehicleMake}
                         canEdit={canEdit}
-                        onSaved={(f, v) => handleCellSaved(record.id, f, v, false)}
+                        onSaved={(f, v, c, m) => handleCellSaved(record.id, f, v, c, m)}
                       />
                     </td>
 
@@ -708,7 +757,7 @@ export function VirtualGrid({
                         field="vehicle_model"
                         value={record.vehicleModel}
                         canEdit={canEdit}
-                        onSaved={(f, v) => handleCellSaved(record.id, f, v, false)}
+                        onSaved={(f, v, c, m) => handleCellSaved(record.id, f, v, c, m)}
                       />
                     </td>
 
@@ -719,7 +768,7 @@ export function VirtualGrid({
                         field="insurer_name"
                         value={record.insurer}
                         canEdit={canEdit}
-                        onSaved={(f, v) => handleCellSaved(record.id, f, v, false)}
+                        onSaved={(f, v, c, m) => handleCellSaved(record.id, f, v, c, m)}
                       />
                     </td>
 
@@ -730,7 +779,7 @@ export function VirtualGrid({
                         field="policy_number"
                         value={record.policyNumber}
                         canEdit={canEdit}
-                        onSaved={(f, v) => handleCellSaved(record.id, f, v, false)}
+                        onSaved={(f, v, c, m) => handleCellSaved(record.id, f, v, c, m)}
                       />
                     </td>
 
@@ -742,7 +791,7 @@ export function VirtualGrid({
                         value={record.idv}
                         inputType="number"
                         canEdit={canEdit}
-                        onSaved={(f, v) => handleCellSaved(record.id, f, v, false)}
+                        onSaved={(f, v, c, m) => handleCellSaved(record.id, f, v, c, m)}
                       />
                     </td>
 
@@ -754,7 +803,7 @@ export function VirtualGrid({
                         value={record.saodDueDate}
                         inputType="date"
                         canEdit={canEdit}
-                        onSaved={(f, v) => handleCellSaved(record.id, f, v, false)}
+                        onSaved={(f, v, c, m) => handleCellSaved(record.id, f, v, c, m)}
                       />
                     </td>
 
@@ -766,7 +815,7 @@ export function VirtualGrid({
                         value={record.tpDueDate}
                         inputType="date"
                         canEdit={canEdit}
-                        onSaved={(f, v) => handleCellSaved(record.id, f, v, false)}
+                        onSaved={(f, v, c, m) => handleCellSaved(record.id, f, v, c, m)}
                       />
                     </td>
 
@@ -823,13 +872,25 @@ export function VirtualGrid({
                     </td>
 
                     {/* Open Detail Action */}
-                    <td className="sticky right-0 px-3 py-2 text-right bg-surface group-hover:bg-accent-soft/20 border-l border-divider">
+                    <td
+                      className={cn(
+                        "sticky right-0 border-l border-divider px-3 py-2 text-right",
+                        isSelected
+                          ? "bg-[color-mix(in_srgb,var(--accent-soft)_30%,var(--surface))]"
+                          : "bg-surface",
+                        "group-hover:bg-[color-mix(in_srgb,var(--accent-soft)_40%,var(--surface))]",
+                      )}
+                    >
                       <Link
                         href={`/policies/${record.id}`}
                         title="View policy details"
-                        className="inline-flex size-7 items-center justify-center rounded-[4px] text-ink-muted hover:bg-surface-strong hover:text-ink transition-colors"
+                        className="group/link inline-flex size-7 items-center justify-center rounded-[4px] text-ink-muted hover:bg-surface-strong hover:text-ink transition-colors"
                       >
-                        <ExternalLink size={13} strokeWidth={1.75} />
+                        <ExternalLink
+                          size={13}
+                          strokeWidth={1.75}
+                          className="transition-transform duration-150 group-hover/link:translate-x-0.5 group-hover/link:-translate-y-0.5"
+                        />
                       </Link>
                     </td>
                   </tr>
@@ -855,7 +916,7 @@ export function VirtualGrid({
                 <Button
                   variant="secondary"
                   onClick={handleResetFilters}
-                  className="mt-4 h-8 px-3 text-xs"
+                  className="mt-4"
                 >
                   Clear all filters
                 </Button>
@@ -864,6 +925,50 @@ export function VirtualGrid({
           )}
         </div>
       </div>
+
+      {selectedIds.size > 0 && (
+        <div
+          role="region"
+          aria-label="Selected rows actions"
+          className="dock-up fixed bottom-5 left-1/2 z-40 flex -translate-x-1/2 flex-wrap items-center gap-3 rounded-tile border border-white/15 bg-ink px-4 py-2.5 text-white shadow-card-hover"
+        >
+          <span className="flex items-center gap-2 text-xs font-semibold tabular-nums">
+            <span className="size-2 rounded-full bg-accent" aria-hidden="true" />
+            {selectedIds.size.toLocaleString("en-IN")} selected
+          </span>
+          {canExport && (
+            <div className="flex items-center gap-1.5 border-l border-white/15 pl-3">
+              <button
+                type="button"
+                disabled={isExporting !== null}
+                onClick={handleExportCsv}
+                className="inline-flex h-7 items-center gap-1.5 rounded-control bg-white/10 px-2.5 text-xs font-medium text-white transition-[background-color,transform] duration-150 hover:bg-white/20 active:scale-[0.98] disabled:opacity-50"
+              >
+                {isExporting === "csv" ? <Spinner size={12} /> : exportSaved === "csv" ? <Check size={12} className="text-accent" /> : <Download size={12} />}
+                CSV
+              </button>
+              <button
+                type="button"
+                disabled={isExporting !== null}
+                onClick={handleExportExcel}
+                className="inline-flex h-7 items-center gap-1.5 rounded-control bg-white px-2.5 text-xs font-semibold text-ink transition-[background-color,transform] duration-150 hover:bg-surface-muted active:scale-[0.98] disabled:opacity-50"
+              >
+                {isExporting === "excel" ? <Spinner size={12} /> : exportSaved === "excel" ? <Check size={12} /> : <FileSpreadsheet size={12} />}
+                Excel
+              </button>
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => setSelectedIds(new Set())}
+            aria-label="Clear selection"
+            className="inline-flex h-7 items-center gap-1 rounded-control px-2 text-xs text-white/75 transition-colors hover:bg-white/10 hover:text-white"
+          >
+            <X size={13} aria-hidden="true" />
+            Clear
+          </button>
+        </div>
+      )}
     </div>
   );
 }

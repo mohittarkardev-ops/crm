@@ -4,8 +4,8 @@ import {
   countOf,
   daysBetween,
   one,
+  pagedRows,
   policyState,
-  rowsOf,
   todayIST,
 } from "@/lib/data/helpers";
 import type { Row } from "@/lib/module-types";
@@ -22,38 +22,48 @@ type PolicyRecord = {
   verification_status: string;
   insurer_name: string | null;
   users: Named<{ full_name: string | null; mobile_number: string }>;
-  insurers: Named<{ name: string }>;
+  insurers: Named<{ name: string; logo_url: string | null }>;
   policy_types: Named<{ code: string | null }>;
   renewals?: { status: string | null; created_at: string }[] | null;
 };
 
 const BASE_SELECT =
-  "id, policy_number, due_date, premium_amount, source, verification_status, insurer_name, users(full_name, mobile_number), insurers(name), policy_types(code)";
+  "id, policy_number, due_date, premium_amount, source, verification_status, insurer_name, users(full_name, mobile_number), insurers(name, logo_url), policy_types(code)";
 
 function clientName(p: PolicyRecord) {
   const user = one(p.users);
   return user?.full_name ?? user?.mobile_number ?? null;
 }
 
-/** All policies (latest 1000). Status is recalculated from the end date, like the database does. */
+/** All policies (paged past 1,000 rows up to 10,000). Full scale views use `/data-grid`. */
 export async function getPolicies() {
   const db = await createClient();
   const today = todayIST();
   const head = { count: "exact", head: true } as const;
 
-  const [list, all, expired, expiring] = await Promise.all([
-    db.from("policies").select(BASE_SELECT).order("created_at", { ascending: false }).limit(1000),
+  const [records, all, expired, expiring] = await Promise.all([
+    pagedRows<PolicyRecord>(
+      (from, to) =>
+        db
+          .from("policies")
+          .select(BASE_SELECT)
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false })
+          .range(from, to),
+      "Policies",
+    ),
     db.from("policies").select("id", head),
     db.from("policies").select("id", head).lt("due_date", today),
     db.from("policies").select("id", head).gte("due_date", today).lte("due_date", addDays(today, 30)),
   ]);
 
-  const rows: Row[] = rowsOf<PolicyRecord>(list, "Policies").map((p) => ({
+  const rows: Row[] = records.map((p) => ({
     id: p.id,
     policyNumber: p.policy_number,
     client: clientName(p),
     category: one(p.policy_types)?.code ?? "other",
     insurer: one(p.insurers)?.name ?? p.insurer_name,
+    insurerLogoUrl: one(p.insurers)?.logo_url ?? null,
     premium: p.premium_amount === null ? null : Number(p.premium_amount),
     expiry: p.due_date,
     status: policyState(p.due_date, today),
@@ -65,6 +75,7 @@ export async function getPolicies() {
   const expiredCount = countOf(expired, "Expired policies count");
   return {
     rows,
+    totalCount: total,
     stats: {
       total,
       active: total - expiredCount, // in force: not yet expired
@@ -83,22 +94,36 @@ function windowOf(daysLeft: number): string | null {
   return "60";
 }
 
-/** Renewal tracker: policies expiring in the next 60 days or lapsed in the last 30, with their renewal status. */
+/** Renewal tracker: policies expiring in the next 60 days or lapsed in the last 30, paged cleanly. */
 export async function getRenewals() {
   const db = await createClient();
   const today = todayIST();
+  const fromDue = addDays(today, -30);
+  const toDue = addDays(today, 60);
 
-  const res = await db
-    .from("policies")
-    .select(`${BASE_SELECT}, renewals(status, created_at)`)
-    .gte("due_date", addDays(today, -30))
-    .lte("due_date", addDays(today, 60))
-    .order("due_date", { ascending: true })
-    .limit(1000);
+  const [records, totalRes] = await Promise.all([
+    pagedRows<PolicyRecord>(
+      (from, to) =>
+        db
+          .from("policies")
+          .select(`${BASE_SELECT}, renewals(status, created_at)`)
+          .gte("due_date", fromDue)
+          .lte("due_date", toDue)
+          .order("due_date", { ascending: true })
+          .order("id", { ascending: true })
+          .range(from, to),
+      "Renewals",
+    ),
+    db
+      .from("policies")
+      .select("id", { count: "exact", head: true })
+      .gte("due_date", fromDue)
+      .lte("due_date", toDue),
+  ]);
 
   const counts: Record<string, number> = { pending: 0, quote_sent: 0, renewed: 0, lapsed: 0 };
 
-  const rows: Row[] = rowsOf<PolicyRecord>(res, "Renewals").map((p) => {
+  const rows: Row[] = records.map((p) => {
     const daysLeft = daysBetween(today, p.due_date);
     const latest = [...(p.renewals ?? [])].sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
     const status = latest?.status ?? (daysLeft < 0 ? "lapsed" : "pending");
@@ -110,6 +135,7 @@ export async function getRenewals() {
       policy: `${categoryLabel(category)} · ${p.policy_number}`,
       category,
       insurer: one(p.insurers)?.name ?? p.insurer_name,
+      insurerLogoUrl: one(p.insurers)?.logo_url ?? null,
       expiry: p.due_date,
       daysLeft,
       window: windowOf(daysLeft),
@@ -117,7 +143,7 @@ export async function getRenewals() {
     };
   });
 
-  return { rows, stats: counts };
+  return { rows, totalCount: countOf(totalRes, "Renewals count"), stats: counts };
 }
 
 /** Policies due in the next 60 days (used by Reports). */

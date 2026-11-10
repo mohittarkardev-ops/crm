@@ -9,7 +9,7 @@ import { requirePermission } from "@/lib/rbac/server";
 export default async function AdControlsPage() {
   const staff = await requirePermission("ads.view");
   const canManage = can(staff, "ads.manage");
-  const { slotRows, freeRows, stats } = await getAdControls();
+  const { slotRows, freeRows, totalAdFree, stats } = await getAdControls();
 
   return (
     <div className="space-y-4">
@@ -43,6 +43,8 @@ export default async function AdControlsPage() {
         index={4}
         title="Ad-free users"
         rows={freeRows}
+        totalCount={totalAdFree}
+        exportName="ad-free-users"
         emptyLabel="No ad-free users yet"
         search="Search name or mobile…"
         columns={[

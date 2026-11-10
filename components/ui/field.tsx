@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { cn } from "@/lib/cn";
 import { CustomSelect } from "@/components/ui/custom-select";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -15,20 +16,23 @@ export function Field({
   error,
   value,
   onFieldChange,
+  className,
 }: {
   field: FieldDef;
   error?: string;
   value?: string;
-  onFieldChange?: () => void;
+  onFieldChange?: (name?: string, value?: string) => void;
+  className?: string;
 }) {
   const { name, label, type = "text", options, required, full, suggestions, accept, hint } = field;
   const invalid = Boolean(error);
   const control = cn(CONTROL, invalid && "border-negative focus:border-negative");
   const listId = suggestions ? `${name}-suggestions` : undefined;
+  const isComposite = type === "select" || type === "date";
 
   if (type === "checkbox") {
     return (
-      <label className={cn("flex items-start gap-2.5", full && "sm:col-span-2")}>
+      <label className={cn("flex items-start gap-2.5", full && "sm:col-span-2", className)}>
         <input
           type="checkbox"
           name={name}
@@ -43,8 +47,10 @@ export function Field({
     );
   }
 
+  const Wrapper = isComposite ? "div" : "label";
+
   return (
-    <label className={cn("flex flex-col gap-1.5", full && "sm:col-span-2")}>
+    <Wrapper className={cn("flex flex-col gap-1.5", full && "sm:col-span-2", className)}>
       <span className="text-xs font-medium text-ink-muted">
         {label}
         {required && <span className="text-negative"> *</span>}
@@ -57,7 +63,7 @@ export function Field({
           options={options ?? []}
           placeholder="Select an option"
           invalid={invalid}
-          onChange={() => onFieldChange?.()}
+          onValueChange={(val) => onFieldChange?.(name, val)}
         />
       ) : type === "date" ? (
         <DatePicker
@@ -65,7 +71,7 @@ export function Field({
           defaultValue={value ?? ""}
           invalid={invalid}
           maxToday={field.maxToday}
-          onValueChange={onFieldChange}
+          onValueChange={(val) => onFieldChange?.(name, val)}
         />
       ) : type === "textarea" ? (
         <textarea name={name} rows={3} defaultValue={value ?? ""} aria-invalid={invalid} className={cn(control, "py-2.5")} />
@@ -109,7 +115,7 @@ export function Field({
       ) : (
         hint && <span className="text-xs text-ink-faint">{hint}</span>
       )}
-    </label>
+    </Wrapper>
   );
 }
 
@@ -125,13 +131,15 @@ export function FieldGrid({
   values?: Record<string, string>;
   /** Live values of the form, used to show or hide fields that depend on another field. */
   watch?: Record<string, string>;
-  /** Called when a custom control (such as the date picker) changes a value. */
-  onFieldChange?: () => void;
+  /** Called when a custom control (such as CustomSelect or DatePicker) commits a changed value. */
+  onFieldChange?: (name?: string, value?: string) => void;
 }) {
   const current = { ...values, ...watch };
   const shown = fields.filter(
     (field) => !field.showWhen || field.showWhen.equals.includes(current[field.showWhen.field] ?? ""),
   );
+  const [initialNames] = useState(() => new Set(shown.map((f) => f.name)));
+
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       {shown.map((field) => (
@@ -141,6 +149,7 @@ export function FieldGrid({
           error={errors?.[field.name]}
           value={values?.[field.name]}
           onFieldChange={onFieldChange}
+          className={!initialNames.has(field.name) ? "reveal-down" : undefined}
         />
       ))}
     </div>

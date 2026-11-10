@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { Pencil, Trash2 } from "lucide-react";
 import { PrimaryForm } from "@/components/modules/module-page";
-import { Button } from "@/components/ui/button";
+import { Button, buttonStyles } from "@/components/ui/button";
+import { ConfirmButton } from "@/components/ui/confirm-button";
 import { Drawer } from "@/components/ui/drawer";
 import { toast } from "@/components/ui/toaster";
 import type { ActionState, FieldDef, FormAction } from "@/lib/module-types";
@@ -19,18 +20,40 @@ export function EditPolicyButton({
   action: FormAction;
 }) {
   const [open, setOpen] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const [version, setVersion] = useState(0);
 
   return (
     <>
-      <Button variant="secondary" onClick={() => setOpen(true)}>
+      <Button
+        variant="secondary"
+        onClick={() => {
+          setDirty(false);
+          setVersion((v) => v + 1);
+          setOpen(true);
+        }}
+      >
         <Pencil size={16} strokeWidth={1.75} aria-hidden="true" />
         Edit
       </Button>
-      <Drawer open={open} title="Edit Policy" onClose={() => setOpen(false)}>
+      <Drawer
+        open={open}
+        title="Edit Policy"
+        dirty={dirty}
+        onClose={() => {
+          setDirty(false);
+          setOpen(false);
+        }}
+      >
         <PrimaryForm
+          key={version}
           primary={{ label: "Save", drawerTitle: "Edit Policy", fields, action }}
           initialValues={values}
-          onClose={() => setOpen(false)}
+          onDirtyChange={setDirty}
+          onClose={() => {
+            setDirty(false);
+            setOpen(false);
+          }}
         />
       </Drawer>
     </>
@@ -38,15 +61,14 @@ export function EditPolicyButton({
 }
 
 /**
- * Delete button. Asks first, shows a spinner while it works, and the server action sends the browser back to the
- * list when it succeeds. A failure shows a message and the button works again.
+ * Delete button. Uses a Hudson confirmation popover, shows a spinner while it works, and the server action
+ * sends the browser back to the list when it succeeds. A failure shows a message and the button works again.
  */
 export function DeletePolicyButton({ action }: { action: () => Promise<ActionState> }) {
   const [busy, setBusy] = useState(false);
 
   async function run() {
     if (busy) return;
-    if (!window.confirm("Delete this policy? Its documents and renewal history are deleted too. This cannot be undone.")) return;
     setBusy(true);
     try {
       const result = await action();
@@ -62,9 +84,16 @@ export function DeletePolicyButton({ action }: { action: () => Promise<ActionSta
   }
 
   return (
-    <Button variant="danger" onClick={run} loading={busy}>
-      <Trash2 size={16} strokeWidth={1.75} aria-hidden="true" />
+    <ConfirmButton
+      title="Delete policy?"
+      description="Its uploaded documents and renewal history will be deleted permanently. This cannot be undone."
+      confirmLabel="Delete policy"
+      loading={busy}
+      onConfirm={run}
+      className={buttonStyles("danger")}
+    >
+      {!busy && <Trash2 size={16} strokeWidth={1.75} aria-hidden="true" />}
       Delete
-    </Button>
+    </ConfirmButton>
   );
 }

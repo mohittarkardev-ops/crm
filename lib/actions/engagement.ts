@@ -10,31 +10,50 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const istStart = (date: string) => `${date}T00:00:00+05:30`;
 const istEnd = (date: string) => `${date}T23:59:59+05:30`;
 
+function isSafeHttpUrl(raw: string): boolean {
+  try {
+    const parsed = new URL(raw);
+    return parsed.protocol === "https:" || parsed.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
 /** Reads and checks the placement form (shared by Create and Edit). */
 function readPlacement(formData: FormData) {
   const slot = text(formData, "slot").toLowerCase().replace(/\s+/g, "_");
   const title = text(formData, "title");
   const body = text(formData, "body");
+  const imageUrl = text(formData, "imageUrl");
   const ctaLabel = text(formData, "ctaLabel");
   const actionUrl = text(formData, "actionUrl");
   const startsRaw = text(formData, "startsOn");
   const endsRaw = text(formData, "endsOn");
+  const sortRaw = text(formData, "sortOrder");
 
   const fieldErrors: Record<string, string> = {};
-  if (!/^[a-z0-9_]{2,40}$/.test(slot)) fieldErrors.slot = "Use 2 to 40 letters, numbers or underscores.";
+  // Final slot keys remain flexible until the mobile app slots are locked after app build.
+  if (!/^[a-z0-9_]{2,40}$/.test(slot)) fieldErrors.slot = "Use 2 to 40 lowercase letters, numbers or underscores.";
   if (title.length < 2 || title.length > 100) fieldErrors.title = "Title must be 2 to 100 characters.";
   if (body.length > 500) fieldErrors.body = "Message can be at most 500 characters.";
-  if (ctaLabel.length > 30) fieldErrors.ctaLabel = "Button label can be at most 30 characters.";
-  if (actionUrl) {
-    let valid = actionUrl.startsWith("/");
-    try {
-      new URL(actionUrl);
-      valid = true;
-    } catch {
-      /* relative paths are checked above */
-    }
-    if (!valid) fieldErrors.actionUrl = "Enter a full link such as https://example.com.";
+  if (imageUrl && (imageUrl.length > 500 || !isSafeHttpUrl(imageUrl))) {
+    fieldErrors.imageUrl = "Enter a valid image link starting with https:// or http://.";
   }
+  if (ctaLabel.length > 30) fieldErrors.ctaLabel = "Button label can be at most 30 characters.";
+  if (actionUrl && !(actionUrl.startsWith("/") || isSafeHttpUrl(actionUrl))) {
+    fieldErrors.actionUrl = "Enter a full link (https://...) or app route (/...).";
+  }
+
+  let sortOrder = 0;
+  if (sortRaw) {
+    const n = Number(sortRaw);
+    if (!Number.isInteger(n) || n < 0 || n > 9999) {
+      fieldErrors.sortOrder = "Enter a whole number between 0 and 9999.";
+    } else {
+      sortOrder = n;
+    }
+  }
+
   const startsOn = startsRaw ? parseDate(startsRaw) : null;
   const endsOn = endsRaw ? parseDate(endsRaw) : null;
   if (startsRaw && !startsOn) fieldErrors.startsOn = "Enter a valid date.";
@@ -47,10 +66,12 @@ function readPlacement(formData: FormData) {
       slot_name: slot,
       title,
       body: body || null,
+      image_url: imageUrl || null,
       cta_label: ctaLabel || null,
       action_url: actionUrl || null,
       starts_at: startsOn ? istStart(startsOn) : null,
       ends_at: endsOn ? istEnd(endsOn) : null,
+      sort_order: sortOrder,
     },
   };
 }

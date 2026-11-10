@@ -92,6 +92,20 @@ async function resolveInsurer(db: Db, name: string): Promise<{ id: string; name:
   return { id: created.data.id as string, name: created.data.name as string };
 }
 
+function readInsurerInput(formData: FormData, fieldErrors: Record<string, string>): string {
+  const selected = text(formData, "insurer");
+  const isOther = selected === "__other__";
+  const name = isOther ? text(formData, "insurerCustom") : selected;
+  if (isOther) {
+    if (name.length < 2 || name.length > 120) {
+      fieldErrors.insurerCustom = "Enter the new insurer's name (2–120 characters).";
+    }
+  } else if (name.length < 2 || name.length > 120) {
+    fieldErrors.insurer = "Choose an insurer.";
+  }
+  return name;
+}
+
 async function resolveType(db: Db, code: string): Promise<{ id: string } | { error: string }> {
   const found = await db.from("policy_types").select("id").eq("code", code).maybeSingle();
   if (found.error) return { error: dbMessage(found.error) };
@@ -119,7 +133,6 @@ export async function addPolicy(_previous: ActionState, formData: FormData): Pro
   const mobile = normalizeMobile(text(formData, "clientMobile"));
   const clientName = text(formData, "clientName");
   const category = text(formData, "category");
-  const insurerName = text(formData, "insurer");
   const policyNumber = text(formData, "policyNumber");
   const premiumRaw = text(formData, "premium").replace(/,/g, "");
   const startRaw = text(formData, "startDate");
@@ -133,7 +146,7 @@ export async function addPolicy(_previous: ActionState, formData: FormData): Pro
   const fieldErrors: Record<string, string> = {};
   if (!mobile) fieldErrors.clientMobile = "Enter a valid 10-digit Indian mobile number.";
   if (!CATEGORIES.includes(category)) fieldErrors.category = "Choose a category.";
-  if (insurerName.length < 2 || insurerName.length > 120) fieldErrors.insurer = "Enter the insurer's name.";
+  const insurerName = readInsurerInput(formData, fieldErrors);
   if (!policyNumber || policyNumber.length > 60) fieldErrors.policyNumber = "Enter the policy number.";
   const endDate = parseDate(endRaw);
   if (!endDate) fieldErrors.endDate = "Enter the policy end date.";
@@ -299,14 +312,13 @@ export async function updatePolicy(policyId: string, _previous: ActionState, for
   const category: string = one(current.data.policy_types as { code: string | null } | { code: string | null }[] | null)?.code ?? "other";
 
   const policyNumber = text(formData, "policyNumber");
-  const insurerName = text(formData, "insurer");
   const premiumRaw = text(formData, "premium").replace(/,/g, "");
   const startRaw = text(formData, "startDate");
   const endDate = parseDate(text(formData, "endDate"));
   const startDate = startRaw ? parseDate(startRaw) : null;
 
   const fieldErrors: Record<string, string> = {};
-  if (insurerName.length < 2 || insurerName.length > 120) fieldErrors.insurer = "Enter the insurer's name.";
+  const insurerName = readInsurerInput(formData, fieldErrors);
   if (!policyNumber || policyNumber.length > 60) fieldErrors.policyNumber = "Enter the policy number.";
   if (!endDate) fieldErrors.endDate = "Enter the policy end date.";
   if (startRaw && !startDate) fieldErrors.startDate = "Enter a valid start date.";

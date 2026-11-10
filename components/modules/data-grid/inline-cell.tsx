@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { Check } from "lucide-react";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Spinner } from "@/components/ui/spinner";
 import { saveGridCell } from "@/lib/actions/data-grid";
@@ -14,7 +15,7 @@ interface InlineCellProps {
   isCustom?: boolean;
   inputType?: "text" | "date" | "number";
   canEdit?: boolean;
-  onSaved?: (field: string, newValue: string, isCustom: boolean) => void;
+  onSaved?: (field: string, newValue: string, isCustom: boolean, meta?: Record<string, string>) => void;
   className?: string;
   placeholder?: string;
 }
@@ -33,8 +34,19 @@ export function InlineCell({
   const [isEditing, setIsEditing] = useState(false);
   const [currentVal, setCurrentVal] = useState<string>(value != null ? String(value) : "");
   const [saving, setSaving] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorPulse, setErrorPulse] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const savedTimerRef = useRef<number | null>(null);
+  // True once a date was chosen in the calendar, so closing it afterwards is not treated as a cancel.
+  const pickedRef = useRef(false);
+
+  useEffect(() => {
+    return () => {
+      if (savedTimerRef.current) window.clearTimeout(savedTimerRef.current);
+    };
+  }, []);
 
   // Sync state if external value changes while not editing
   useEffect(() => {
@@ -55,6 +67,7 @@ export function InlineCell({
   const handleStartEdit = () => {
     if (!canEdit || saving) return;
     setError(null);
+    pickedRef.current = false;
     setIsEditing(true);
   };
 
@@ -62,6 +75,31 @@ export function InlineCell({
     setCurrentVal(value != null ? String(value) : "");
     setIsEditing(false);
     setError(null);
+  };
+
+  const persistValue = async (nextVal: string) => {
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await saveGridCell(policyId, field, nextVal, isCustom);
+      if (res.ok) {
+        const finalVal = res.values?.savedValue ?? nextVal;
+        setCurrentVal(finalVal);
+        setIsEditing(false);
+        setJustSaved(true);
+        if (savedTimerRef.current) window.clearTimeout(savedTimerRef.current);
+        savedTimerRef.current = window.setTimeout(() => setJustSaved(false), 1100);
+        onSaved?.(field, finalVal, isCustom, res.values);
+      } else {
+        setError(res.error || res.message || "Failed to save");
+        setErrorPulse((n) => n + 1);
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Error saving cell");
+      setErrorPulse((n) => n + 1);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleSave = async () => {
@@ -75,22 +113,7 @@ export function InlineCell({
       return;
     }
 
-    setSaving(true);
-    setError(null);
-
-    try {
-      const res = await saveGridCell(policyId, field, trimmed, isCustom);
-      if (res.ok) {
-        setIsEditing(false);
-        onSaved?.(field, trimmed, isCustom);
-      } else {
-        setError(res.message || "Failed to save");
-      }
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Error saving cell");
-    } finally {
-      setSaving(false);
-    }
+    await persistValue(trimmed);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -114,25 +137,16 @@ export function InlineCell({
         >
           <DatePicker
             value={currentVal}
-            onChange={async (newIso) => {
+            onChange={(newIso) => {
+              pickedRef.current = true;
               setCurrentVal(newIso);
-              setSaving(true);
-              setError(null);
-              try {
-                const res = await saveGridCell(policyId, field, newIso, isCustom);
-                if (res.ok) {
-                  setIsEditing(false);
-                  onSaved?.(field, newIso, isCustom);
-                } else {
-                  setError(res.message || "Failed to save");
-                }
-              } catch (err: unknown) {
-                setError(err instanceof Error ? err.message : "Error saving cell");
-              } finally {
-                setSaving(false);
-              }
+              void persistValue(newIso);
             }}
             placeholder="Select date"
+            defaultOpen
+            onOpenChange={(isOpen) => {
+              if (!isOpen && !pickedRef.current) handleCancel();
+            }}
             className="h-7 rounded-control px-2 text-xs"
           />
           {saving && (
@@ -141,7 +155,7 @@ export function InlineCell({
             </span>
           )}
           {error && (
-            <div className="absolute top-full left-0 z-30 mt-1 rounded-[3px] bg-negative px-1.5 py-0.5 text-[10px] text-white shadow-card">
+            <div key={errorPulse} className="micro-shake absolute top-full left-0 z-30 mt-1 rounded-[3px] bg-negative px-1.5 py-0.5 text-[10px] text-white shadow-card">
               {error}
             </div>
           )}
@@ -171,7 +185,7 @@ export function InlineCell({
           </span>
         )}
         {error && (
-          <div className="absolute top-full left-0 z-30 mt-1 rounded-[3px] bg-negative px-1.5 py-0.5 text-[10px] text-white shadow-card">
+          <div key={errorPulse} className="micro-shake absolute top-full left-0 z-30 mt-1 rounded-[3px] bg-negative px-1.5 py-0.5 text-[10px] text-white shadow-card">
             {error}
           </div>
         )}
@@ -192,10 +206,11 @@ export function InlineCell({
       onClick={handleStartEdit}
       title={canEdit ? "Click to edit" : undefined}
       className={cn(
-        "group min-h-[26px] flex items-center rounded-[4px] px-2 py-1 text-xs transition-colors select-none",
+        "group min-h-[26px] flex items-center justify-between gap-1.5 rounded-[4px] px-2 py-1 text-xs transition-colors select-none",
         canEdit
           ? "cursor-text hover:bg-accent-soft/40 hover:text-ink"
           : "cursor-default text-ink",
+        justSaved && "flash-positive",
         className
       )}
     >
@@ -206,6 +221,7 @@ export function InlineCell({
       ) : (
         <span className="text-[11px] italic text-ink-faint">{placeholder}</span>
       )}
+      {justSaved && <Check size={12} strokeWidth={2.5} className="check-pop shrink-0 text-positive" aria-hidden="true" />}
     </div>
   );
 }
