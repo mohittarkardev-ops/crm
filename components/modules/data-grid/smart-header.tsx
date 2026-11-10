@@ -158,7 +158,7 @@ export function SmartHeader({
   const sortUI = renderSortIcons();
 
   return (
-    <th className="relative px-3 py-2.5 text-left text-[10px] font-semibold tracking-wider text-ink-muted uppercase border-b border-divider select-none bg-surface/90 backdrop-blur whitespace-nowrap header-menu-container">
+    <th className="relative px-3 py-2.5 text-left text-[10px] font-semibold tracking-wider text-ink-muted uppercase border-b border-divider select-none bg-surface-muted/95 backdrop-blur whitespace-nowrap header-menu-container">
       <div
         onClick={() => setOpenHeaderMenu(isMenuOpen ? null : fieldKey)}
         className="inline-flex items-center gap-1.5 cursor-pointer hover:text-ink transition-colors group"

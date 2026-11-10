@@ -401,7 +401,7 @@ export function VirtualGrid({
                 onClick={handleResetFilters}
                 className="h-8 px-3 text-xs text-ink-muted hover:text-ink"
               >
-                <RotateCcw size={14} className="mr-1.5" />
+                <RotateCcw size={14} />
                 Reset filters
               </Button>
             )}
@@ -415,7 +415,7 @@ export function VirtualGrid({
                   disabled={isExporting !== null}
                   className="h-8 px-3 text-xs"
                 >
-                  <Download size={14} className="mr-1.5" />
+                  <Download size={14} />
                   {selectedIds.size > 0 ? `CSV (${selectedIds.size})` : "Export CSV"}
                 </Button>
                 <Button
@@ -425,7 +425,7 @@ export function VirtualGrid({
                   disabled={isExporting !== null}
                   className="h-8 px-3 text-xs"
                 >
-                  <FileSpreadsheet size={14} className="mr-1.5" />
+                  <FileSpreadsheet size={14} />
                   {selectedIds.size > 0 ? `Excel (${selectedIds.size})` : "Export Excel"}
                 </Button>
               </>
@@ -435,7 +435,7 @@ export function VirtualGrid({
               href="/policies"
               className={buttonStyles("secondary", "h-8 px-3 text-xs inline-flex items-center")}
             >
-              <FileText size={14} className="mr-1.5" />
+              <FileText size={14} />
               Policies List
             </Link>
           </div>
@@ -470,7 +470,7 @@ export function VirtualGrid({
             <thead className="sticky top-0 z-20 border-b border-divider bg-surface-muted/95 backdrop-blur">
               <tr>
                 {/* Select All Checkbox */}
-                <th className="w-10 px-3 py-2.5 text-center border-b border-divider bg-surface/90">
+                <th className="w-10 px-3 py-2.5 text-center border-b border-divider bg-surface-muted/95">
                   <input
                     type="checkbox"
                     checked={selectedIds.size === rows.length && rows.length > 0}
@@ -662,9 +662,7 @@ export function VirtualGrid({
                     {/* Category */}
                     <td className="px-3 py-2">
                       {record.vehicleCategory ? (
-                        <span className="inline-block rounded-[3px] bg-surface-muted px-1.5 py-0.5 text-[10px] font-bold text-ink">
-                          {record.vehicleCategory}
-                        </span>
+                        <Chip tone="neutral">{record.vehicleCategory}</Chip>
                       ) : (
                         <span className="text-ink-faint text-[10px]">—</span>
                       )}

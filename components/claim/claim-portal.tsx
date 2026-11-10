@@ -2,19 +2,12 @@
 
 import React, { useState, useRef } from "react";
 import {
-  ShieldCheck,
   Lock,
   Search,
   CheckCircle2,
   TriangleAlert,
-  Calendar,
-  CreditCard,
-  User,
   Car,
-  FileCheck2,
-  RotateCcw,
   PlusCircle,
-  HelpCircle,
   ArrowRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -184,17 +177,17 @@ export function ClaimPortal() {
       <Card className="mx-auto w-full max-w-md p-6 sm:p-8">
         <form onSubmit={handleUnlock} className="space-y-5">
           <div className="flex items-center gap-3 border-b border-divider pb-4">
-            <span className="grid size-11 place-items-center rounded-control bg-ink text-white shrink-0 shadow-sm">
+            <span className="grid size-11 place-items-center rounded-control bg-ink text-white shrink-0">
               <Lock size={20} strokeWidth={1.75} aria-hidden="true" />
             </span>
             <div>
-              <h2 className="text-[17px] font-bold text-ink">Agent Access Required</h2>
+              <h2 className="text-[15px] font-semibold text-ink">Agent Access Required</h2>
               <p className="text-xs text-ink-muted">Enter the authorization code to continue</p>
             </div>
           </div>
 
           <label className="flex flex-col gap-1.5">
-            <span className="text-xs font-semibold text-ink">
+            <span className="text-xs font-medium text-ink-muted">
               Portal Access Code <span className="text-negative">*</span>
             </span>
             <input
@@ -225,7 +218,7 @@ export function ClaimPortal() {
           </Button>
 
           <div className="pt-2 text-center text-[11px] text-ink-faint">
-            Authorised agent access only • All sessions are monitored & audited
+            For authorised SecureDrive agents only.
           </div>
         </form>
       </Card>
@@ -244,7 +237,7 @@ export function ClaimPortal() {
         </div>
 
         <div>
-          <h2 className="text-xl font-bold text-ink">Claim Submitted Successfully</h2>
+          <h2 className="text-[15px] font-semibold text-ink">Claim Submitted Successfully</h2>
           <p className="mt-1 text-sm text-ink-muted">
             {submitSuccess.isUnknown
               ? "New vehicle claim registered. An admin will verify details and approve."
@@ -317,7 +310,7 @@ export function ClaimPortal() {
           {/* Agent Selection (Spacious 5-columns) */}
           <div className="sm:col-span-5">
             <label className="flex flex-col gap-1.5">
-              <span className="text-xs font-semibold text-ink">
+              <span className="text-xs font-medium text-ink-muted">
                 Agent / Employee Name <span className="text-negative">*</span>
               </span>
               <CustomSelect
@@ -347,7 +340,7 @@ export function ClaimPortal() {
           {/* Vehicle Registration Number (Spacious 7-columns with Indian Plate Aesthetic) */}
           <div className="sm:col-span-7">
             <label className="flex flex-col gap-1.5">
-              <span className="text-xs font-semibold text-ink flex items-center justify-between">
+              <span className="text-xs font-medium text-ink-muted flex items-center justify-between">
                 <span>
                   Vehicle Reg. Number <span className="text-negative">*</span>
                 </span>
@@ -358,7 +351,7 @@ export function ClaimPortal() {
                 {/* Monospace license-plate styled input */}
                 <div className="relative flex-1">
                   <div className="absolute left-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 pointer-events-none text-ink-muted select-none border-r border-divider pr-2.5">
-                    <span className="rounded bg-accent-soft px-1 text-[9px] font-extrabold text-ink">IND</span>
+                    <span className="rounded-[3px] bg-accent-soft px-1 text-[9px] font-bold text-ink">IND</span>
                     <Car size={15} />
                   </div>
                   <input
@@ -525,7 +518,7 @@ export function ClaimPortal() {
 
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 pt-1">
               <label className="flex flex-col gap-1.5">
-                <span className="text-xs font-semibold text-ink">
+                <span className="text-xs font-medium text-ink-muted">
                   Customer Name <span className="text-negative">*</span>
                 </span>
                 <input
@@ -542,7 +535,7 @@ export function ClaimPortal() {
               </label>
 
               <label className="flex flex-col gap-1.5">
-                <span className="text-xs font-semibold text-ink">
+                <span className="text-xs font-medium text-ink-muted">
                   Customer Mobile <span className="text-negative">*</span>
                 </span>
                 <div className="relative">
@@ -565,7 +558,7 @@ export function ClaimPortal() {
               </label>
 
               <label className="flex flex-col gap-1.5">
-                <span className="text-xs font-semibold text-ink">
+                <span className="text-xs font-medium text-ink-muted">
                   Vehicle Category <span className="text-negative">*</span>
                 </span>
                 <CustomSelect
@@ -581,7 +574,7 @@ export function ClaimPortal() {
               </label>
 
               <label className="flex flex-col gap-1.5">
-                <span className="text-xs font-semibold text-ink">
+                <span className="text-xs font-medium text-ink-muted">
                   SAOD Due Date <span className="text-negative">*</span>
                 </span>
                 <DatePicker
@@ -610,7 +603,7 @@ export function ClaimPortal() {
 
         <div className="grid gap-4 sm:grid-cols-3">
           <label className="flex flex-col gap-1.5">
-            <span className="text-xs font-semibold text-ink">
+            <span className="text-xs font-medium text-ink-muted">
               Payment Date <span className="text-negative">*</span>
             </span>
             <DatePicker
@@ -627,7 +620,7 @@ export function ClaimPortal() {
           </label>
 
           <label className="flex flex-col gap-1.5">
-            <span className="text-xs font-semibold text-ink">
+            <span className="text-xs font-medium text-ink-muted">
               Payment Mode <span className="text-negative">*</span>
             </span>
             <CustomSelect
@@ -643,7 +636,7 @@ export function ClaimPortal() {
           </label>
 
           <label className="flex flex-col gap-1.5">
-            <span className="text-xs font-semibold text-ink">Transaction Remarks / UTR</span>
+            <span className="text-xs font-medium text-ink-muted">Transaction Remarks / UTR</span>
             <input
               type="text"
               value={remarks}

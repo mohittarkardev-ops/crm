@@ -106,7 +106,12 @@ export function InlineCell({
   if (isEditing) {
     if (inputType === "date") {
       return (
-        <div className="relative flex items-center min-w-[140px]">
+        <div
+          className="relative flex items-center min-w-[140px]"
+          onKeyDown={(e) => {
+            if (e.key === "Escape") handleCancel();
+          }}
+        >
           <DatePicker
             value={currentVal}
             onChange={async (newIso) => {
@@ -136,7 +141,7 @@ export function InlineCell({
             </span>
           )}
           {error && (
-            <div className="absolute top-full left-0 z-30 mt-1 rounded bg-negative px-1.5 py-0.5 text-[10px] text-white shadow-card">
+            <div className="absolute top-full left-0 z-30 mt-1 rounded-[3px] bg-negative px-1.5 py-0.5 text-[10px] text-white shadow-card">
               {error}
             </div>
           )}
@@ -155,7 +160,7 @@ export function InlineCell({
           onBlur={() => void handleSave()}
           disabled={saving}
           className={cn(
-            "w-full rounded-control border border-ink bg-surface-strong px-2 py-1 text-xs text-ink font-medium shadow-sm outline-none transition-colors focus:ring-1 focus:ring-ink",
+            "w-full rounded-control border border-ink bg-surface-strong px-2 py-1 text-xs text-ink font-medium outline-none transition-colors focus:ring-1 focus:ring-ink",
             inputType === "number" ? "tabular-nums text-right" : "",
             error ? "border-negative bg-negative-soft/30" : ""
           )}
@@ -166,7 +171,7 @@ export function InlineCell({
           </span>
         )}
         {error && (
-          <div className="absolute top-full left-0 z-30 mt-1 rounded bg-negative px-1.5 py-0.5 text-[10px] text-white shadow-card">
+          <div className="absolute top-full left-0 z-30 mt-1 rounded-[3px] bg-negative px-1.5 py-0.5 text-[10px] text-white shadow-card">
             {error}
           </div>
         )}

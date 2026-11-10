@@ -14,7 +14,7 @@ import {
   TableProperties,
   ChevronDown,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonStyles } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
 import { CustomSelect } from "@/components/ui/custom-select";
 import { Spinner } from "@/components/ui/spinner";
@@ -332,7 +332,7 @@ export function ColumnMapper({ customFields }: ColumnMapperProps) {
               <UploadCloud size={24} strokeWidth={1.75} />
             </div>
             <div>
-              <h2 className="text-base font-semibold text-ink">Select a file to import</h2>
+              <h2 className="text-[15px] font-semibold text-ink">Select a file to import</h2>
               <p className="text-xs text-ink-muted mt-1">
                 Upload CSV, Excel (.xlsx, .xls), or JSON. Header names will be matched automatically.
               </p>
@@ -340,7 +340,7 @@ export function ColumnMapper({ customFields }: ColumnMapperProps) {
 
             <div
               onClick={() => fileInputRef.current?.click()}
-              className="cursor-pointer rounded-card border-2 border-dashed border-divider p-8 hover:border-ink hover:bg-surface-muted/30 transition-all"
+              className="cursor-pointer rounded-tile border-2 border-dashed border-divider p-8 hover:border-ink hover:bg-surface-muted/30 transition-all"
             >
               <FileSpreadsheet size={32} className="mx-auto text-ink-faint mb-2" />
               <p className="text-xs font-semibold text-ink">Click to browse your computer</p>
@@ -376,7 +376,7 @@ export function ColumnMapper({ customFields }: ColumnMapperProps) {
               }}
               className="h-8 px-3 text-xs"
             >
-              <RotateCcw size={13} className="mr-1.5" />
+              <RotateCcw size={13} />
               Choose different file
             </Button>
           </Card>
@@ -480,7 +480,7 @@ export function ColumnMapper({ customFields }: ColumnMapperProps) {
 
           {/* Validation Errors if any */}
           {missingRequired.length > 0 && (
-            <div className="flex items-center gap-2 rounded-card bg-negative-soft px-4 py-3 text-xs text-negative">
+            <div className="flex items-center gap-2 rounded-tile bg-negative-soft px-4 py-3 text-xs text-negative">
               <AlertCircle size={16} />
               <span>{missingRequired[0]}</span>
             </div>
@@ -503,7 +503,7 @@ export function ColumnMapper({ customFields }: ColumnMapperProps) {
               className="min-w-44"
             >
               Start Bulk Import
-              <ArrowRight size={14} className="ml-1.5" />
+              <ArrowRight size={14} />
             </Button>
           </div>
         </div>
@@ -516,7 +516,7 @@ export function ColumnMapper({ customFields }: ColumnMapperProps) {
             <div className="flex justify-center">
               <Spinner size={32} />
             </div>
-            <h2 className="text-base font-semibold text-ink">Importing Records...</h2>
+            <h2 className="text-[15px] font-semibold text-ink">Importing Records...</h2>
             <p className="text-xs text-ink-muted">
               Processing chunk {processedChunks} of {totalChunks} ({progressPercentage}%)
             </p>
@@ -531,15 +531,15 @@ export function ColumnMapper({ customFields }: ColumnMapperProps) {
 
             {/* Counters */}
             <div className="grid grid-cols-3 gap-2 pt-4 border-t border-divider text-left">
-              <div className="rounded-[4px] bg-surface-muted p-2 text-center">
+              <div className="rounded-tile bg-surface-muted p-2 text-center">
                 <span className="block text-sm font-bold text-ink">{stats.inserted}</span>
                 <span className="text-[10px] uppercase font-semibold text-ink-muted">Inserted</span>
               </div>
-              <div className="rounded-[4px] bg-surface-muted p-2 text-center">
+              <div className="rounded-tile bg-surface-muted p-2 text-center">
                 <span className="block text-sm font-bold text-ink">{stats.updated}</span>
                 <span className="text-[10px] uppercase font-semibold text-ink-muted">Updated</span>
               </div>
-              <div className="rounded-[4px] bg-surface-muted p-2 text-center">
+              <div className="rounded-tile bg-surface-muted p-2 text-center">
                 <span className="block text-sm font-bold text-ink">{stats.skipped}</span>
                 <span className="text-[10px] uppercase font-semibold text-ink-muted">Skipped</span>
               </div>
@@ -570,7 +570,7 @@ export function ColumnMapper({ customFields }: ColumnMapperProps) {
               <CheckCircle2 size={24} />
             </div>
             <div>
-              <h2 className="text-base font-semibold text-ink">Import Batch Complete!</h2>
+              <h2 className="text-[15px] font-semibold text-ink">Import Batch Complete!</h2>
               <p className="text-xs text-ink-muted mt-1">
                 Successfully processed all rows for {file?.name}.
               </p>
@@ -603,11 +603,9 @@ export function ColumnMapper({ customFields }: ColumnMapperProps) {
 
             {/* Navigation buttons */}
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-4">
-              <Link href="/data-grid" className="w-full sm:w-auto">
-                <Button className="w-full">
-                  <TableProperties size={14} className="mr-1.5" />
-                  Open in Data Grid
-                </Button>
+              <Link href="/data-grid" className={buttonStyles("primary", "w-full sm:w-auto")}>
+                <TableProperties size={14} />
+                Open in Data Grid
               </Link>
               <Button
                 variant="secondary"

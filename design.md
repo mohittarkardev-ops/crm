@@ -58,7 +58,8 @@ Inter (`next/font`), numbers use tabular figures. Weights: 400 body, 500 labels,
 ### 2.3 Radius, shadow, spacing
 Radius: card `12px`, nested tile `8px`, control (input, button) `6px`, chip `3px`, nav item and segmented control `4px`, avatar full.
 Shadow: `0 2px 12px rgba(0,0,0,0.06)` (cards), `0 8px 24px rgba(0,0,0,0.10)` (drawers, menus).
-Spacing: 4, 8, 12, 16, 20, 24. Card padding 20px (16px for stat tiles). Grid gap 16px.
+Spacing: 4, 8, 12, 16, 20, 24. Card padding 20px (16px for stat tiles). Grid gap 16px. Deliberate exceptions: compact banner cards `p-4`, hero and empty-state cards (import steps, claim portal) `p-6`/`p-8`, and public-portal touch controls `h-11`.
+No other shadows: only `shadow-card` and `shadow-card-hover`. Never `shadow-sm`, `shadow-md` or `shadow-xs`.
 
 ---
 
@@ -96,7 +97,7 @@ Spacing: 4, 8, 12, 16, 20, 24. Card padding 20px (16px for stat tiles). Grid gap
   - Page changes: the top progress bar plus skeleton screens (`loading.tsx`). Never a full-page spinner.
   - Components: `Spinner`, `Button loading`, `PendingBar`, `useDelayedFlag`, `Skeleton`.
 - **Chips:** 3px radius, 10px UPPERCASE bold. Soft background plus coloured text, except `Renewed`, which is solid yellow with dark text.
-- **Tables:** inside a card. Header = 10px UPPERCASE muted labels with a hairline under it. Rows 56px with hairline dividers, hover `accent-soft` at 40%. Avatars are grey circles with initials.
+- **Tables:** inside a card. Header = 10px UPPERCASE muted labels with a hairline under it (`border-b border-divider`, never the dark 1.5px rule, which belongs only under card titles). Header cells and body cells share the same horizontal padding so labels line up with data. Rows 56px with hairline dividers, hover `accent-soft` at 40%. Avatars are grey circles with initials. The Data Grid is the one dense exception: 44px rows, 12px text.
 - **Charts:** Recharts. Bars use yellow on a pale grey track, rounded tops, grid lines use `var(--divider)`. Donut and legend use the grey scale plus yellow. White tooltip card.
 - **Drawer / modal:** white, radius 12, overlay `rgba(28,28,28,0.35)`, forms in a right-side 480px drawer.
 - **Empty state:** muted icon in a grey circle plus one short label. Loading uses skeleton blocks.
@@ -125,7 +126,11 @@ Dashboard: Active Policies, New Clients, Renewal Revenue, Renewal Rate; Renewals
 
 **Do:** use tokens and the components above; add a missing component here first; format money as INR (`₹1,17,500`) and dates as `13 Nov 2026`; keep every icon-only button labelled; leave data empty rather than inventing placeholder values.
 
-**Don't:** use hard-coded colours; make yellow buttons or large yellow areas; add dark mode, hover lifts, gradients (except the page background), mixed icon sets or new fonts; use more than one primary button per card or form; use pure black `#000`.
+**Don't:** use hard-coded colours; make yellow buttons or large yellow areas; add dark mode, hover lifts, gradients (except the page background), mixed icon sets or new fonts (no `font-mono`: plates and IDs use Inter bold, uppercase, tabular figures); use more than one primary button per card or form; use pure black `#000`; use native `<select>` or `<input type="date">` (use `CustomSelect` and `DatePicker`); use `alert()` (use `toast`); nest `rounded-card` inside a card (use `rounded-tile`); put a `<Button>` inside a `<Link>` (use `buttonStyles` on the `Link`); hand-build chips, segmented toggles or spinners (use `Chip`, `Segmented`, `Spinner`).
+
+**Class names:** `cn()` is `twMerge(clsx())`, so an override such as `h-8 px-3 text-xs` really replaces a component's default `h-10 px-4 text-sm`. Native checkboxes and radios take the ink colour from one global rule in `globals.css`. Labels above fields are `text-xs font-medium text-ink-muted`.
+
+**Copy:** screens must not claim things the system does not do (for example "monitored" or "encrypted channel"). Keep wording factual.
 
 ---
 

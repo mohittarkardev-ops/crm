@@ -19,12 +19,12 @@ export default function ClaimPage() {
         {/* Header Bar */}
         <div className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b-[1.5px] border-rule pb-4">
           <div className="flex items-center gap-3">
-            <span className="grid size-11 place-items-center rounded-control bg-ink text-white shrink-0 shadow-sm">
+            <span className="grid size-11 place-items-center rounded-control bg-ink text-white shrink-0">
               <ShieldCheck size={22} strokeWidth={1.75} aria-hidden="true" />
             </span>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-[22px] font-bold tracking-tight text-ink">SecureDrive</h1>
+                <h1 className="text-2xl font-bold tracking-tight text-ink">SecureDrive</h1>
                 <Chip tone="accent">Agent Portal</Chip>
               </div>
               <p className="text-xs text-ink-muted">Vehicle policy renewal claim submission</p>
@@ -32,8 +32,8 @@ export default function ClaimPage() {
           </div>
 
           <div className="flex items-center gap-1.5 text-xs text-ink-muted bg-surface/60 rounded-control px-3 py-1.5 border border-divider self-start sm:self-auto">
-            <Lock size={13} className="text-positive" />
-            <span>Encrypted Agent Channel</span>
+            <Lock size={13} className="text-ink-muted" />
+            <span>Agents only</span>
           </div>
         </div>
 
@@ -43,7 +43,7 @@ export default function ClaimPage() {
         {/* Footer Note */}
         <footer className="mt-10 border-t border-divider pt-6 text-center text-xs text-ink-faint space-y-1">
           <p>This portal is intended solely for authorised SecureDrive agents and partners.</p>
-          <p>Submitted claims are logged, timestamped, and verified by operations prior to disbursement.</p>
+          <p>Every claim you submit is recorded and checked by the office.</p>
         </footer>
       </div>
     </div>

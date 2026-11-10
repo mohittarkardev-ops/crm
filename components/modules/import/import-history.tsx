@@ -45,7 +45,7 @@ export function ImportHistory({ batches: initialBatches, canManage }: ImportHist
   };
 
   return (
-    <Card className="p-5">
+    <Card>
       <CardHeader
         title="Recent Import Batches"
         action={
@@ -129,7 +129,7 @@ export function ImportHistory({ batches: initialBatches, canManage }: ImportHist
                         loading={undoingId === b.id}
                         className="h-7 px-2 text-xs text-negative hover:bg-negative-soft hover:text-negative"
                       >
-                        <RotateCcw size={12} className="mr-1" />
+                        <RotateCcw size={12} />
                         Undo
                       </Button>
                     )}

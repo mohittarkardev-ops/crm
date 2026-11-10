@@ -55,7 +55,7 @@ export function RolesTable({ roles }: RolesTableProps) {
   };
 
   return (
-    <Card className="p-5">
+    <Card>
       <CardHeader
         title="Role Definitions & Permissions"
         action={
@@ -123,7 +123,7 @@ export function RolesTable({ roles }: RolesTableProps) {
                         onClick={() => handleOpenEdit(r)}
                         className="h-7 px-2 text-xs"
                       >
-                        <Edit2 size={12} className="mr-1" />
+                        <Edit2 size={12} />
                         Edit
                       </Button>
                       {!r.isSystem && (
@@ -133,7 +133,7 @@ export function RolesTable({ roles }: RolesTableProps) {
                           loading={deletingId === r.id}
                           className="h-7 px-2 text-xs text-negative hover:bg-negative-soft hover:text-negative"
                         >
-                          <Trash2 size={12} className="mr-1" />
+                          <Trash2 size={12} />
                           Delete
                         </Button>
                       )}
