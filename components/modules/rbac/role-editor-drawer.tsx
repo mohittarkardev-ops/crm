@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { Drawer } from "@/components/ui/drawer";
+import React, { useState, useEffect, useId } from "react";
+import { Drawer, DrawerFooter } from "@/components/ui/drawer";
 import { Button } from "@/components/ui/button";
 import { CONTROL } from "@/components/ui/field";
 import { MODULES, type PermissionKey } from "@/lib/rbac/permissions";
@@ -17,6 +17,7 @@ interface RoleEditorDrawerProps {
 }
 
 export function RoleEditorDrawer({ isOpen, onClose, role }: RoleEditorDrawerProps) {
+  const formId = useId();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [selectedPerms, setSelectedPerms] = useState<Set<string>>(new Set());
@@ -118,7 +119,7 @@ export function RoleEditorDrawer({ isOpen, onClose, role }: RoleEditorDrawerProp
       dirty={isDirty}
       title={isAdminRole ? "View Role: Admin" : isEdit ? `Edit Role: ${role?.name}` : "Create New Role"}
     >
-      <form onSubmit={handleSave} className="space-y-5">
+      <form id={formId} onSubmit={handleSave} className="space-y-5">
         {isAdminRole && (
           <div className="flex items-center gap-2 rounded-tile bg-accent-soft p-3 text-xs text-ink font-medium">
             <ShieldCheck size={16} className="text-ink shrink-0" />
@@ -221,7 +222,7 @@ export function RoleEditorDrawer({ isOpen, onClose, role }: RoleEditorDrawerProp
           </div>
         )}
 
-        <div className="sticky bottom-0 -mx-6 -mb-5 mt-6 flex items-center justify-end gap-2 border-t border-divider bg-surface-strong px-6 py-4">
+        <DrawerFooter>
           {isAdminRole ? (
             <Button variant="secondary" onClick={onClose}>
               Close
@@ -231,12 +232,12 @@ export function RoleEditorDrawer({ isOpen, onClose, role }: RoleEditorDrawerProp
               <Button variant="secondary" onClick={onClose} disabled={loading}>
                 Cancel
               </Button>
-              <Button type="submit" loading={loading}>
+              <Button type="submit" form={formId} loading={loading}>
                 Save Role
               </Button>
             </>
           )}
-        </div>
+        </DrawerFooter>
       </form>
     </Drawer>
   );

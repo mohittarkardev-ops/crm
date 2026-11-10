@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useActionState, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Suspense, useActionState, useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowUpRight, ChevronLeft, ChevronRight, Download, Plus, Search } from "lucide-react";
@@ -33,7 +33,7 @@ import {
   todayIST,
   type DateRangeValue,
 } from "@/components/ui/date-range-filter";
-import { Drawer } from "@/components/ui/drawer";
+import { Drawer, DrawerFooter } from "@/components/ui/drawer";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FieldGrid } from "@/components/ui/field";
 import { PendingBar } from "@/components/ui/pending-bar";
@@ -164,6 +164,7 @@ export function PrimaryForm({
   onDirtyChange?: (dirty: boolean) => void;
 }) {
   const router = useRouter();
+  const formId = useId();
   const [state, formAction, pending] = useActionState(primary.action, { ok: false } as ActionState);
   const handled = useRef<ActionState | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
@@ -239,7 +240,7 @@ export function PrimaryForm({
   const liveValues = { ...(initialValues ?? {}), ...(state.values ?? {}), ...watch };
 
   return (
-    <form ref={formRef} action={formAction} onChange={() => onFormChange()} noValidate aria-busy={pending}>
+    <form id={formId} ref={formRef} action={formAction} onChange={() => onFormChange()} noValidate aria-busy={pending}>
       <PendingBar active={pending || checking} className="-mt-2 mb-3" />
       {state.error && (
         <p key={errorPulse} role="alert" className="micro-shake mb-4 rounded-control bg-negative-soft px-3 py-2 text-xs text-negative">
@@ -278,7 +279,7 @@ export function PrimaryForm({
           )}
         </div>
       )}
-      <div className="sticky bottom-0 -mx-6 -mb-5 mt-6 flex justify-end gap-2 border-t border-divider bg-surface-strong px-6 py-4">
+      <DrawerFooter>
         {primary.preview && (
           <Button variant="secondary" className="mr-auto" onClick={checkRecipients} loading={checking} disabled={pending}>
             Check recipients
@@ -287,10 +288,10 @@ export function PrimaryForm({
         <Button variant="secondary" onClick={onClose} disabled={pending}>
           Cancel
         </Button>
-        <Button type="submit" loading={pending}>
+        <Button type="submit" form={formId} loading={pending}>
           Save
         </Button>
-      </div>
+      </DrawerFooter>
     </form>
   );
 }

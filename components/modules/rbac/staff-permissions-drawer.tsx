@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
-import { Drawer } from "@/components/ui/drawer";
+import React, { useState, useEffect, useId, useMemo } from "react";
+import { Drawer, DrawerFooter } from "@/components/ui/drawer";
 import { Button } from "@/components/ui/button";
 import { AccessGuardianCharacter } from "@/components/ui/characters";
 import { CustomSelect } from "@/components/ui/custom-select";
@@ -38,6 +38,7 @@ export function StaffPermissionsDrawer({
   loading: fetching = false,
   isActorAdmin = true,
 }: StaffPermissionsDrawerProps) {
+  const formId = useId();
   const [selectedRoleId, setSelectedRoleId] = useState<string>("");
   // Overrides map: { [permissionKey]: boolean (true = granted, false = revoked) }
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});
@@ -135,7 +136,7 @@ export function StaffPermissionsDrawer({
       dirty={isDirty}
       title={`Permissions: ${staff?.name || "Staff"}`}
     >
-      <form onSubmit={handleSave} className="space-y-5">
+      <form id={formId} onSubmit={handleSave} className="space-y-5">
         {/* Info Header + Live Privilege Guardian */}
         <div className="flex items-center gap-3 rounded-tile border border-divider bg-surface-muted/30 p-3 text-xs text-ink-muted">
           <AccessGuardianCharacter
@@ -310,14 +311,14 @@ export function StaffPermissionsDrawer({
           </div>
         )}
 
-        <div className="sticky bottom-0 -mx-6 -mb-5 mt-6 flex items-center justify-end gap-2 border-t border-divider bg-surface-strong px-6 py-4">
+        <DrawerFooter>
           <Button variant="secondary" onClick={onClose} disabled={loading}>
             Cancel
           </Button>
-          <Button type="submit" loading={loading} disabled={fetching}>
+          <Button type="submit" form={formId} loading={loading} disabled={fetching}>
             Save Permissions
           </Button>
-        </div>
+        </DrawerFooter>
       </form>
     </Drawer>
   );
