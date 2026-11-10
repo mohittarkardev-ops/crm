@@ -504,3 +504,105 @@ export function ClaimTrophyCharacter() {
     </svg>
   );
 }
+
+/** 14. Interactive Login Desk Mascot for /login (covers eyes politely when typing password). */
+export function LoginDeskCharacter({ mood = "ready" }: { mood?: "ready" | "privacy" | "oops" }) {
+  const isPrivacy = mood === "privacy";
+  const isOops = mood === "oops";
+
+  return (
+    <svg
+      viewBox="0 0 132 104"
+      className="mx-auto h-24 w-32 select-none"
+      role="img"
+      aria-label={
+        isPrivacy
+          ? "SecureDrive mascot politely covering its eyes while you enter your password"
+          : isOops
+            ? "SecureDrive mascot looking puzzled after a login error"
+            : "SecureDrive mascot welcoming you to sign in"
+      }
+    >
+      <ellipse cx="66" cy="95" rx="42" ry="5" fill="var(--surface-muted)" />
+      <rect
+        x="24"
+        y="12"
+        width="84"
+        height="68"
+        rx="20"
+        fill={isOops ? "var(--negative-soft)" : "var(--accent-soft)"}
+        className="transition-colors duration-200"
+      />
+
+      {/* Shield body */}
+      <path
+        d="M66 17 C80 17 90 22.5 90 29 V54 C90 69.5 66 79 66 79 C66 79 42 69.5 42 54 V29 C42 22.5 52 17 66 17 Z"
+        fill="var(--surface-strong)"
+        stroke="var(--text)"
+        strokeWidth="2.3"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M52.5 23.8 C57 21.8 61.5 21.2 66 21.2 C70.5 21.2 75 21.8 79.5 23.8"
+        fill="none"
+        stroke="var(--accent)"
+        strokeWidth="3.8"
+        strokeLinecap="round"
+      />
+
+      {/* Facial expressions */}
+      {isOops ? (
+        <g>
+          <path d="M51 32 Q55.5 28.5 60 31.5" fill="none" stroke="var(--text)" strokeWidth="1.9" strokeLinecap="round" />
+          <path d="M72 34 L81 32" fill="none" stroke="var(--text)" strokeWidth="1.9" strokeLinecap="round" />
+          <circle cx="56.5" cy="40.5" r="2.3" fill="var(--text)" />
+          <circle cx="75.5" cy="40.5" r="2.3" fill="var(--text)" />
+          <circle cx="66" cy="50" r="3" fill="none" stroke="var(--text)" strokeWidth="2" />
+        </g>
+      ) : (
+        <g>
+          <g className="scout-blink">
+            <circle cx="56.5" cy="40" r="2.5" fill="var(--text)" />
+            <circle cx="57.3" cy="39" r="0.85" fill="var(--surface-strong)" />
+            <circle cx="75.5" cy="40" r="2.5" fill="var(--text)" />
+            <circle cx="76.3" cy="39" r="0.85" fill="var(--surface-strong)" />
+          </g>
+          <circle cx="50.5" cy="44.5" r="2.3" fill="var(--accent-soft)" />
+          <circle cx="81.5" cy="44.5" r="2.3" fill="var(--accent-soft)" />
+          <path d="M60.5 47 Q66 51.5 71.5 47" fill="none" stroke="var(--text)" strokeWidth="2" strokeLinecap="round" />
+        </g>
+      )}
+
+      {/* Polite eye-covering paws on password focus; resting by sides otherwise */}
+      <g
+        style={{
+          transform: isPrivacy ? "translate(6px, -21px) rotate(12deg)" : "translate(0px, 0px)",
+        }}
+        className="transition-transform duration-200 ease-out"
+      >
+        <ellipse cx="44" cy="59" rx="7.5" ry="5.5" fill="var(--surface-strong)" stroke="var(--text)" strokeWidth="2.1" />
+      </g>
+      <g
+        style={{
+          transform: isPrivacy ? "translate(-6px, -21px) rotate(-12deg)" : "translate(0px, 0px)",
+        }}
+        className="transition-transform duration-200 ease-out"
+      >
+        <ellipse cx="88" cy="59" rx="7.5" ry="5.5" fill="var(--surface-strong)" stroke="var(--text)" strokeWidth="2.1" />
+      </g>
+
+      {/* Little staff lanyard pill at bottom when not in privacy mode */}
+      <rect
+        x="57"
+        y="61"
+        width="18"
+        height="11"
+        rx="3"
+        fill="var(--accent)"
+        stroke="var(--text)"
+        strokeWidth="1.6"
+      />
+      <line x1="61" y1="66.5" x2="71" y2="66.5" stroke="var(--text)" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
