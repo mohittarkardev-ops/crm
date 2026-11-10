@@ -2,7 +2,6 @@
 
 import React, { useState, useRef } from "react";
 import {
-  Lock,
   Search,
   CheckCircle2,
   TriangleAlert,
@@ -12,6 +11,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
+import { ClaimTrophyCharacter, PortalVaultCharacter, VehicleScoutCharacter } from "@/components/ui/characters";
 import { Chip } from "@/components/ui/chip";
 import { CopyButton } from "@/components/ui/copy-button";
 import { CustomSelect } from "@/components/ui/custom-select";
@@ -185,13 +185,11 @@ export function ClaimPortal() {
     return (
       <Card className="mx-auto w-full max-w-md p-6 sm:p-8">
         <form onSubmit={handleUnlock} className="space-y-5">
-          <div className="flex items-center gap-3 border-b border-divider pb-4">
-            <span className="grid size-11 place-items-center rounded-control bg-ink text-white shrink-0">
-              <Lock size={20} strokeWidth={1.75} aria-hidden="true" />
-            </span>
+          <div className="flex flex-col items-center gap-2 border-b border-divider pb-4 text-center">
+            <PortalVaultCharacter />
             <div>
               <h2 className="text-[15px] font-semibold text-ink">Agent Access Required</h2>
-              <p className="text-xs text-ink-muted">Enter the authorization code to continue</p>
+              <p className="mt-0.5 text-xs text-ink-muted">Enter the authorization code to continue</p>
             </div>
           </div>
 
@@ -245,8 +243,8 @@ export function ClaimPortal() {
     const selectedAgentName = employees.find((e) => e.id === employeeId)?.name || "Agent";
     return (
       <Card className="reveal-down mx-auto w-full max-w-xl p-6 sm:p-8 text-center space-y-6">
-        <div className="check-pop mx-auto grid size-16 place-items-center rounded-full bg-positive-soft text-positive">
-          <CheckCircle2 size={36} strokeWidth={2} />
+        <div className="check-pop">
+          <ClaimTrophyCharacter />
         </div>
 
         <div>
@@ -375,12 +373,21 @@ export function ClaimPortal() {
               </span>
 
               <div className="flex gap-2">
-                {/* Monospace license-plate styled input */}
-                <div className="relative flex-1">
-                  <div className="absolute left-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 pointer-events-none text-ink-muted select-none border-r border-divider pr-2.5">
-                    <span className="rounded-[3px] bg-accent-soft px-1 text-[9px] font-bold text-ink">IND</span>
-                    <Car size={15} />
-                  </div>
+                {/* Flex plate container prevents IND/Car prefix from overlapping typed plate numbers */}
+                <div
+                  className={cn(
+                    "flex h-11 min-w-0 flex-1 items-center overflow-hidden rounded-control border bg-white/80 transition-colors",
+                    errors.vehicleRegNo
+                      ? "border-negative focus-within:border-negative"
+                      : "border-divider focus-within:border-accent-strong",
+                  )}
+                >
+                  <span className="flex h-full shrink-0 items-center gap-1.5 border-r border-divider bg-surface-muted/45 px-3 text-ink-muted select-none">
+                    <span className="rounded-[3px] bg-accent-soft px-1.5 py-0.5 text-[9px] font-bold tracking-wider text-ink">
+                      IND
+                    </span>
+                    <Car size={15} aria-hidden="true" />
+                  </span>
                   <input
                     ref={regInputRef}
                     type="text"
@@ -400,11 +407,7 @@ export function ClaimPortal() {
                     maxLength={15}
                     autoCapitalize="characters"
                     autoComplete="off"
-                    className={cn(
-                      CONTROL,
-                      "h-11 pl-16 pr-3 text-base font-bold uppercase tracking-wider tabular-nums text-ink transition-all focus:border-accent-strong",
-                      errors.vehicleRegNo && "border-negative focus:border-negative"
-                    )}
+                    className="h-full min-w-0 flex-1 bg-transparent px-3 text-base font-bold uppercase tracking-wider tabular-nums text-ink outline-none placeholder:font-semibold placeholder:text-ink-faint"
                   />
                 </div>
 
@@ -463,9 +466,9 @@ export function ClaimPortal() {
 
         {/* State A: Not searched yet */}
         {!lookup && (
-          <div className="grid min-h-36 place-items-center rounded-tile border border-dashed border-divider bg-surface-muted/20 p-6 text-center">
-            <div className="max-w-sm space-y-1.5">
-              <Search size={24} className="mx-auto text-ink-muted mb-2" />
+          <div className="grid min-h-40 place-items-center rounded-tile border border-dashed border-divider bg-surface-muted/20 p-6 text-center">
+            <div className="max-w-sm space-y-2">
+              <VehicleScoutCharacter />
               <p className="text-sm font-semibold text-ink">Enter vehicle number above to begin</p>
               <p className="text-xs text-ink-muted">
                 Existing CRM policies will load customer and renewal dates immediately. Unregistered vehicles can be submitted for verification.
@@ -565,8 +568,15 @@ export function ClaimPortal() {
                 <span className="text-xs font-medium text-ink-muted">
                   Customer Mobile <span className="text-negative">*</span>
                 </span>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-medium text-ink-muted">
+                <div
+                  className={cn(
+                    "flex h-10 min-w-0 items-center overflow-hidden rounded-control border bg-white/80 transition-colors",
+                    errors.customerMobile
+                      ? "border-negative focus-within:border-negative"
+                      : "border-divider focus-within:border-accent-strong",
+                  )}
+                >
+                  <span className="flex h-full shrink-0 items-center border-r border-divider bg-surface-muted/45 px-2.5 text-xs font-medium text-ink-muted select-none">
                     +91
                   </span>
                   <input
@@ -576,7 +586,7 @@ export function ClaimPortal() {
                     onChange={(e) => setCustomerMobile(e.target.value)}
                     placeholder="9876543210"
                     maxLength={10}
-                    className={cn(CONTROL, "h-10 pl-11 tabular-nums", errors.customerMobile && "border-negative")}
+                    className="h-full min-w-0 flex-1 bg-transparent px-3 text-sm tabular-nums text-ink outline-none placeholder:text-ink-faint"
                   />
                 </div>
                 {errors.customerMobile && (

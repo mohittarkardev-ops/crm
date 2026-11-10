@@ -390,3 +390,117 @@ export function GatekeeperCharacter() {
     </svg>
   );
 }
+
+/** 11. Portal Vault Keeper for /claim access code unlock gate. */
+export function PortalVaultCharacter() {
+  return (
+    <svg viewBox="0 0 120 96" className="mx-auto h-24 w-28 select-none" aria-hidden="true">
+      <ellipse cx="60" cy="87" rx="38" ry="5" fill="var(--surface-muted)" />
+      <rect x="22" y="12" width="76" height="62" rx="16" fill="var(--accent-soft)" />
+      <path
+        d="M54 17 C65 17 74 21.5 74 27 V48 C74 61.5 54 70 54 70 C54 70 34 61.5 34 48 V27 C34 21.5 43 17 54 17 Z"
+        fill="var(--surface-strong)"
+        stroke="var(--text)"
+        strokeWidth="2.2"
+        strokeLinejoin="round"
+      />
+      <path d="M42.5 23 C46.5 21.2 50.5 20.6 54 20.6 C57.5 20.6 61.5 21.2 65.5 23" fill="none" stroke="var(--accent)" strokeWidth="3.4" strokeLinecap="round" />
+      <g className="scout-blink">
+        <circle cx="47.5" cy="36.5" r="2.1" fill="var(--text)" />
+        <circle cx="48.1" cy="35.8" r="0.7" fill="var(--surface-strong)" />
+        <circle cx="60.5" cy="36.5" r="2.1" fill="var(--text)" />
+        <circle cx="61.1" cy="35.8" r="0.7" fill="var(--surface-strong)" />
+      </g>
+      <circle cx="42.5" cy="40.5" r="2" fill="var(--accent-soft)" />
+      <circle cx="65.5" cy="40.5" r="2" fill="var(--accent-soft)" />
+      <path d="M50 43.5 Q54 46.5 58 43.5" fill="none" stroke="var(--text)" strokeWidth="1.8" strokeLinecap="round" />
+      {/* Yellow access keycard badge */}
+      <g className="scout-float">
+        <rect x="66" y="39" width="28" height="22" rx="5" fill="var(--accent)" stroke="var(--text)" strokeWidth="2" />
+        <circle cx="75" cy="49" r="3" fill="var(--surface-strong)" stroke="var(--text)" strokeWidth="1.5" />
+        <line x1="81" y1="47" x2="89" y2="47" stroke="var(--text)" strokeWidth="1.7" strokeLinecap="round" />
+        <line x1="81" y1="52" x2="87" y2="52" stroke="var(--text)" strokeWidth="1.7" strokeLinecap="round" />
+      </g>
+    </svg>
+  );
+}
+
+/** 12. Vehicle Plate Scout for /claim Step 2 initial lookup state. */
+export function VehicleScoutCharacter() {
+  return (
+    <svg viewBox="0 0 156 98" className="mx-auto h-24 w-36 select-none" aria-hidden="true">
+      <ellipse cx="78" cy="89" rx="52" ry="5" fill="var(--surface-muted)" />
+      <rect x="20" y="14" width="116" height="64" rx="16" fill="var(--accent-soft)" />
+
+      {/* Mini car + IND plate card */}
+      <g transform="translate(68, 28)">
+        <rect x="0" y="16" width="58" height="24" rx="7" fill="var(--surface-strong)" stroke="var(--text)" strokeWidth="2" />
+        <path d="M9 16 L16 5 H42 L49 16 Z" fill="var(--surface)" stroke="var(--text)" strokeWidth="2" strokeLinejoin="round" />
+        <circle cx="12" cy="28" r="3.2" fill="var(--accent)" stroke="var(--text)" strokeWidth="1.4" />
+        <circle cx="46" cy="28" r="3.2" fill="var(--accent)" stroke="var(--text)" strokeWidth="1.4" />
+        <rect x="20" y="24" width="18" height="8" rx="2.5" fill="var(--accent)" stroke="var(--text)" strokeWidth="1.3" />
+        <text x="29" y="29.8" textAnchor="middle" fontSize="5.5" fontWeight="700" fill="var(--text)">IND</text>
+      </g>
+
+      {/* Peeking Shield Buddy */}
+      <g>
+        <path
+          d="M46 20 C56 20 64 24 64 29 V49 C64 62 46 70 46 70 C46 70 28 62 28 49 V29 C28 24 36 20 46 20 Z"
+          fill="var(--surface-strong)"
+          stroke="var(--text)"
+          strokeWidth="2.2"
+          strokeLinejoin="round"
+        />
+        <path d="M35.5 25.5 C39 24 42.5 23.4 46 23.4 C49.5 23.4 53 24 56.5 25.5" fill="none" stroke="var(--accent)" strokeWidth="3.2" strokeLinecap="round" />
+        <g className="scout-blink">
+          <circle cx="40.5" cy="38" r="2" fill="var(--text)" />
+          <circle cx="51.5" cy="38" r="2" fill="var(--text)" />
+        </g>
+        <path d="M42.5 44.5 Q46 47.5 49.5 44.5" fill="none" stroke="var(--text)" strokeWidth="1.7" strokeLinecap="round" />
+      </g>
+
+      {/* Magnifying lens */}
+      <g className="scout-float">
+        <line x1="63" y1="51" x2="73" y2="43" stroke="var(--text)" strokeWidth="3.2" strokeLinecap="round" />
+        <circle cx="81" cy="36" r="10.5" fill="color-mix(in srgb, var(--surface-strong) 60%, transparent)" stroke="var(--text)" strokeWidth="2.2" />
+        <path d="M76 31.5 A7 7 0 0 1 83 28.5" fill="none" stroke="var(--surface-strong)" strokeWidth="1.8" strokeLinecap="round" />
+      </g>
+    </svg>
+  );
+}
+
+/** 13. Celebrating Claim Check Mascot for /claim submission confirmation screen. */
+export function ClaimTrophyCharacter() {
+  return (
+    <svg viewBox="0 0 132 104" className="mx-auto h-24 w-32 select-none" aria-hidden="true">
+      <ellipse cx="66" cy="95" rx="42" ry="5" fill="var(--surface-muted)" />
+      <rect x="26" y="14" width="80" height="68" rx="20" fill="var(--positive-soft)" />
+
+      {/* Sparkles */}
+      <path d="M22 30 L23.5 34 L27.5 35.5 L23.5 37 L22 41 L20.5 37 L16.5 35.5 L20.5 34 Z" fill="var(--accent)" stroke="var(--text)" strokeWidth="1.1" strokeLinejoin="round" />
+      <path d="M108 24 L109.5 28 L113.5 29.5 L109.5 31 L108 35 L106.5 31 L102.5 29.5 L106.5 28 Z" fill="var(--accent)" stroke="var(--text)" strokeWidth="1.1" strokeLinejoin="round" />
+
+      {/* Celebrating Shield Mascot */}
+      <g className="scout-float">
+        <path
+          d="M62 20 C75 20 84 25 84 31 V54 C84 69 62 78 62 78 C62 78 40 69 40 54 V31 C40 25 49 20 62 20 Z"
+          fill="var(--surface-strong)"
+          stroke="var(--text)"
+          strokeWidth="2.3"
+          strokeLinejoin="round"
+        />
+        <path d="M49 26.5 C53.5 24.5 57.8 24 62 24 C66.2 24 70.5 24.5 75 26.5" fill="none" stroke="var(--accent)" strokeWidth="3.8" strokeLinecap="round" />
+        {/* Happy cheering eyes */}
+        <path d="M51 39 Q53.8 36 56.5 39" fill="none" stroke="var(--text)" strokeWidth="2.1" strokeLinecap="round" />
+        <path d="M67.5 39 Q70.2 36 73 39" fill="none" stroke="var(--text)" strokeWidth="2.1" strokeLinecap="round" />
+        <circle cx="48" cy="43" r="2.3" fill="var(--accent-soft)" />
+        <circle cx="76" cy="43" r="2.3" fill="var(--accent-soft)" />
+        <path d="M56.5 46 Q62 51.5 67.5 46" fill="none" stroke="var(--text)" strokeWidth="2.1" strokeLinecap="round" />
+
+        {/* Positive check medal */}
+        <circle cx="84" cy="60" r="11" fill="var(--positive)" stroke="var(--text)" strokeWidth="2" />
+        <path d="M79 60.5 L82.5 64 L89.5 56.5" fill="none" stroke="var(--surface-strong)" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" />
+      </g>
+    </svg>
+  );
+}

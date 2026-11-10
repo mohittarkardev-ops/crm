@@ -467,6 +467,13 @@ html[data-welcome="seen"] .welcome-splash {
   transform-origin: 18px 38px;
 }
 
+/* Remove harsh browser focus rectangles when clicking Recharts slices/bars */
+.recharts-wrapper:focus,
+.recharts-wrapper *:focus,
+.recharts-surface:focus {
+  outline: none !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
