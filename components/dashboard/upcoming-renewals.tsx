@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowUpRight, CalendarClock, Hash } from "lucide-react";
 import { Card, CardHeader, Tile } from "@/components/ui/card";
+import { CalendarCourierBadge, RelaxedEmptyCharacter } from "@/components/ui/characters";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Chip, StatusChip } from "@/components/ui/chip";
 import { buttonStyles } from "@/components/ui/button";
@@ -32,7 +33,11 @@ export function UpcomingRenewals({
     return (
       <Card index={index}>
         <CardHeader title="Upcoming Renewals" />
-        <EmptyState label="No upcoming renewals" icon={CalendarClock} />
+        <EmptyState
+          label="No upcoming renewals in the next 60 days"
+          icon={CalendarClock}
+          illustration={<RelaxedEmptyCharacter />}
+        />
       </Card>
     );
   }
@@ -42,14 +47,15 @@ export function UpcomingRenewals({
       <CardHeader
         title="Upcoming Renewals"
         action={
-          canViewRenewals ? (
-            <div className="flex items-center gap-1">
+          <div className="flex items-center gap-2">
+            <CalendarCourierBadge />
+            {canViewRenewals && (
               <Link href="/renewals" className={buttonStyles("ghost", "h-8 px-3 text-xs")}>
                 View all
                 <ArrowUpRight size={14} strokeWidth={1.75} aria-hidden="true" />
               </Link>
-            </div>
-          ) : undefined
+            )}
+          </div>
         }
       />
 

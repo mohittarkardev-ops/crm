@@ -1,25 +1,26 @@
-import { PieChart, ShieldCheck } from "lucide-react";
+import { PieChart } from "lucide-react";
 import { DonutChart } from "@/components/charts/donut-chart";
 import { Card, CardHeader } from "@/components/ui/card";
+import { DonutCenterCharacter, RelaxedEmptyCharacter } from "@/components/ui/characters";
 import { EmptyState } from "@/components/ui/empty-state";
 import type { CategorySlice } from "@/lib/data/types";
 
-/** "Policies by Category" donut with legend. Shows an empty state until data exists. */
+/** "Policies by Category" donut with legend. Shows a mascot center and empty character until data exists. */
 export function CategoryCard({ index, slices }: { index?: number; slices: CategorySlice[] }) {
   return (
     <Card index={index} className="flex flex-col">
       <CardHeader title="Policies by Category" />
 
       {slices.length === 0 ? (
-        <EmptyState label="No policies yet" icon={PieChart} className="flex-1" />
+        <EmptyState label="No policies yet" icon={PieChart} illustration={<RelaxedEmptyCharacter />} className="flex-1" />
       ) : (
         <div className="grid flex-1 items-center gap-4 sm:grid-cols-2 xl:grid-cols-1">
           <div className="mx-auto h-48 w-48 xl:h-52 xl:w-52">
             <DonutChart
               data={slices}
               center={
-                <span className="grid size-12 place-items-center rounded-full bg-white text-accent-ink shadow-card">
-                  <ShieldCheck size={22} strokeWidth={1.75} aria-hidden="true" />
+                <span className="grid size-13 place-items-center rounded-full bg-white shadow-card">
+                  <DonutCenterCharacter />
                 </span>
               }
             />

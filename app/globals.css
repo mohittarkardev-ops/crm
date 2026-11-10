@@ -443,6 +443,30 @@ html[data-welcome="seen"] .welcome-splash {
   transform-box: fill-box;
 }
 
+@keyframes scout-wave {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  20% {
+    transform: rotate(-14deg);
+  }
+  40% {
+    transform: rotate(10deg);
+  }
+  60% {
+    transform: rotate(-10deg);
+  }
+  80% {
+    transform: rotate(0deg);
+  }
+}
+
+.scout-wave {
+  animation: scout-wave 3.4s ease-in-out infinite;
+  transform-origin: 18px 38px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { BarChartCard } from "@/components/charts/bar-chart-card";
 import { Card, CardHeader } from "@/components/ui/card";
+import { RelaxedEmptyCharacter } from "@/components/ui/characters";
 import { Segmented } from "@/components/ui/segmented";
 import { EmptyState } from "@/components/ui/empty-state";
 import { BarChart3 } from "lucide-react";
@@ -28,7 +29,12 @@ export function RenewalsCard({ index, data }: { index?: number; data: Record<Ren
         {data[range].some((d) => d.value > 0) ? (
           <BarChartCard key={range} data={data[range]} />
         ) : (
-          <EmptyState label="No renewals yet" icon={BarChart3} className="h-full" />
+          <EmptyState
+            label="No renewals yet"
+            icon={BarChart3}
+            illustration={<RelaxedEmptyCharacter />}
+            className="h-full"
+          />
         )}
       </div>
     </Card>
