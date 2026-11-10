@@ -2,16 +2,20 @@ import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
 import { Inbox, type LucideIcon } from "lucide-react";
 
-/** Empty state: optional character illustration or soft outlined icon plus one short label (design.md 4.11). */
+/** Empty state: optional character illustration or soft outlined icon, short label, and optional quick action. */
 export function EmptyState({
   label,
+  hint,
   icon: Icon = Inbox,
   illustration,
+  action,
   className,
 }: {
   label: string;
+  hint?: string;
   icon?: LucideIcon;
   illustration?: ReactNode;
+  action?: ReactNode;
   className?: string;
 }) {
   return (
@@ -21,7 +25,11 @@ export function EmptyState({
           <Icon size={22} strokeWidth={1.75} aria-hidden="true" />
         </span>
       )}
-      <p className="text-sm text-ink-muted">{label}</p>
+      <div className="space-y-1">
+        <p className="text-sm text-ink-muted">{label}</p>
+        {hint && <p className="text-xs text-ink-faint">{hint}</p>}
+      </div>
+      {action}
     </div>
   );
 }

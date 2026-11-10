@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { MessageCircle, Phone } from "lucide-react";
 import { Card, CardHeader } from "@/components/ui/card";
+import { ChatShieldCharacter, SearchScoutCharacter } from "@/components/ui/characters";
 import { ValueChip } from "@/components/ui/chip";
 import { buttonStyles } from "@/components/ui/button";
 import { DetailList } from "@/components/ui/detail-list";
@@ -91,7 +92,11 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                 ]}
               />
             ) : (
-              <EmptyState label="User not found" className="py-8" />
+              <EmptyState
+                label="User not found"
+                illustration={<SearchScoutCharacter mood="empty" size="sm" />}
+                className="py-8"
+              />
             )}
           </Card>
         </div>
@@ -133,7 +138,11 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
                 ]}
               />
             ) : (
-              <EmptyState label="General request, no policy attached" className="py-8" />
+              <EmptyState
+                label="General request, no policy attached"
+                illustration={<ChatShieldCharacter />}
+                className="py-8"
+              />
             )}
           </Card>
 

@@ -3,21 +3,15 @@
 import React, { useState, useRef, useMemo } from "react";
 import Link from "next/link";
 import {
-  UploadCloud,
-  FileSpreadsheet,
-  CheckCircle2,
   AlertCircle,
-  Loader2,
   ArrowRight,
   RotateCcw,
-  SlidersHorizontal,
   TableProperties,
-  ChevronDown,
 } from "lucide-react";
 import { Button, buttonStyles } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
+import { ImportCopilotCharacter } from "@/components/ui/characters";
 import { CustomSelect } from "@/components/ui/custom-select";
-import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toaster";
 import {
   STANDARD_IMPORT_FIELDS,
@@ -357,9 +351,6 @@ export function ColumnMapper({ customFields }: ColumnMapperProps) {
       {step === 1 && (
         <Card className="p-8 text-center">
           <div className="mx-auto max-w-lg space-y-4">
-            <div className="mx-auto grid size-12 place-items-center rounded-control bg-surface-muted text-ink">
-              <UploadCloud size={24} strokeWidth={1.75} />
-            </div>
             <div>
               <h2 className="text-[15px] font-semibold text-ink">Select a file to import</h2>
               <p className="text-xs text-ink-muted mt-1">
@@ -385,21 +376,22 @@ export function ColumnMapper({ customFields }: ColumnMapperProps) {
               }}
               onDrop={handleFileDrop}
               className={cn(
-                "cursor-pointer rounded-tile border-2 border-dashed p-8 transition-[border-color,background-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
+                "cursor-pointer rounded-tile border-2 border-dashed p-7 transition-[border-color,background-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
                 isDragging
                   ? "border-accent-strong bg-accent-soft/45"
                   : "border-divider hover:border-ink/60 hover:bg-surface-muted/30",
               )}
             >
-              <div className="pointer-events-none select-none">
-                <FileSpreadsheet
-                  size={32}
-                  className={cn(
-                    "mx-auto mb-2 transition-[color,transform] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
-                    isDragging ? "-translate-y-0.5 text-ink" : "text-ink-faint",
-                  )}
+              <div className="pointer-events-none flex flex-col items-center select-none">
+                <ImportCopilotCharacter
+                  stage={isDragging ? "catching" : "ready"}
+                  className="mb-2"
                 />
-                <p className="text-xs font-semibold text-ink">Click or drop spreadsheet here to upload</p>
+                <p className="text-xs font-semibold text-ink">
+                  {isDragging
+                    ? "Drop spreadsheet — Pip will catch and match headers"
+                    : "Click or drop spreadsheet here to upload"}
+                </p>
                 <p className="text-[11px] text-ink-faint mt-0.5">
                   Supports CSV, Excel (.xlsx, .xls), JSON — up to 200,000+ rows
                 </p>
@@ -573,7 +565,7 @@ export function ColumnMapper({ customFields }: ColumnMapperProps) {
         <Card className="reveal-down p-8 text-center space-y-6">
           <div className="max-w-md mx-auto space-y-3">
             <div className="flex justify-center">
-              <Spinner size={32} />
+              <ImportCopilotCharacter stage="uploading" progress={progressPercentage} />
             </div>
             <h2 className="text-[15px] font-semibold text-ink">Importing Records...</h2>
             <p className="text-xs text-ink-muted">
@@ -625,8 +617,8 @@ export function ColumnMapper({ customFields }: ColumnMapperProps) {
       {step === 4 && (
         <Card className="reveal-down p-8 text-center space-y-6">
           <div className="max-w-md mx-auto space-y-4">
-            <div className="check-pop mx-auto grid size-12 place-items-center rounded-full bg-positive-soft text-positive">
-              <CheckCircle2 size={24} />
+            <div className="flex justify-center">
+              <ImportCopilotCharacter stage="done" hasErrors={errorLogs.length > 0} />
             </div>
             <div>
               <h2 className="text-[15px] font-semibold text-ink">Import Batch Complete!</h2>

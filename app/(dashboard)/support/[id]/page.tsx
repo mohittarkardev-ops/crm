@@ -2,6 +2,7 @@ import { MessageCircle, Phone } from "lucide-react";
 import { DetailHeader } from "@/components/layout/detail-header";
 import { buttonStyles } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
+import { SearchScoutCharacter } from "@/components/ui/characters";
 import { ValueChip } from "@/components/ui/chip";
 import { DetailList } from "@/components/ui/detail-list";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -91,7 +92,11 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ i
               ]}
             />
           ) : (
-            <EmptyState label="User not found" className="py-8" />
+            <EmptyState
+              label="User not found"
+              illustration={<SearchScoutCharacter mood="empty" size="sm" />}
+              className="py-8"
+            />
           )}
         </Card>
       </div>

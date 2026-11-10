@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 export type ColumnType = "text" | "person" | "chip" | "inr" | "date" | "number" | "image" | "insurer";
 
 export type Column = {
@@ -75,6 +77,8 @@ export type PrimaryAction = {
   action: FormAction;
   /** Optional "Check recipients" step shown next to Save. */
   preview?: (formData: FormData) => Promise<PreviewResult>;
+  /** Optional dynamic banner rendered above fields from live watched form values. */
+  header?: (values: Record<string, string>) => ReactNode;
 };
 
 /** Per-row button, for example "Remove" or "Turn off". The action receives the row id. */

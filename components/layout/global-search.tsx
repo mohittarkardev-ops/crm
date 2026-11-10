@@ -22,6 +22,7 @@ import {
 import { cn } from "@/lib/cn";
 import type { PermissionKey } from "@/lib/rbac/permissions";
 import { Chip } from "@/components/ui/chip";
+import { SearchScoutCharacter } from "@/components/ui/characters";
 import { InsurerLogo } from "@/components/ui/insurer-logo";
 import { Spinner } from "@/components/ui/spinner";
 
@@ -91,7 +92,7 @@ export function GlobalSearch({ allowed }: { allowed?: PermissionKey[] }) {
       if (desktopInputRef.current && desktopInputRef.current.offsetParent !== null) {
         desktopInputRef.current.focus();
         desktopInputRef.current.select();
-        if (query.trim().length >= 2) setOpen(true);
+        setOpen(true);
       } else {
         setMobileOpen(true);
       }
@@ -204,41 +205,75 @@ export function GlobalSearch({ allowed }: { allowed?: PermissionKey[] }) {
 
   const trimmed = query.trim();
   const hasMinChars = trimmed.length >= 2;
-  const showResultsPanel = open && trimmed.length > 0;
+  const showResultsPanel = open;
 
   const renderResults = () => {
     if (!hasMinChars) {
       return (
-        <div className="px-4 py-5 text-center text-xs text-ink-muted">
-          Type at least 2 characters to search policy no., vehicle reg, mobile, or claim ID.
+        <div className="flex items-center gap-3 px-4 py-4">
+          <SearchScoutCharacter mood="idle" size="sm" />
+          <div className="min-w-0">
+            <p className="text-xs font-medium text-ink">Ready to search CRM</p>
+            <p className="mt-0.5 text-[11px] text-ink-muted">
+              Type at least 2 characters for policy no., vehicle reg, mobile, or claim ID.
+            </p>
+          </div>
         </div>
       );
     }
 
     if (loading && groups.length === 0) {
       return (
-        <div className="flex items-center justify-center gap-2 px-4 py-6 text-xs text-ink-muted">
-          <Spinner size={14} />
-          <span>Searching CRM…</span>
+        <div className="flex items-center justify-center gap-3 px-4 py-5">
+          <SearchScoutCharacter mood="searching" size="sm" />
+          <div className="text-left">
+            <p className="text-xs font-medium text-ink">Scanning CRM records…</p>
+            <p className="text-[11px] text-ink-faint">Checking policies, clients, claims &amp; support</p>
+          </div>
         </div>
       );
     }
 
     if (groups.length === 0) {
       return (
-        <div className="px-4 py-6 text-center">
-          <p className="text-xs font-medium text-ink">No matches for &ldquo;{trimmed}&rdquo;</p>
-          <p className="mt-1 text-[11px] text-ink-faint">
-            Try policy number, plate (e.g. UP85...), client mobile, or CLM reference code.
-          </p>
+        <div className="flex flex-col items-center gap-2 px-4 py-6 text-center">
+          <SearchScoutCharacter mood="empty" size="md" />
+          <div>
+            <p className="text-xs font-medium text-ink">No matches for &ldquo;{trimmed}&rdquo;</p>
+            <p className="mt-1 text-[11px] text-ink-faint">
+              Try last 4 digits, reg plate without spaces (e.g. UP85...), or CLM reference code.
+            </p>
+          </div>
         </div>
       );
     }
 
+    const glanceY = flatItems.length <= 1 ? 0 : (activeIndex / (flatItems.length - 1)) * 2 - 1;
+    const activeItem = flatItems[activeIndex];
+    const activeGroupLabel = groups.find((g) => g.key === activeItem?.group)?.label;
     let runningIndex = 0;
 
     return (
       <>
+        <div className="flex items-center justify-between gap-2 border-b border-divider/60 bg-surface-muted/35 px-3 py-1.5">
+          <div className="flex min-w-0 items-center gap-2">
+            <SearchScoutCharacter
+              mood={loading ? "searching" : "results"}
+              glanceY={glanceY}
+              glanceX={0.45}
+              size="xs"
+            />
+            <span className="truncate text-[11px] font-medium text-ink-muted">
+              {loading
+                ? "Updating matches…"
+                : activeGroupLabel
+                  ? `${flatItems.length} match${flatItems.length === 1 ? "" : "es"} · Focusing ${activeGroupLabel}`
+                  : `${flatItems.length} match${flatItems.length === 1 ? "" : "es"}`}
+            </span>
+          </div>
+          {loading && <Spinner size={12} className="shrink-0 text-ink-muted" />}
+        </div>
+
         <div ref={resultsContainerRef} className="max-h-[min(24rem,65vh)] overflow-y-auto py-1.5">
           {groups.map((group, groupIdx) => (
             <div key={group.key} className={cn(groupIdx > 0 && "mt-1 border-t border-divider/60 pt-1.5")}>
@@ -339,9 +374,7 @@ export function GlobalSearch({ allowed }: { allowed?: PermissionKey[] }) {
             aria-autocomplete="list"
             placeholder="Search clients, policies…"
             value={query}
-            onFocus={() => {
-              if (query.trim().length > 0) setOpen(true);
-            }}
+            onFocus={() => setOpen(true)}
             onChange={(event) => {
               setQuery(event.target.value);
               setOpen(true);
@@ -430,7 +463,7 @@ export function GlobalSearch({ allowed }: { allowed?: PermissionKey[] }) {
                 <X size={16} strokeWidth={1.75} aria-hidden="true" />
               </button>
             </div>
-            {trimmed.length > 0 && renderResults()}
+            {renderResults()}
           </div>
         </div>
       )}

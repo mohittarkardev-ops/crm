@@ -1071,3 +1071,20 @@ export function LoginDeskCharacter({
     </svg>
   );
 }
+
+export {
+  ArchitectDraftsmanCharacter,
+  ChatShieldCharacter,
+  CourierShieldCharacter,
+  FolderKeeperCharacter,
+  ImportCopilotCharacter,
+  LookupDetectiveCharacter,
+  RepairMechanicCharacter,
+  RollbackGuardCharacter,
+  SearchScoutCharacter,
+  VerificationReviewerCharacter,
+  type BlueprintVariant,
+  type ImportCopilotStage,
+  type LookupDetectiveMood,
+  type SearchScoutMood,
+} from "@/components/ui/crew-characters";

@@ -17,6 +17,8 @@ type ConfirmButtonProps = {
   confirmLabel?: string;
   cancelLabel?: string;
   tone?: "danger" | "primary";
+  /** Optional custom icon or mini mascot shown inside the confirmation popover. */
+  icon?: ReactNode;
   loading?: boolean;
   disabled?: boolean;
   className?: string;
@@ -35,6 +37,7 @@ export function ConfirmButton({
   confirmLabel = "Confirm",
   cancelLabel = "Cancel",
   tone = "danger",
+  icon,
   loading = false,
   disabled = false,
   className,
@@ -134,14 +137,16 @@ export function ConfirmButton({
             className="pop-in z-[85] rounded-tile border border-divider bg-surface-strong p-3.5 text-left shadow-card-hover"
           >
             <div className="flex items-start gap-2.5">
-              <span
-                className={cn(
-                  "mt-0.5 grid size-7 shrink-0 place-items-center rounded-control",
-                  tone === "danger" ? "bg-negative-soft text-negative" : "bg-accent-soft text-ink",
-                )}
-              >
-                <AlertTriangle size={15} strokeWidth={1.75} aria-hidden="true" />
-              </span>
+              {icon ?? (
+                <span
+                  className={cn(
+                    "mt-0.5 grid size-7 shrink-0 place-items-center rounded-control",
+                    tone === "danger" ? "bg-negative-soft text-negative" : "bg-accent-soft text-ink",
+                  )}
+                >
+                  <AlertTriangle size={15} strokeWidth={1.75} aria-hidden="true" />
+                </span>
+              )}
               <div className="min-w-0 flex-1">
                 <p className="text-[13px] font-semibold leading-5 text-ink">{title}</p>
                 {description && <p className="mt-1 text-xs leading-relaxed text-ink-muted">{description}</p>}

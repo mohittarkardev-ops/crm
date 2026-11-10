@@ -1,6 +1,7 @@
 import { Download, ExternalLink, File as FileIcon, FileImage, FileText } from "lucide-react";
 import { buttonStyles } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
+import { FolderKeeperCharacter } from "@/components/ui/characters";
 import { Chip } from "@/components/ui/chip";
 import { EmptyState } from "@/components/ui/empty-state";
 import type { DocumentItem } from "@/lib/data/details";
@@ -39,7 +40,7 @@ export function DocumentsCard({
       <CardHeader title="Documents" action={<Chip>{documents.length}</Chip>} />
 
       {documents.length === 0 ? (
-        <EmptyState label="No documents uploaded" icon={FileText} className="py-8" />
+        <EmptyState label="No documents uploaded" illustration={<FolderKeeperCharacter />} className="py-8" />
       ) : (
         <ul className="divide-y divide-divider">
           {documents.map((doc) => {

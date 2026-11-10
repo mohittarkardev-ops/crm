@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useActionState, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useActionState, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowUpRight, ChevronLeft, ChevronRight, Download, Plus, Search } from "lucide-react";
@@ -20,6 +20,7 @@ import type {
 } from "@/lib/module-types";
 import { Button, buttonStyles } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { RelaxedEmptyCharacter, SearchScoutCharacter } from "@/components/ui/characters";
 import { Chip } from "@/components/ui/chip";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { CopyButton } from "@/components/ui/copy-button";
@@ -55,6 +56,8 @@ type ModulePageProps = {
   edit?: EditAction;
   rowActions?: RowAction[];
   emptyLabel: string;
+  /** Optional custom empty-state illustration when rows.length === 0. */
+  emptyIllustration?: ReactNode;
   /** When set, each row gets a View button linking to `${rowHref}/${row.id}`. */
   rowHref?: string;
   /** Enables a "Export CSV" button in the toolbar that downloads filtered rows across all pages. */
@@ -233,6 +236,7 @@ export function PrimaryForm({
 
   // Re-create the fields after an error so they show the values that were typed.
   const errorKey = `${state.error ?? ""}|${Object.keys(state.fieldErrors ?? {}).join(",")}`;
+  const liveValues = { ...(initialValues ?? {}), ...(state.values ?? {}), ...watch };
 
   return (
     <form ref={formRef} action={formAction} onChange={() => onFormChange()} noValidate aria-busy={pending}>
@@ -242,6 +246,7 @@ export function PrimaryForm({
           {state.error}
         </p>
       )}
+      {primary.header?.(liveValues)}
       <fieldset disabled={pending} className={cn("m-0 min-w-0 border-0 p-0 transition-opacity", pending && "opacity-60")}>
         <FieldGrid
           key={errorKey}
@@ -450,6 +455,7 @@ export function ModulePage({
   edit,
   rowActions,
   emptyLabel,
+  emptyIllustration,
   rowHref,
   exportName,
   totalCount,
@@ -566,6 +572,18 @@ export function ModulePage({
   const isTruncated = Boolean(totalCount && totalCount > rows.length);
   const showFooter = visible.length > 0 && (totalPages > 1 || isTruncated);
   const hasLastCell = Boolean(rowHref) || Boolean(edit) || (rowActions?.length ?? 0) > 0;
+  const hasActiveFilters =
+    query.trim() !== "" ||
+    (Boolean(tabs) && tab !== "all") ||
+    Object.values(filterValues).some((v) => v !== "all") ||
+    (Boolean(dateFilter) && dateRange.mode !== DEFAULT_DATE_RANGE.mode);
+
+  function clearAllFilters() {
+    setQuery("");
+    if (tabs) setTab("all");
+    setFilterValues({});
+    if (dateFilter) setDateRange(DEFAULT_DATE_RANGE);
+  }
 
   return (
     <>
@@ -716,7 +734,27 @@ export function ModulePage({
               ))}
             </tbody>
           </table>
-          {visible.length === 0 && <EmptyState label={emptyLabel} />}
+          {visible.length === 0 && (
+            rows.length > 0 ? (
+              <EmptyState
+                label="No matches for your current filters"
+                hint="Try broadening your search or resetting active filters."
+                illustration={<SearchScoutCharacter mood="empty" size="md" />}
+                action={
+                  hasActiveFilters ? (
+                    <Button variant="secondary" onClick={clearAllFilters} className="h-8 px-3 text-xs">
+                      Clear filters
+                    </Button>
+                  ) : undefined
+                }
+              />
+            ) : (
+              <EmptyState
+                label={emptyLabel}
+                illustration={emptyIllustration ?? <RelaxedEmptyCharacter />}
+              />
+            )
+          )}
         </div>
 
         {showFooter && (

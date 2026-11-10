@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { ModulePage } from "@/components/modules/module-page";
+import { CourierShieldCharacter } from "@/components/ui/characters";
 import { Segmented } from "@/components/ui/segmented";
 import {
   createTemplate,
@@ -160,6 +161,59 @@ export function NotificationsShell({
                   drawerTitle: "New Notification",
                   action: sendNotification,
                   preview: previewNotification,
+                  defaultValues: {
+                    kind: NOTIFICATION_KIND_OPTIONS[0]?.value ?? "renewal",
+                    audience: AUDIENCE_OPTIONS[0]?.value ?? "everyone",
+                  },
+                  header: (values) => {
+                    const audience = values.audience || AUDIENCE_OPTIONS[0]?.value || "everyone";
+                    const category = values.category || "";
+                    const confirmed = values.confirm === "on";
+                    const categoryLabel =
+                      category ? CATEGORY_OPTIONS.find((c) => c.value === category)?.label : undefined;
+
+                    const summary =
+                      audience === "user"
+                        ? {
+                            title: "Direct 1-to-1 parcel",
+                            subtitle: "Delivers directly to the matching client mobile feed.",
+                          }
+                        : audience === "expiring"
+                          ? {
+                              title: categoryLabel
+                                ? `Expiring renewals · ${categoryLabel}`
+                                : "Expiring renewals target",
+                              subtitle: "Reaches signed-in clients whose policies fall inside your date window.",
+                            }
+                          : audience === "advisor_clients"
+                            ? {
+                                title: "Advisor Clients priority dispatch",
+                                subtitle: "Targets verified advisor-managed policy holders.",
+                              }
+                            : audience === "general_users"
+                              ? {
+                                  title: "General App Users outreach",
+                                  subtitle: "Reaches self-registered app users for renewals and offers.",
+                                }
+                              : {
+                                  title: "All-hands broadcast",
+                                  subtitle: "Courier Pip will announce to every active registered user.",
+                                };
+
+                    return (
+                      <div className="mb-4 flex items-center gap-3 rounded-tile border border-divider/60 bg-surface-muted/45 px-3.5 py-2.5">
+                        <CourierShieldCharacter
+                          audience={audience}
+                          category={category}
+                          confirmed={confirmed}
+                        />
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold text-ink">{summary.title}</p>
+                          <p className="mt-0.5 text-[11px] leading-relaxed text-ink-muted">{summary.subtitle}</p>
+                        </div>
+                      </div>
+                    );
+                  },
                   fields: sendFields,
                 }
               : undefined

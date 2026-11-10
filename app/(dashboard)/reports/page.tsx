@@ -1,15 +1,16 @@
 import { BarChart3, PieChart, Users, Wallet } from "lucide-react";
 import { Card, CardHeader } from "@/components/ui/card";
+import { ArchitectDraftsmanCharacter, type BlueprintVariant } from "@/components/ui/characters";
 import { EmptyState } from "@/components/ui/empty-state";
 import { MiniStat, StatRow } from "@/components/ui/mini-stat";
 import { getReportStats } from "@/lib/data/admin";
 import { requirePermission } from "@/lib/rbac/server";
 
-const REPORTS = [
-  { title: "Renewals by month", icon: BarChart3 },
-  { title: "Policies by category", icon: PieChart },
-  { title: "Clients vs general users", icon: Users },
-  { title: "Commission", icon: Wallet },
+const REPORTS: { title: string; icon: typeof BarChart3; variant: BlueprintVariant; hint: string }[] = [
+  { title: "Renewals by month", icon: BarChart3, variant: "bars", hint: "Monthly renewal velocity blueprint" },
+  { title: "Policies by category", icon: PieChart, variant: "donut", hint: "Category breakdown blueprint" },
+  { title: "Clients vs general users", icon: Users, variant: "users", hint: "Conversion funnel blueprint" },
+  { title: "Commission", icon: Wallet, variant: "rupee", hint: "Insurer payout ledger blueprint" },
 ];
 
 export default async function ReportsPage() {
@@ -29,7 +30,13 @@ export default async function ReportsPage() {
         {REPORTS.map((report, i) => (
           <Card key={report.title} index={i + 4}>
             <CardHeader title={report.title} />
-            <EmptyState label="Not built yet" icon={report.icon} className="h-52" />
+            <EmptyState
+              label="Not built yet"
+              hint={report.hint}
+              icon={report.icon}
+              illustration={<ArchitectDraftsmanCharacter variant={report.variant} />}
+              className="h-52"
+            />
           </Card>
         ))}
       </div>

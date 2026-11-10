@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { VerificationReviewerCharacter } from "@/components/ui/characters";
 import { CONTROL } from "@/components/ui/field";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toaster";
@@ -121,12 +122,21 @@ export function VerificationControl({
       </div>
 
       {rejecting && (
-        <div className="reveal-down space-y-2 rounded-tile bg-surface-muted p-3">
-          <label className="flex flex-col gap-1.5">
+        <div className="reveal-down space-y-2.5 rounded-tile bg-surface-muted p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="text-xs font-medium text-ink-muted">
               Reason for rejection <span className="text-negative">*</span>
             </span>
+            <VerificationReviewerCharacter
+              charCount={note.trim().length}
+              minChars={5}
+              busy={busy === "rejected"}
+              hasError={Boolean(error)}
+            />
+          </div>
+          <label className="block">
             <textarea
+              aria-label="Reason for rejection"
               value={note}
               onChange={(event) => setNote(event.target.value)}
               rows={3}

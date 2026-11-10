@@ -2,16 +2,13 @@
 
 import React, { useState, useRef } from "react";
 import {
-  FileSearch,
   Download,
   FileSpreadsheet,
-  Loader2,
-  CheckCircle2,
   AlertCircle,
-  FileText,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
+import { LookupDetectiveCharacter } from "@/components/ui/characters";
 import { CopyButton } from "@/components/ui/copy-button";
 import { Segmented } from "@/components/ui/segmented";
 import { toast } from "@/components/ui/toaster";
@@ -280,7 +277,7 @@ export function BulkLookup({ customFields }: BulkLookupProps) {
                 if (dropped) await loadIdentifierFile(dropped);
               }}
               placeholder="DL01AB1234&#10;HR26CD5678&#10;UP85XY9999&#10;&#10;(Or drop a .csv / .xlsx / .txt file here)"
-              rows={12}
+              rows={10}
               className={cn(
                 "w-full rounded-control border p-3 text-xs text-ink uppercase tracking-wide placeholder:text-ink-faint outline-none transition-[border-color,background-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
                 isDragging
@@ -288,6 +285,33 @@ export function BulkLookup({ customFields }: BulkLookupProps) {
                   : "border-divider bg-surface-strong focus:border-accent-strong",
               )}
             />
+            <div className="flex items-center gap-3 rounded-tile border border-divider/60 bg-surface-muted/35 px-3 py-2">
+              <LookupDetectiveCharacter
+                mood={
+                  isDragging
+                    ? "catching"
+                    : loading
+                      ? "searching"
+                      : notice?.ok && unmatchedList.length === 0
+                        ? "perfect"
+                        : unmatchedList.length > 0
+                          ? "partial"
+                          : "idle"
+                }
+                className="h-12 w-16"
+              />
+              <p className="text-[11px] leading-relaxed text-ink-muted">
+                {isDragging
+                  ? "Drop your plate or policy list file — Detective Pip will load it right away."
+                  : loading
+                    ? "Matching vehicle plates and policy numbers across CRM…"
+                    : notice?.ok && unmatchedList.length === 0
+                      ? "100% matched! Every identifier is included in your export."
+                      : unmatchedList.length > 0
+                        ? `Found matches, with ${unmatchedList.length} plate${unmatchedList.length === 1 ? "" : "s"} missing from CRM below.`
+                        : "Paste registration numbers or drop a CSV/Excel list to enrich and export."}
+              </p>
+            </div>
           </div>
 
           {/* Right: Column Selector & Options */}
@@ -357,9 +381,16 @@ export function BulkLookup({ customFields }: BulkLookupProps) {
               notice.ok ? "bg-positive-soft text-positive" : "bg-negative-soft text-negative"
             }`}
           >
-            <div className="flex items-center gap-2">
-              {notice.ok ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
-              <span>{notice.message}</span>
+            <div className="flex items-center gap-3">
+              {notice.ok ? (
+                <LookupDetectiveCharacter
+                  mood={unmatchedList.length === 0 ? "perfect" : "partial"}
+                  className="h-12 w-16 shrink-0"
+                />
+              ) : (
+                <AlertCircle size={16} className="shrink-0" />
+              )}
+              <span className="font-medium">{notice.message}</span>
             </div>
             {unmatchedList.length > 0 && (
               <div className="mt-1 flex flex-wrap items-center justify-between gap-2 border-t border-divider/40 pt-2 text-[11px] text-ink">

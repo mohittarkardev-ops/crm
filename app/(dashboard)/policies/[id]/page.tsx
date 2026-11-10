@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Card, CardHeader } from "@/components/ui/card";
+import { RelaxedEmptyCharacter } from "@/components/ui/characters";
 import { Chip, ValueChip } from "@/components/ui/chip";
 import { DetailList } from "@/components/ui/detail-list";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -153,7 +154,7 @@ export default async function PolicyDetailPage({ params }: { params: Promise<{ i
           <Card index={4}>
             <CardHeader title="Renewal history" />
             {p.renewals.length === 0 ? (
-              <EmptyState label="No renewal records" className="py-8" />
+              <EmptyState label="No renewal records" illustration={<RelaxedEmptyCharacter />} className="py-8" />
             ) : (
               <ul className="divide-y divide-divider">
                 {p.renewals.map((r) => (
@@ -174,7 +175,7 @@ export default async function PolicyDetailPage({ params }: { params: Promise<{ i
           <Card index={5}>
             <CardHeader title="Quote requests" />
             {p.quotes.length === 0 ? (
-              <EmptyState label="No quote requests" className="py-8" />
+              <EmptyState label="No quote requests" illustration={<RelaxedEmptyCharacter />} className="py-8" />
             ) : (
               <ul className="divide-y divide-divider">
                 {p.quotes.map((q) => (

@@ -5,7 +5,9 @@ import { RotateCcw, CheckCircle2, AlertCircle } from "lucide-react";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Chip } from "@/components/ui/chip";
 import { buttonStyles } from "@/components/ui/button";
+import { RelaxedEmptyCharacter, RollbackGuardCharacter } from "@/components/ui/characters";
 import { ConfirmButton } from "@/components/ui/confirm-button";
+import { EmptyState } from "@/components/ui/empty-state";
 import type { ImportBatchRecord } from "@/lib/import-fields";
 import { undoImportBatch } from "@/lib/actions/import";
 import { cn } from "@/lib/cn";
@@ -134,6 +136,7 @@ export function ImportHistory({ batches: initialBatches, canManage }: ImportHist
                         title="Rollback import batch?"
                         description="All policies and orphan clients created in this batch will be permanently removed."
                         confirmLabel="Rollback"
+                        icon={<RollbackGuardCharacter active />}
                         loading={undoingId === b.id}
                         disabled={undoingId !== null}
                         onConfirm={() => handleUndo(b.id)}
@@ -150,8 +153,12 @@ export function ImportHistory({ batches: initialBatches, canManage }: ImportHist
 
             {batches.length === 0 && (
               <tr>
-                <td colSpan={9} className="py-8 text-center text-xs text-ink-muted">
-                  No import history found.
+                <td colSpan={9}>
+                  <EmptyState
+                    label="No import history found"
+                    illustration={<RelaxedEmptyCharacter />}
+                    className="py-8"
+                  />
                 </td>
               </tr>
             )}
