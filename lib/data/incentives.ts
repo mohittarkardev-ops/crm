@@ -1,29 +1,213 @@
 import { createClient } from "@/lib/supabase/server";
 import type { StaffProfile } from "@/lib/auth";
 import { one, pagedRows, todayIST } from "@/lib/data/helpers";
-import { daysInMonth, toISO } from "@/lib/dates";
 import {
-  DEFAULT_RULES,
-  VEHICLE_CATEGORIES,
-  evaluateVehicleDashboard,
-  normalizeRule,
+  DEFAULT_SETTINGS,
+  formatMonthTitle,
+  monthBounds,
+  normalizeVehicleCategory,
+  type AgentAssignmentRecord,
   type HolidayItem,
   type IncentiveRule,
+  type IncentiveSettings,
   type VehicleCategory,
-  type VehicleDashboardData,
 } from "@/lib/incentives";
+import {
+  ensureMonthPeriod,
+  isIncentiveMigrationMissingError,
+  loadRulesWithVersions,
+  loadSettings,
+  type PeriodRow,
+} from "@/lib/incentives-engine";
+import { canonicalStateName } from "@/lib/states";
 
-export type CombinedCsePayout = {
+export type LedgerEntryView = {
+  id: string;
+  claimId: string;
+  claimRef: string;
+  vehicleRegNo: string;
+  agentId: string;
+  agentName: string;
+  employeeCode: string | null;
+  submissionDate: string;
+  effectiveSlabDate: string;
+  creditedAt: string | null;
+  claimStatus: string;
+  claimVehicleCategory: VehicleCategory | null;
+  assignedVehicleCategory: VehicleCategory | null;
+  assignedState: string | null;
+  customerPincode: string | null;
+  manualCustomerState: string | null;
+  resolvedState: string | null;
+  locationStatus: string;
+  resolutionNote: string | null;
+  eligibilityStatus: string;
+  dailySequenceNo: number;
+  slabLabel: string | null;
+  appliedRate: number;
+  calculatedAmount: number;
+  earningStatus: string;
+  exceptionReason: string | null;
+  ruleId: string | null;
+  ruleName: string | null;
+  ruleVersionNumber: number | null;
+  isLocked: boolean;
+};
+
+export type MonthlyAgentView = {
   staffId: string;
   staffName: string;
   employeeCode: string | null;
-  counts: Record<VehicleCategory, number>;
-  nets: Record<VehicleCategory, number>;
-  totalApproved: number;
-  totalMissedDays: number;
-  totalDailyEarned: number;
-  totalDailyPenalty: number;
-  totalNet: number;
+  vehicleCategory: VehicleCategory | null;
+  assignedState: string | null;
+  baseTarget: number;
+  targetOverride: number | null;
+  effectiveTarget: number;
+  targetAdjustmentReason: string | null;
+  eligibleClaimsCount: number;
+  nonQualifyingClaimsCount: number;
+  heldClaimsCount: number;
+  remainingTarget: number;
+  progressPct: number;
+  targetAchieved: boolean;
+  provisionalEarnings: number;
+  adjustmentsTotal: number;
+  forfeitedAmount: number;
+  eligiblePayableAmount: number;
+  settlementId: string | null;
+  settlementStatus: string | null;
+  eligibilityStatus: string | null;
+  paymentStatus: string | null;
+  finalizedPayable: number;
+  paidAmount: number;
+  outstandingAmount: number;
+};
+
+export type SettlementView = {
+  id: string;
+  periodId: string;
+  agentId: string;
+  agentName: string;
+  employeeCode: string | null;
+  vehicleCategory: VehicleCategory | null;
+  assignedState: string | null;
+  monthlyTarget: number;
+  eligibleClaims: number;
+  provisionalAmount: number;
+  adjustmentAmount: number;
+  eligibilityStatus: string;
+  paymentStatus: string;
+  status: string;
+  finalizedPayable: number;
+  paidAmount: number;
+  outstandingAmount: number;
+  notes: string | null;
+  generatedAt: string | null;
+  finalizedAt: string | null;
+};
+
+export type PayoutView = {
+  id: string;
+  settlementId: string;
+  agentId: string;
+  agentName: string;
+  employeeCode: string | null;
+  paidAmount: number;
+  payoutDate: string;
+  paymentMode: string;
+  transactionRef: string;
+  remarks: string | null;
+  proofPath: string | null;
+  createdAt: string;
+};
+
+export type AdjustmentView = {
+  id: string;
+  agentId: string;
+  agentName: string;
+  settlementId: string | null;
+  claimId: string | null;
+  adjustmentType: string;
+  originalValue: string;
+  updatedValue: string;
+  deltaAmount: number;
+  reason: string;
+  adminName: string;
+  createdAt: string;
+};
+
+export type AuditLogView = {
+  id: string;
+  actorName: string;
+  action: string;
+  entityType: string;
+  entityId: string | null;
+  reason: string | null;
+  createdAt: string;
+};
+
+export type StateStatView = {
+  state: string;
+  assignedAgents: number;
+  eligibleClaims: number;
+  provisionalEarnings: number;
+  avgPerClaim: number;
+  finalizedPayable: number;
+  paidAmount: number;
+};
+
+export type DailyPerfView = {
+  id: string;
+  agentId: string;
+  agentName: string;
+  perfDate: string;
+  isWorkingDay: boolean;
+  holidayLabel: string | null;
+  vehicleCategory: VehicleCategory | null;
+  assignedState: string | null;
+  totalClaims: number;
+  eligibleClaims: number;
+  heldClaims: number;
+  mismatchClaims: number;
+  provisionalAmount: number;
+  calculationMethod: string | null;
+  slabSummary: string | null;
+};
+
+export type RuleVersionHistoryItem = {
+  id: string;
+  ruleId: string;
+  versionNumber: number;
+  ruleName: string;
+  scope: string;
+  vehicleCategory: VehicleCategory | null;
+  stateName: string | null;
+  calculationMethod: string;
+  fixedRate: number;
+  combinationMode: string;
+  monthlyTarget: number;
+  effectiveFrom: string;
+  effectiveUntil: string | null;
+  createdAt: string;
+  slabCount: number;
+};
+
+export type PincodeSummaryView = {
+  totalRows: number;
+  incompleteRows: number;
+  uniquePincodes: number;
+  lastUpdatedAt: string | null;
+  sampleRows: {
+    id: string;
+    pincode: string;
+    stateCode: string;
+    stateName: string;
+    districtName: string | null;
+    officeName: string | null;
+    officeType: string | null;
+    isActive: boolean;
+    sourceUpdatedAt: string;
+  }[];
 };
 
 export type IncentivesDashboardPayload = {
@@ -31,46 +215,86 @@ export type IncentivesDashboardPayload = {
   todayIso: string;
   canManage: boolean;
   migrationMissing: boolean;
-  rules: Record<VehicleCategory, IncentiveRule>;
+  currentStaffId: string;
+  period: PeriodRow;
+  settings: IncentiveSettings;
+  kpis: {
+    totalEnrolledAgents: number;
+    eligibleClaims: number;
+    provisionalEarnings: number;
+    finalizedPayable: number;
+    paidIncentives: number;
+    outstandingPayouts: number;
+    forfeitedEarnings: number;
+    pendingReviews: number;
+  };
+  stateStats: StateStatView[];
+  monthlyAgents: MonthlyAgentView[];
+  dailyPerformance: DailyPerfView[];
+  ledger: LedgerEntryView[];
+  exceptions: LedgerEntryView[];
+  rules: IncentiveRule[];
+  ruleVersions: RuleVersionHistoryItem[];
+  assignments: AgentAssignmentRecord[];
+  staffOptions: { value: string; label: string; employeeCode: string | null }[];
   holidays: HolidayItem[];
-  dashboards: Record<VehicleCategory, VehicleDashboardData>;
-  overallByCse: CombinedCsePayout[];
+  pincodeSummary: PincodeSummaryView;
+  settlements: SettlementView[];
+  payouts: PayoutView[];
+  adjustments: AdjustmentView[];
+  auditLogs: AuditLogView[];
 };
 
-type ClaimJoinRow = {
-  id: string;
-  staff_id: string | null;
-  employee_name: string;
-  payment_date: string;
-  vehicle_category: string | null;
-  policies:
-    | { vehicle_category: string | null; policy_types: { code: string } | { code: string }[] | null }
-    | { vehicle_category: string | null; policy_types: { code: string } | { code: string }[] | null }[]
-    | null;
-};
-
-function isMissingRelation(err: { code?: string; message?: string } | null | undefined): boolean {
-  if (!err) return false;
-  if (err.code === "42P01" || err.code === "PGRST205") return true;
-  const msg = err.message ?? "";
-  return msg.includes("incentive_rules") || msg.includes("incentive_holidays") || msg.includes("does not exist");
+function buildFallbackPayload(monthIso: string, staff: StaffProfile, canManage: boolean): IncentivesDashboardPayload {
+  const { startDate, endDate, label } = monthBounds(monthIso);
+  return {
+    monthIso,
+    todayIso: todayIST(),
+    canManage,
+    migrationMissing: true,
+    currentStaffId: staff.id,
+    period: {
+      id: "preview",
+      period_key: monthIso,
+      label: label || formatMonthTitle(monthIso),
+      start_date: startDate,
+      end_date: endDate,
+      status: "open",
+      closed_by: null,
+      closed_at: null,
+      finalized_by: null,
+      finalized_at: null,
+    },
+    settings: DEFAULT_SETTINGS,
+    kpis: {
+      totalEnrolledAgents: 0,
+      eligibleClaims: 0,
+      provisionalEarnings: 0,
+      finalizedPayable: 0,
+      paidIncentives: 0,
+      outstandingPayouts: 0,
+      forfeitedEarnings: 0,
+      pendingReviews: 0,
+    },
+    stateStats: [],
+    monthlyAgents: [],
+    dailyPerformance: [],
+    ledger: [],
+    exceptions: [],
+    rules: [],
+    ruleVersions: [],
+    assignments: [],
+    staffOptions: [],
+    holidays: [],
+    pincodeSummary: { totalRows: 0, incompleteRows: 0, uniquePincodes: 0, lastUpdatedAt: null, sampleRows: [] },
+    settlements: [],
+    payouts: [],
+    adjustments: [],
+    auditLogs: [],
+  };
 }
 
-function resolveVehicleCategory(row: ClaimJoinRow): VehicleCategory {
-  const direct = row.vehicle_category?.toUpperCase();
-  if (direct === "2W" || direct === "4W" || direct === "CV") return direct;
-
-  const policy = one(row.policies);
-  const pCat = policy?.vehicle_category?.toUpperCase();
-  if (pCat === "2W" || pCat === "4W" || pCat === "CV") return pCat;
-
-  const pType = one(policy?.policy_types)?.code;
-  if (pType === "bike") return "2W";
-  if (pType === "car") return "4W";
-  return "CV";
-}
-
-/** Loads rules, holidays, approved claims, and calculated dashboards for 2W, 4W, and CV. */
+/** Loads complete Admin or Agent-scoped Incentive Engine dataset for `monthIso` (`YYYY-MM`). */
 export async function getIncentivesDashboard(
   monthIso: string,
   staff: StaffProfile,
@@ -78,175 +302,500 @@ export async function getIncentivesDashboard(
 ): Promise<IncentivesDashboardPayload> {
   const db = await createClient();
   const todayIso = todayIST();
-  const [y, m] = monthIso.split("-").map(Number);
-  const monthStartIso = toISO(y, m, 1);
-  const monthEndIso = toISO(y, m, daysInMonth(y, m));
 
-  const [rulesRes, holidaysRes, staffRes, claimRows] = await Promise.all([
-    db.from("incentive_rules").select("*"),
-    db
-      .from("incentive_holidays")
-      .select("holiday_date, label")
-      .gte("holiday_date", monthStartIso)
-      .lte("holiday_date", monthEndIso)
-      .order("holiday_date", { ascending: true }),
-    canManage
-      ? db
-          .from("staff_users")
-          .select("id, full_name, employee_code, role")
-          .eq("is_active", true)
-          .order("full_name", { ascending: true })
-      : Promise.resolve({ data: null, error: null }),
-    pagedRows<ClaimJoinRow>(
-      (from, to) => {
-        let q = db
-          .from("claims")
-          .select("id, staff_id, employee_name, payment_date, vehicle_category, policies(vehicle_category, policy_types(code))")
-          .eq("status", "approved")
-          .gte("payment_date", monthStartIso)
-          .lte("payment_date", monthEndIso);
-        if (!canManage) {
-          q = q.eq("staff_id", staff.id);
-        }
-        return q.order("payment_date", { ascending: true }).order("id", { ascending: true }).range(from, to);
-      },
-      "Approved claims for incentives",
-    ),
-  ]);
-
-  let migrationMissing = false;
-  const rules: Record<VehicleCategory, IncentiveRule> = {
-    "2W": DEFAULT_RULES["2W"],
-    "4W": DEFAULT_RULES["4W"],
-    CV: DEFAULT_RULES.CV,
-  };
-
-  if (rulesRes.error) {
-    if (isMissingRelation(rulesRes.error)) {
-      migrationMissing = true;
-    } else {
-      throw new Error(`Incentive rules: ${rulesRes.error.message}`);
+  let period: PeriodRow;
+  try {
+    period = await ensureMonthPeriod(db, monthIso, !canManage);
+  } catch (err) {
+    if (isIncentiveMigrationMissingError(err as { code?: string; message?: string })) {
+      return buildFallbackPayload(monthIso, staff, canManage);
     }
-  } else {
-    for (const row of rulesRes.data ?? []) {
-      const cat = String(row.vehicle_category) as VehicleCategory;
-      if (cat === "2W" || cat === "4W" || cat === "CV") {
-        rules[cat] = normalizeRule(cat, row as Record<string, unknown>);
-      }
-    }
+    throw err instanceof Error ? err : new Error((err as { message?: string })?.message || "Failed to load period.");
   }
 
-  let holidays: HolidayItem[] = [];
-  if (holidaysRes.error) {
-    if (isMissingRelation(holidaysRes.error)) {
-      migrationMissing = true;
-    } else {
-      throw new Error(`Incentive holidays: ${holidaysRes.error.message}`);
+  const isVirtualPeriod = period.id === "open-preview";
+
+  try {
+    const [
+      settings,
+      { rules, versionById },
+      holidaysRes,
+      assignmentsRes,
+      monthlyRes,
+      dailyRes,
+      ledgerRows,
+      settlementsRes,
+      payoutsRes,
+      adjustmentsRes,
+      auditRes,
+      staffRes,
+      pinCountRes,
+      pinIncompleteRes,
+      pinSampleRes,
+    ] = await Promise.all([
+      loadSettings(db),
+      loadRulesWithVersions(db),
+      db
+        .from("incentive_holidays")
+        .select("holiday_date, label")
+        .gte("holiday_date", period.start_date)
+        .lte("holiday_date", period.end_date)
+        .order("holiday_date", { ascending: true }),
+      (() => {
+        let q = db
+          .from("incentive_agent_assignments")
+          .select("id, staff_id, vehicle_category, assigned_state, effective_from, effective_until, status, notes, created_at");
+        if (!canManage) q = q.eq("staff_id", staff.id);
+        return q.order("effective_from", { ascending: false });
+      })(),
+      isVirtualPeriod
+        ? Promise.resolve({ data: [], error: null })
+        : (() => {
+            let q = db.from("agent_monthly_incentives").select("*").eq("period_id", period.id);
+            if (!canManage) q = q.eq("agent_id", staff.id);
+            return q;
+          })(),
+      isVirtualPeriod
+        ? Promise.resolve({ data: [], error: null })
+        : (() => {
+            let q = db.from("agent_daily_performance").select("*").eq("period_id", period.id);
+            if (!canManage) q = q.eq("agent_id", staff.id);
+            return q.order("perf_date", { ascending: false });
+          })(),
+      isVirtualPeriod
+        ? Promise.resolve([])
+        : pagedRows<Record<string, unknown>>(
+            (from, to) => {
+              let q = db
+                .from("agent_incentive_ledger")
+                .select("*")
+                .eq("period_id", period.id)
+                .neq("earning_status", "void");
+              if (!canManage) q = q.eq("agent_id", staff.id);
+              return q.order("claim_submission_date", { ascending: false }).order("daily_sequence_no", { ascending: true }).range(from, to);
+            },
+            "Incentive ledger",
+          ),
+      isVirtualPeriod
+        ? Promise.resolve({ data: [], error: null })
+        : (() => {
+            let q = db.from("incentive_settlements").select("*").eq("period_id", period.id);
+            if (!canManage) q = q.eq("agent_id", staff.id);
+            return q.order("updated_at", { ascending: false });
+          })(),
+      isVirtualPeriod
+        ? Promise.resolve({ data: [], error: null })
+        : (() => {
+            let q = db.from("incentive_payouts").select("*");
+            if (!canManage) q = q.eq("agent_id", staff.id);
+            else q = q.eq("period_id", period.id);
+            return q.order("payout_date", { ascending: false }).order("created_at", { ascending: false });
+          })(),
+      isVirtualPeriod
+        ? Promise.resolve({ data: [], error: null })
+        : (() => {
+            let q = db.from("incentive_adjustments").select("*").eq("period_id", period.id);
+            if (!canManage) q = q.eq("agent_id", staff.id);
+            return q.order("created_at", { ascending: false });
+          })(),
+      canManage
+        ? db.from("incentive_audit_logs").select("*").order("created_at", { ascending: false }).limit(80)
+        : Promise.resolve({ data: [], error: null }),
+      canManage
+        ? db.from("staff_users").select("id, full_name, employee_code, is_active").order("full_name")
+        : Promise.resolve({ data: [{ id: staff.id, full_name: staff.full_name, employee_code: null, is_active: true }], error: null }),
+      canManage
+        ? db.from("pincode_directory").select("id", { count: "exact", head: true }).eq("is_active", true)
+        : Promise.resolve({ count: 0, error: null }),
+      canManage
+        ? db
+            .from("pincode_directory")
+            .select("id", { count: "exact", head: true })
+            .is("office_name", null)
+            .or("office_type.is.null,office_type.neq.Manual")
+        : Promise.resolve({ count: 0, error: null }),
+      canManage
+        ? db.from("pincode_directory").select("*").order("pincode", { ascending: true }).limit(60)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+
+    const errors = [
+      holidaysRes.error,
+      assignmentsRes.error,
+      monthlyRes.error,
+      dailyRes.error,
+      settlementsRes.error,
+      payoutsRes.error,
+      adjustmentsRes.error,
+      auditRes.error,
+      staffRes.error,
+      pinCountRes.error,
+      pinIncompleteRes.error,
+      pinSampleRes.error,
+    ].filter(Boolean);
+    if (errors.length > 0) {
+      const first = errors[0]!;
+      if (isIncentiveMigrationMissingError(first)) {
+        return buildFallbackPayload(monthIso, staff, canManage);
+      }
+      throw new Error(`Incentives query (${first.code ?? "DB"}): ${first.message}`);
     }
-  } else {
-    holidays = (holidaysRes.data ?? []).map((h) => ({
+
+    const staffMap = new Map<string, { full_name: string; employee_code: string | null; is_active: boolean }>();
+    for (const s of staffRes.data ?? []) {
+      staffMap.set(String(s.id), {
+        full_name: String(s.full_name),
+        employee_code: (s.employee_code as string | null) ?? null,
+        is_active: typeof s.is_active === "boolean" ? s.is_active : true,
+      });
+    }
+
+    // Batch lookup claim vehicle registration numbers cleanly for ledger entries
+    const claimRegMap = new Map<string, string>();
+    const ledgerClaimIds = Array.from(new Set(ledgerRows.map((l) => String(l.claim_id)).filter(Boolean)));
+    for (let i = 0; i < ledgerClaimIds.length; i += 200) {
+      const slice = ledgerClaimIds.slice(i, i + 200);
+      const clRes = await db.from("claims").select("id, vehicle_reg_no").in("id", slice);
+      if (!clRes.error) {
+        for (const c of clRes.data ?? []) {
+          claimRegMap.set(String(c.id), String(c.vehicle_reg_no));
+        }
+      }
+    }
+
+    const holidays: HolidayItem[] = (holidaysRes.data ?? []).map((h) => ({
       date: h.holiday_date as string,
       label: h.label as string,
     }));
-  }
 
-  // Roster scoped cleanly: self-only for CSEs, all active operational staff (+ claim contributors) for Admin.
-  const staffMap = new Map<string, { id: string; name: string; employeeCode: string | null }>();
-  if (canManage) {
-    if (staffRes.error) throw new Error(`Staff roster: ${staffRes.error.message}`);
-    for (const row of staffRes.data ?? []) {
-      staffMap.set(row.id as string, {
-        id: row.id as string,
-        name: row.full_name as string,
-        employeeCode: (row.employee_code as string | null) ?? null,
-      });
-    }
-    for (const c of claimRows) {
-      if (c.staff_id && !staffMap.has(c.staff_id)) {
-        staffMap.set(c.staff_id, {
-          id: c.staff_id,
-          name: c.employee_name || "Unknown agent",
-          employeeCode: null,
-        });
-      }
-    }
-  } else {
-    staffMap.set(staff.id, {
-      id: staff.id,
-      name: staff.full_name,
-      employeeCode: null,
+    const assignments: AgentAssignmentRecord[] = (assignmentsRes.data ?? []).map((a) => {
+      const s = staffMap.get(String(a.staff_id));
+      return {
+        id: a.id as string,
+        staffId: a.staff_id as string,
+        staffName: s?.full_name ?? staff.full_name,
+        employeeCode: s?.employee_code ?? null,
+        vehicleCategory: normalizeVehicleCategory(String(a.vehicle_category)) ?? "2W",
+        assignedState: canonicalStateName(String(a.assigned_state)),
+        effectiveFrom: String(a.effective_from),
+        effectiveUntil: (a.effective_until as string | null) ?? null,
+        status: a.status === "inactive" ? "inactive" : "active",
+        notes: (a.notes as string | null) ?? null,
+        createdAt: a.created_at as string,
+      };
     });
-  }
 
-  const staffList = Array.from(staffMap.values());
-  const approvedClaims = claimRows
-    .filter((c) => Boolean(c.staff_id))
-    .map((c) => ({
-      staffId: c.staff_id as string,
-      paymentDate: c.payment_date,
-      vehicleCategory: resolveVehicleCategory(c),
+    const staffOptions = (staffRes.data ?? [])
+      .filter((s) => (typeof s.is_active === "boolean" ? s.is_active : true))
+      .map((s) => ({
+        value: s.id as string,
+        label: s.employee_code ? `${s.full_name} (${s.employee_code})` : String(s.full_name),
+        employeeCode: (s.employee_code as string | null) ?? null,
+      }));
+
+    const settlements: SettlementView[] = (settlementsRes.data ?? []).map((s) => {
+      const st = staffMap.get(String(s.agent_id));
+      return {
+        id: s.id as string,
+        periodId: s.period_id as string,
+        agentId: s.agent_id as string,
+        agentName: st?.full_name ?? staff.full_name,
+        employeeCode: st?.employee_code ?? null,
+        vehicleCategory: s.vehicle_category ? normalizeVehicleCategory(String(s.vehicle_category)) : null,
+        assignedState: (s.assigned_state as string | null) ?? null,
+        monthlyTarget: Number(s.monthly_target ?? 0),
+        eligibleClaims: Number(s.eligible_claims ?? 0),
+        provisionalAmount: Number(s.provisional_amount ?? 0),
+        adjustmentAmount: Number(s.adjustment_amount ?? 0),
+        eligibilityStatus: String(s.eligibility_status),
+        paymentStatus: String(s.payment_status),
+        status: String(s.status),
+        finalizedPayable: Number(s.finalized_payable ?? 0),
+        paidAmount: Number(s.paid_amount ?? 0),
+        outstandingAmount: Number(s.outstanding_amount ?? 0),
+        notes: (s.notes as string | null) ?? null,
+        generatedAt: (s.generated_at as string | null) ?? null,
+        finalizedAt: (s.finalized_at as string | null) ?? null,
+      };
+    });
+
+    const settlementByAgent = new Map<string, SettlementView>();
+    for (const st of settlements) settlementByAgent.set(st.agentId, st);
+
+    const ledgerAll: LedgerEntryView[] = ledgerRows.map((l) => {
+      const claimId = String(l.claim_id);
+      const stJoin = staffMap.get(String(l.agent_id));
+      const ver = l.rule_version_id ? versionById.get(String(l.rule_version_id)) : undefined;
+      return {
+        id: String(l.id),
+        claimId,
+        claimRef: `CLM-${claimId.slice(0, 8).toUpperCase()}`,
+        vehicleRegNo: claimRegMap.get(claimId) ?? "—",
+        agentId: String(l.agent_id),
+        agentName: stJoin?.full_name ?? staff.full_name,
+        employeeCode: stJoin?.employee_code ?? null,
+        submissionDate: String(l.claim_submission_date),
+        effectiveSlabDate: String(l.effective_slab_date),
+        creditedAt: (l.credited_at as string | null) ?? null,
+        claimStatus: String(l.claim_status_at_calc),
+        claimVehicleCategory: l.claim_vehicle_category ? normalizeVehicleCategory(String(l.claim_vehicle_category)) : null,
+        assignedVehicleCategory: l.assigned_vehicle_category ? normalizeVehicleCategory(String(l.assigned_vehicle_category)) : null,
+        assignedState: (l.assigned_state as string | null) ?? null,
+        customerPincode: (l.customer_pincode as string | null) ?? null,
+        manualCustomerState: (l.manual_customer_state as string | null) ?? null,
+        resolvedState: (l.resolved_state as string | null) ?? null,
+        locationStatus: String(l.location_status),
+        resolutionNote: (l.resolution_note as string | null) ?? null,
+        eligibilityStatus: String(l.eligibility_status),
+        dailySequenceNo: Number(l.daily_sequence_no ?? 0),
+        slabLabel: (l.slab_label as string | null) ?? null,
+        appliedRate: Number(l.applied_rate ?? 0),
+        calculatedAmount: Number(l.calculated_amount ?? 0),
+        earningStatus: String(l.earning_status),
+        exceptionReason: (l.exception_reason as string | null) ?? null,
+        ruleId: (l.rule_id as string | null) ?? null,
+        ruleName: ver?.ruleName ?? null,
+        ruleVersionNumber: ver?.currentVersion ?? null,
+        isLocked: Boolean(l.is_locked),
+      };
+    });
+
+    // Respect `agentVisibilityMode` for non-admin agents when configured as `after_daily_reconciliation`
+    const hideUnreconciledToday = !canManage && settings.agentVisibilityMode === "after_daily_reconciliation";
+    const ledger = hideUnreconciledToday
+      ? ledgerAll.filter((l) => l.submissionDate < todayIso || period.status !== "open")
+      : ledgerAll;
+
+    const exceptions = canManage ? ledgerAll.filter((l) => l.earningStatus === "held") : [];
+
+    const monthlyAgents: MonthlyAgentView[] = (monthlyRes.data ?? []).map((m) => {
+      const agentId = String(m.agent_id);
+      const st = staffMap.get(agentId);
+      const sett = settlementByAgent.get(agentId);
+      const effectiveTarget = Number(m.effective_target ?? 0);
+      const eligibleClaims = Number(m.eligible_claims_count ?? 0);
+      const remainingTarget = Math.max(0, effectiveTarget - eligibleClaims);
+      const progressPct =
+        effectiveTarget === 0 ? 100 : Math.min(100, Math.round((eligibleClaims / effectiveTarget) * 100));
+
+      return {
+        staffId: agentId,
+        staffName: st?.full_name ?? staff.full_name,
+        employeeCode: st?.employee_code ?? null,
+        vehicleCategory: m.primary_vehicle_category ? normalizeVehicleCategory(String(m.primary_vehicle_category)) : null,
+        assignedState: (m.primary_state as string | null) ?? null,
+        baseTarget: Number(m.base_monthly_target ?? 0),
+        targetOverride: m.target_override === null ? null : Number(m.target_override),
+        effectiveTarget,
+        targetAdjustmentReason: (m.target_adjustment_reason as string | null) ?? null,
+        eligibleClaimsCount: eligibleClaims,
+        nonQualifyingClaimsCount: Number(m.non_qualifying_claims_count ?? 0),
+        heldClaimsCount: Number(m.held_claims_count ?? 0),
+        remainingTarget,
+        progressPct,
+        targetAchieved: Boolean(m.target_achieved),
+        provisionalEarnings: Number(m.provisional_earnings ?? 0),
+        adjustmentsTotal: Number(m.adjustments_total ?? 0),
+        forfeitedAmount: Number(m.forfeited_amount ?? 0),
+        eligiblePayableAmount: Number(m.eligible_payable_amount ?? 0),
+        settlementId: sett?.id ?? null,
+        settlementStatus: sett?.status ?? null,
+        eligibilityStatus: sett?.eligibilityStatus ?? null,
+        paymentStatus: sett?.paymentStatus ?? null,
+        finalizedPayable: sett?.finalizedPayable ?? 0,
+        paidAmount: sett?.paidAmount ?? 0,
+        outstandingAmount: sett?.outstandingAmount ?? 0,
+      };
+    });
+
+    monthlyAgents.sort(
+      (a, b) => b.provisionalEarnings - a.provisionalEarnings || b.eligibleClaimsCount - a.eligibleClaimsCount,
+    );
+
+    const dailyPerformanceAll: DailyPerfView[] = (dailyRes.data ?? []).map((d) => {
+      const st = staffMap.get(String(d.agent_id));
+      return {
+        id: String(d.id),
+        agentId: String(d.agent_id),
+        agentName: st?.full_name ?? staff.full_name,
+        perfDate: String(d.perf_date),
+        isWorkingDay: Boolean(d.is_working_day),
+        holidayLabel: (d.holiday_label as string | null) ?? null,
+        vehicleCategory: d.vehicle_category ? normalizeVehicleCategory(String(d.vehicle_category)) : null,
+        assignedState: (d.assigned_state as string | null) ?? null,
+        totalClaims: Number(d.total_claims ?? 0),
+        eligibleClaims: Number(d.eligible_claims ?? 0),
+        heldClaims: Number(d.held_claims ?? 0),
+        mismatchClaims: Number(d.mismatch_claims ?? 0),
+        provisionalAmount: Number(d.provisional_amount ?? 0),
+        calculationMethod: (d.calculation_method as string | null) ?? null,
+        slabSummary: (d.slab_summary as string | null) ?? null,
+      };
+    });
+    const dailyPerformance = hideUnreconciledToday
+      ? dailyPerformanceAll.filter((d) => d.perfDate < todayIso || period.status !== "open")
+      : dailyPerformanceAll;
+
+    const payouts: PayoutView[] = (payoutsRes.data ?? []).map((p) => {
+      const st = staffMap.get(String(p.agent_id));
+      return {
+        id: String(p.id),
+        settlementId: String(p.settlement_id),
+        agentId: String(p.agent_id),
+        agentName: st?.full_name ?? staff.full_name,
+        employeeCode: st?.employee_code ?? null,
+        paidAmount: Number(p.paid_amount ?? 0),
+        payoutDate: String(p.payout_date),
+        paymentMode: String(p.payment_mode),
+        transactionRef: String(p.transaction_ref),
+        remarks: (p.remarks as string | null) ?? null,
+        proofPath: (p.proof_path as string | null) ?? null,
+        createdAt: String(p.created_at),
+      };
+    });
+
+    const adjustments: AdjustmentView[] = (adjustmentsRes.data ?? []).map((adj) => {
+      const agent = staffMap.get(String(adj.agent_id));
+      const admin = adj.admin_id ? staffMap.get(String(adj.admin_id)) : undefined;
+      return {
+        id: String(adj.id),
+        agentId: String(adj.agent_id),
+        agentName: agent?.full_name ?? "Agent",
+        settlementId: (adj.settlement_id as string | null) ?? null,
+        claimId: (adj.claim_id as string | null) ?? null,
+        adjustmentType: String(adj.adjustment_type),
+        originalValue: String(adj.original_value),
+        updatedValue: String(adj.updated_value),
+        deltaAmount: Number(adj.delta_amount ?? 0),
+        reason: String(adj.reason),
+        adminName: admin?.full_name ?? "Admin",
+        createdAt: String(adj.created_at),
+      };
+    });
+
+    const auditLogs: AuditLogView[] = (auditRes.data ?? []).map((a) => ({
+      id: String(a.id),
+      actorName: (a.actor_name as string | null) ?? "System",
+      action: String(a.action),
+      entityType: String(a.entity_type),
+      entityId: (a.entity_id as string | null) ?? null,
+      reason: (a.reason as string | null) ?? null,
+      createdAt: String(a.created_at),
     }));
 
-  const dashboards = {} as Record<VehicleCategory, VehicleDashboardData>;
-  for (const cat of VEHICLE_CATEGORIES) {
-    dashboards[cat.key] = evaluateVehicleDashboard({
-      category: cat.key,
-      label: cat.label,
+    // Build Rule Version History list
+    const ruleVersions: RuleVersionHistoryItem[] = Array.from(versionById.values())
+      .map((v) => ({
+        id: v.currentVersionId ?? v.id,
+        ruleId: v.id,
+        versionNumber: v.currentVersion,
+        ruleName: v.ruleName,
+        scope: v.scope,
+        vehicleCategory: v.vehicleCategory,
+        stateName: v.stateName,
+        calculationMethod: v.calculationMethod,
+        fixedRate: v.fixedRate,
+        combinationMode: v.combinationMode,
+        monthlyTarget: v.monthlyTarget,
+        effectiveFrom: v.effectiveFrom,
+        effectiveUntil: v.effectiveUntil,
+        createdAt: "",
+        slabCount: v.slabs.length,
+      }))
+      .sort((a, b) => a.ruleName.localeCompare(b.ruleName) || b.versionNumber - a.versionNumber);
+
+    // State breakdown stats (Admin)
+    const stateMap = new Map<string, StateStatView>();
+    for (const a of monthlyAgents) {
+      const stName = a.assignedState || "Unassigned";
+      const cur = stateMap.get(stName) ?? {
+        state: stName,
+        assignedAgents: 0,
+        eligibleClaims: 0,
+        provisionalEarnings: 0,
+        avgPerClaim: 0,
+        finalizedPayable: 0,
+        paidAmount: 0,
+      };
+      cur.assignedAgents += 1;
+      cur.eligibleClaims += a.eligibleClaimsCount;
+      cur.provisionalEarnings += a.provisionalEarnings;
+      cur.finalizedPayable += a.finalizedPayable;
+      cur.paidAmount += a.paidAmount;
+      stateMap.set(stName, cur);
+    }
+    const stateStats = Array.from(stateMap.values())
+      .map((s) => ({
+        ...s,
+        avgPerClaim: s.eligibleClaims > 0 ? Math.round((s.provisionalEarnings / s.eligibleClaims) * 100) / 100 : 0,
+      }))
+      .sort((a, b) => b.provisionalEarnings - a.provisionalEarnings || b.eligibleClaims - a.eligibleClaims);
+
+    // Admin 8 KPIs (Proposal p. 13)
+    const kpis = {
+      totalEnrolledAgents: monthlyAgents.length,
+      eligibleClaims: monthlyAgents.reduce((sum, a) => sum + a.eligibleClaimsCount, 0),
+      provisionalEarnings: monthlyAgents.reduce((sum, a) => sum + a.provisionalEarnings, 0),
+      finalizedPayable: settlements.reduce((sum, s) => sum + s.finalizedPayable, 0),
+      paidIncentives: settlements.reduce((sum, s) => sum + s.paidAmount, 0),
+      outstandingPayouts: settlements.reduce((sum, s) => sum + s.outstandingAmount, 0),
+      forfeitedEarnings:
+        settlements.length > 0
+          ? settlements.reduce((sum, s) => (s.status === "forfeited" ? sum + s.provisionalAmount : sum), 0)
+          : monthlyAgents.reduce((sum, a) => sum + a.forfeitedAmount, 0),
+      pendingReviews: exceptions.length,
+    };
+
+    const sampleRows = (pinSampleRes.data ?? []).map((p) => ({
+      id: String(p.id),
+      pincode: String(p.pincode),
+      stateCode: String(p.state_code),
+      stateName: String(p.state_name),
+      districtName: (p.district_name as string | null) ?? null,
+      officeName: (p.office_name as string | null) ?? null,
+      officeType: (p.office_type as string | null) ?? null,
+      isActive: Boolean(p.is_active),
+      sourceUpdatedAt: String(p.source_updated_at),
+    }));
+    const uniqueSamplePins = new Set(sampleRows.map((p) => p.pincode)).size;
+
+    return {
       monthIso,
       todayIso,
-      rule: rules[cat.key],
+      canManage,
+      migrationMissing: false,
+      currentStaffId: staff.id,
+      period,
+      settings,
+      kpis,
+      stateStats,
+      monthlyAgents,
+      dailyPerformance,
+      ledger,
+      exceptions,
+      rules,
+      ruleVersions,
+      assignments,
+      staffOptions,
       holidays,
-      staffList,
-      approvedClaims,
-    });
-  }
-
-  // Combine 2W + 4W + CV per CSE for overview dashboard ranking.
-  const combinedMap = new Map<string, CombinedCsePayout>();
-  for (const s of staffList) {
-    combinedMap.set(s.id, {
-      staffId: s.id,
-      staffName: s.name,
-      employeeCode: s.employeeCode,
-      counts: { "2W": 0, "4W": 0, CV: 0 },
-      nets: { "2W": 0, "4W": 0, CV: 0 },
-      totalApproved: 0,
-      totalMissedDays: 0,
-      totalDailyEarned: 0,
-      totalDailyPenalty: 0,
-      totalNet: 0,
-    });
-  }
-
-  for (const cat of VEHICLE_CATEGORIES) {
-    for (const entry of dashboards[cat.key].entries) {
-      const target = combinedMap.get(entry.staffId);
-      if (!target) continue;
-      target.counts[cat.key] = entry.approvedCount;
-      target.nets[cat.key] = entry.netIncentive;
-      target.totalApproved += entry.approvedCount;
-      target.totalMissedDays += entry.missedDays;
-      target.totalDailyEarned += entry.dailyEarned;
-      target.totalDailyPenalty += entry.dailyPenalty;
-      target.totalNet += entry.netIncentive;
+      pincodeSummary: {
+        totalRows: pinCountRes.count ?? 0,
+        incompleteRows: pinIncompleteRes.count ?? 0,
+        uniquePincodes: uniqueSamplePins,
+        lastUpdatedAt: sampleRows[0]?.sourceUpdatedAt ?? null,
+        sampleRows,
+      },
+      settlements,
+      payouts,
+      adjustments,
+      auditLogs,
+    };
+  } catch (err) {
+    if (isIncentiveMigrationMissingError(err as { code?: string; message?: string })) {
+      return buildFallbackPayload(monthIso, staff, canManage);
     }
+    throw err instanceof Error
+      ? err
+      : new Error((err as { message?: string })?.message || "Could not load incentives dashboard.");
   }
-
-  const overallByCse = Array.from(combinedMap.values()).sort(
-    (a, b) =>
-      b.totalNet - a.totalNet ||
-      b.totalApproved - a.totalApproved ||
-      a.staffName.localeCompare(b.staffName),
-  );
-
-  return {
-    monthIso,
-    todayIso,
-    canManage,
-    migrationMissing,
-    rules,
-    holidays,
-    dashboards,
-    overallByCse,
-  };
 }

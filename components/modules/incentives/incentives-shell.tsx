@@ -1,329 +1,371 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
+  AlertTriangle,
   ArrowRight,
   Award,
-  CalendarOff,
+  Ban,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Clock,
-  SlidersHorizontal,
+  Download,
+  RefreshCw,
   TriangleAlert,
-  TrendingDown,
   Users,
   Wallet,
 } from "lucide-react";
-import { HolidayDrawer } from "@/components/modules/incentives/holiday-drawer";
-import { RuleEditorDrawer } from "@/components/modules/incentives/rule-editor-drawer";
 import { Button, buttonStyles } from "@/components/ui/button";
 import { Card, CardHeader, Tile } from "@/components/ui/card";
-import { ClaimTrophyCharacter, GoalFlagMini, VehicleScoutCharacter } from "@/components/ui/characters";
+import { GoalFlagMini } from "@/components/ui/characters";
+import { IncentiveVehicleCharacter } from "@/components/ui/incentive-characters";
 import { Chip } from "@/components/ui/chip";
+import { CountUp } from "@/components/ui/count-up";
 import { CustomSelect } from "@/components/ui/custom-select";
 import { EmptyState } from "@/components/ui/empty-state";
 import { MiniStat, StatRow } from "@/components/ui/mini-stat";
-import { Segmented } from "@/components/ui/segmented";
+import { toast } from "@/components/ui/toaster";
+import { useSlidingPill } from "@/components/ui/use-sliding-pill";
+import { AgentMyIncentivesView } from "@/components/modules/incentives/agent-my-incentives-view";
+import { AnimatedProgressBar } from "@/components/modules/incentives/animated-progress-bar";
+import { AssignmentsPinTab } from "@/components/modules/incentives/assignments-pin-tab";
+import { DailyLedgerTab } from "@/components/modules/incentives/daily-ledger-tab";
+import { downloadCsv, downloadXlsx } from "@/components/modules/incentives/export-utils";
+import { RulesTab } from "@/components/modules/incentives/rules-tab";
+import { SettlementsPayoutsTab } from "@/components/modules/incentives/settlements-payouts-tab";
+import { reconcilePeriodAction } from "@/lib/actions/incentives";
 import { cn } from "@/lib/cn";
 import type { IncentivesDashboardPayload } from "@/lib/data/incentives";
-import { formatDate, formatINR } from "@/lib/format";
+import { formatINR } from "@/lib/format";
 import {
-  PAYOUT_MODE_LABELS,
+  SETTLEMENT_STATUS_LABELS,
   VEHICLE_CATEGORIES,
-  WEEKDAYS,
   formatMonthTitle,
   shiftMonthIso,
+  type SettlementStatus,
   type VehicleCategory,
 } from "@/lib/incentives";
+import { chipFor } from "@/lib/status";
+import { useSavedFlag } from "@/lib/use-transient-state";
 
-type TabKey = "all" | VehicleCategory;
+type AdminNavTab =
+  | "overview"
+  | "2W"
+  | "4W"
+  | "CW"
+  | "ledger"
+  | "rules"
+  | "assignments"
+  | "settlements";
 
-function workingDaySummary(days: number[]): string {
-  if (days.length === 7) return "Every day (Mon–Sun)";
-  if (days.length === 6 && !days.includes(7)) return "Mon–Sat (Sundays off)";
-  if (days.length === 5 && !days.includes(6) && !days.includes(7)) return "Mon–Fri";
-  return WEEKDAYS.filter((w) => days.includes(w.value))
-    .map((w) => w.short)
-    .join(", ");
-}
-
-function slabRateText(mode: string, amount: number): string {
-  if (mode === "per_payment") return `${formatINR(amount)}/payment`;
-  return formatINR(amount);
-}
+const ADMIN_TABS: { key: AdminNavTab; label: string }[] = [
+  { key: "overview", label: "Overview" },
+  { key: "2W", label: "2W Dashboard" },
+  { key: "4W", label: "4W Dashboard" },
+  { key: "CW", label: "CW Dashboard" },
+  { key: "ledger", label: "Daily & Ledger" },
+  { key: "rules", label: "Rule Builder" },
+  { key: "assignments", label: "Assignments & PIN" },
+  { key: "settlements", label: "Settlement & Payouts" },
+];
 
 export function IncentivesShell({ data }: { data: IncentivesDashboardPayload }) {
-  const [tab, setTab] = useState<TabKey>("all");
-  const [selectedStaffId, setSelectedStaffId] = useState<string>(
-    data.overallByCse[0]?.staffId ?? "",
-  );
-  const [ruleDrawerOpen, setRuleDrawerOpen] = useState(false);
-  const [ruleDrawerCat, setRuleDrawerCat] = useState<VehicleCategory>("2W");
-  const [holidayDrawerOpen, setHolidayDrawerOpen] = useState(false);
+  const [tab, setTab] = useState<AdminNavTab>("overview");
+  const [stateFilter, setStateFilter] = useState("__all__");
+  const [syncing, setSyncing] = useState(false);
+  const [syncSaved, flashSyncSaved] = useSavedFlag();
+  const [exportSaved, flashExportSaved] = useSavedFlag();
+  const tabsRef = useRef<HTMLDivElement>(null);
+  const { rect: tabPillRect, animated: tabPillAnimated } = useSlidingPill(tabsRef, tab);
+
+  const stateFilterOptions = useMemo(() => {
+    const states = Array.from(
+      new Set(data.monthlyAgents.map((a) => a.assignedState).filter((x): x is string => Boolean(x))),
+    ).sort((a, b) => a.localeCompare(b));
+    return [{ value: "__all__", label: "All States" }, ...states.map((s) => ({ value: s, label: s }))];
+  }, [data.monthlyAgents]);
+
+  if (!data.canManage) {
+    return (
+      <div className="space-y-4">
+        {data.migrationMissing && (
+          <p className="flex items-start gap-2 rounded-control bg-warning-soft px-3 py-2 text-xs text-warning">
+            <TriangleAlert size={14} className="mt-0.5 shrink-0" />
+            <span>The Admin must execute migration <b>0015_full_incentive_engine.sql</b> in Supabase to activate incentive tracking.</span>
+          </p>
+        )}
+        <AgentMyIncentivesView data={data} />
+      </div>
+    );
+  }
 
   const currentMonthIso = data.todayIso.slice(0, 7);
   const prevMonthIso = shiftMonthIso(data.monthIso, -1);
   const nextMonthIso = shiftMonthIso(data.monthIso, 1);
   const canGoNext = data.monthIso < currentMonthIso;
 
-  const openRulesFor = (cat: VehicleCategory) => {
-    setRuleDrawerCat(cat);
-    setRuleDrawerOpen(true);
+  const handleQuickSync = async () => {
+    setSyncing(true);
+    try {
+      const res = await reconcilePeriodAction(data.monthIso, true);
+      if (res.ok) {
+        flashSyncSaved();
+        toast(res.message ?? "Reconciled period.");
+      } else {
+        toast(res.error ?? "Could not reconcile.", "error");
+      }
+    } finally {
+      setSyncing(false);
+    }
   };
 
-  // Filtered view when Admin inspects one specific CSE vs All CSEs.
-  const staffFilterOptions = useMemo(
-    () => [
-      { value: "__all__", label: "All CSEs" },
-      ...data.overallByCse.map((s) => ({
-        value: s.staffId,
-        label: s.employeeCode ? `${s.staffName} (${s.employeeCode})` : s.staffName,
-      })),
-    ],
-    [data.overallByCse],
-  );
-  const [filterStaffId, setFilterStaffId] = useState<string>("__all__");
-
-  const activeVehicle = tab === "all" ? null : data.dashboards[tab];
-  const focusedStaffId =
-    data.canManage && filterStaffId !== "__all__"
-      ? filterStaffId
-      : data.canManage
-        ? selectedStaffId || data.overallByCse[0]?.staffId || ""
-        : data.overallByCse[0]?.staffId || "";
-
-  const totalApprovedAll =
-    data.dashboards["2W"].totalApproved +
-    data.dashboards["4W"].totalApproved +
-    data.dashboards.CV.totalApproved;
-  const totalNetAll =
-    data.dashboards["2W"].totalNetPayable +
-    data.dashboards["4W"].totalNetPayable +
-    data.dashboards.CV.totalNetPayable;
-  const totalDailyBonusAll =
-    data.dashboards["2W"].totalDailyEarned +
-    data.dashboards["4W"].totalDailyEarned +
-    data.dashboards.CV.totalDailyEarned;
-  const totalPenaltyAll =
-    data.dashboards["2W"].totalDailyPenalty +
-    data.dashboards["4W"].totalDailyPenalty +
-    data.dashboards.CV.totalDailyPenalty;
+  const handleExportSummary = async (kind: "csv" | "xlsx") => {
+    const headers = [
+      "Agent",
+      "Employee Code",
+      "Vehicle Category",
+      "Assigned State",
+      "Monthly Target",
+      "Eligible Claims",
+      "Non-Qualifying Claims",
+      "Held Claims",
+      "Target Achieved",
+      "Provisional ₹",
+      "Adjustments ₹",
+      "Forfeited ₹",
+      "Settlement Status",
+      "Finalized Payable ₹",
+      "Paid ₹",
+      "Outstanding ₹",
+    ];
+    const rows = data.monthlyAgents.map((m) => [
+      m.staffName,
+      m.employeeCode ?? "",
+      m.vehicleCategory ?? "",
+      m.assignedState ?? "",
+      m.effectiveTarget,
+      m.eligibleClaimsCount,
+      m.nonQualifyingClaimsCount,
+      m.heldClaimsCount,
+      m.targetAchieved ? "Yes" : "No",
+      m.provisionalEarnings,
+      m.adjustmentsTotal,
+      m.forfeitedAmount,
+      m.settlementStatus ?? "open",
+      m.finalizedPayable,
+      m.paidAmount,
+      m.outstandingAmount,
+    ]);
+    if (kind === "csv") downloadCsv(`incentive_summary_${data.monthIso}`, headers, rows);
+    else await downloadXlsx(`incentive_summary_${data.monthIso}`, [{ name: "Monthly Summary", headers, rows }]);
+    flashExportSaved();
+  };
 
   return (
     <div className="space-y-4">
       {data.migrationMissing && (
         <p className="flex items-start gap-2 rounded-control bg-warning-soft px-3 py-2 text-xs text-warning">
-          <TriangleAlert size={14} strokeWidth={1.75} className="mt-0.5 shrink-0" aria-hidden="true" />
+          <TriangleAlert size={14} strokeWidth={1.75} className="mt-0.5 shrink-0" />
           <span>
-            Showing preview defaults — run <b>supabase/migrations/0014_claims_doc_and_incentives.sql</b> in Supabase SQL Editor to persist custom vehicle rules and holidays.
+            Run <b>supabase/migrations/0015_full_incentive_engine.sql</b> in Supabase SQL Editor to activate the full PIN directory, rule versioning, assignment history, ledger, settlements &amp; payout tables.
           </span>
         </p>
       )}
 
-      {/* Top Controls Bar */}
+      {/* Top Navigation & Period Controls */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Segmented<TabKey>
-          label="Vehicle incentive dashboards"
-          value={tab}
-          onChange={setTab}
-          options={[
-            { value: "all", label: "All Vehicles" },
-            { value: "2W", label: "2W Dashboard" },
-            { value: "4W", label: "4W Dashboard" },
-            { value: "CV", label: "CV Dashboard" },
-          ]}
-        />
+        <div
+          ref={tabsRef}
+          role="tablist"
+          aria-label="Incentive workspace sections"
+          className="relative flex flex-wrap items-center gap-1 rounded-[6px] border border-ink bg-surface-strong p-0.5"
+        >
+          {tabPillRect && (
+            <span
+              aria-hidden="true"
+              style={{
+                left: 0,
+                top: 0,
+                width: tabPillRect.width,
+                height: tabPillRect.height,
+                transform: `translate3d(${tabPillRect.left}px, ${tabPillRect.top}px, 0)`,
+              }}
+              className={cn(
+                "pointer-events-none absolute z-0 rounded-[4px] bg-ink",
+                tabPillAnimated && "transition-[transform,width,height] duration-200 ease-[cubic-bezier(0.2,0.8,0.2,1)]",
+              )}
+            />
+          )}
+          {ADMIN_TABS.map((t) => {
+            const active = tab === t.key;
+            const badge =
+              t.key === "settlements" && data.exceptions.length > 0 ? data.exceptions.length : null;
+            return (
+              <button
+                key={t.key}
+                type="button"
+                role="tab"
+                data-pill-key={t.key}
+                aria-selected={active}
+                onClick={() => setTab(t.key)}
+                className={cn(
+                  "relative z-10 inline-flex h-8 items-center gap-1.5 rounded-[4px] px-3 text-xs font-medium transition-colors duration-150",
+                  active
+                    ? tabPillRect
+                      ? "bg-transparent font-semibold text-white"
+                      : "bg-ink font-semibold text-white"
+                    : "text-ink-muted hover:text-ink",
+                )}
+              >
+                {t.label}
+                {badge !== null && (
+                  <span
+                    className={cn(
+                      "rounded-full px-1.5 py-0.2 text-[10px] font-bold tabular-nums transition-colors duration-150",
+                      active ? "bg-accent text-ink" : "bg-warning-soft text-warning",
+                    )}
+                  >
+                    {badge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <Chip tone={chipFor(data.period.status).tone}>
+            {SETTLEMENT_STATUS_LABELS[data.period.status as SettlementStatus] ?? data.period.status}
+          </Chip>
+
           {/* Month Switcher */}
           <div className="inline-flex h-10 items-center rounded-control border border-divider bg-surface-strong px-1">
-            <Link
-              href={`/incentives?month=${prevMonthIso}`}
-              aria-label="Previous month"
-              className={buttonStyles("icon", "size-8")}
-            >
+            <Link href={`/incentives?month=${prevMonthIso}`} aria-label="Previous month" className={buttonStyles("icon", "size-8")}>
               <ChevronLeft size={16} />
             </Link>
             <span className="min-w-[126px] px-2 text-center text-xs font-semibold text-ink tabular-nums">
               {formatMonthTitle(data.monthIso)}
             </span>
             {canGoNext ? (
-              <Link
-                href={`/incentives?month=${nextMonthIso}`}
-                aria-label="Next month"
-                className={buttonStyles("icon", "size-8")}
-              >
+              <Link href={`/incentives?month=${nextMonthIso}`} aria-label="Next month" className={buttonStyles("icon", "size-8")}>
                 <ChevronRight size={16} />
               </Link>
             ) : (
-              <span
-                aria-disabled="true"
-                className="grid size-8 place-items-center text-ink-faint opacity-45"
-              >
+              <span aria-disabled="true" className="grid size-8 place-items-center text-ink-faint opacity-45">
                 <ChevronRight size={16} />
               </span>
             )}
           </div>
 
-          {data.canManage && (
-            <>
-              <div className="w-44">
-                <CustomSelect
-                  value={filterStaffId}
-                  onChange={(val) => {
-                    setFilterStaffId(val);
-                    if (val !== "__all__") setSelectedStaffId(val);
-                  }}
-                  options={staffFilterOptions}
-                  searchable
-                  className="h-10 text-xs font-medium"
-                />
-              </div>
-
-              <Button
-                variant="secondary"
-                onClick={() => setHolidayDrawerOpen(true)}
-                className="h-10 px-3 text-xs"
-              >
-                <CalendarOff size={14} />
-                Holidays ({data.holidays.length})
-              </Button>
-
-              <Button
-                onClick={() => openRulesFor(tab === "all" ? "2W" : tab)}
-                className="h-10 px-3.5 text-xs"
-              >
-                <SlidersHorizontal size={14} />
-                {tab === "all" ? "Configure Rules" : `Edit ${tab} Rules`}
-              </Button>
-            </>
-          )}
+          <Button
+            variant="secondary"
+            saved={exportSaved}
+            savedLabel="Exported"
+            onClick={() => void handleExportSummary("xlsx")}
+            className="h-10 px-3 text-xs"
+          >
+            <Download size={14} /> Export Excel
+          </Button>
+          <Button
+            saved={syncSaved}
+            savedLabel="Synced"
+            onClick={handleQuickSync}
+            loading={syncing}
+            className="h-10 px-3.5 text-xs"
+          >
+            <RefreshCw size={14} /> Sync Engine
+          </Button>
         </div>
       </div>
 
-      {/* Mode 1: All Vehicles Overview */}
-      {tab === "all" && (
-        <>
+      {/* 1. OVERVIEW TAB (8 Admin KPIs + Vehicle Cards + State Matrix + Monthly Ranking) */}
+      {tab === "overview" && (
+        <div key="overview" className="fade-up space-y-4">
+          <Card index={0} className="p-4 sm:px-5">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <div className="hidden shrink-0 sm:block">
+                  <IncentiveVehicleCharacter
+                    variant="all"
+                    qualified={data.kpis.finalizedPayable > 0 || data.kpis.eligibleClaims > 0}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <h2 className="text-[15px] font-semibold text-ink">
+                    Executive Incentive Overview — {formatMonthTitle(data.monthIso)}
+                  </h2>
+                  <p className="text-xs text-ink-muted">
+                    Every rupee traces back to an eligible claim, customer PIN state, active agent assignment snapshot, and immutable rule version.
+                  </p>
+                </div>
+              </div>
+              <Button variant="secondary" onClick={() => setTab("settlements")} className="h-9 px-3 text-xs">
+                {data.exceptions.length > 0
+                  ? `Review ${data.exceptions.length} Held Exception${data.exceptions.length === 1 ? "" : "s"}`
+                  : "Month-End Settlement"}
+              </Button>
+            </div>
+          </Card>
+
           <StatRow>
-            <MiniStat index={0} title="Approved Payments" icon={CheckCircle2} value={totalApprovedAll} />
-            <MiniStat
-              index={1}
-              title={data.canManage ? "Net Incentive Pool" : "Your Net Incentive"}
-              icon={Wallet}
-              value={totalNetAll}
-              kind="inr"
-            />
-            <MiniStat
-              index={2}
-              title="Daily Bonuses Earned"
-              icon={Award}
-              value={totalDailyBonusAll}
-              kind="inr"
-            />
-            <MiniStat
-              index={3}
-              title="Missed-Day Deductions"
-              icon={TrendingDown}
-              value={totalPenaltyAll}
-              kind="inr"
-            />
+            <MiniStat index={0} title="Enrolled Agents" icon={Users} value={data.kpis.totalEnrolledAgents} />
+            <MiniStat index={1} title="Eligible Claims" icon={CheckCircle2} value={data.kpis.eligibleClaims} />
+            <MiniStat index={2} title="Provisional Earnings" icon={Clock} value={data.kpis.provisionalEarnings} kind="inr" />
+            <MiniStat index={3} title="Pending Exceptions" icon={AlertTriangle} value={data.kpis.pendingReviews} />
+          </StatRow>
+          <StatRow>
+            <MiniStat index={4} title="Finalized Payable" icon={Award} value={data.kpis.finalizedPayable} kind="inr" />
+            <MiniStat index={5} title="Paid Incentives" icon={Wallet} value={data.kpis.paidIncentives} kind="inr" />
+            <MiniStat index={6} title="Outstanding Payouts" icon={Clock} value={data.kpis.outstandingPayouts} kind="inr" />
+            <MiniStat index={7} title="Forfeited Earnings" icon={Ban} value={data.kpis.forfeitedEarnings} kind="inr" />
           </StatRow>
 
-          {/* 3 Dedicated Vehicle Cards */}
+          {/* Dedicated 2W / 4W / CW Quick Cards */}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
             {VEHICLE_CATEGORIES.map((cat, idx) => {
-              const v = data.dashboards[cat.key];
-              const focused = v.entries.find((e) => e.staffId === focusedStaffId) ?? v.entries[0];
+              const agents = data.monthlyAgents.filter((m) => m.vehicleCategory === cat.key);
+              const eligible = agents.reduce((s, a) => s + a.eligibleClaimsCount, 0);
+              const provisional = agents.reduce((s, a) => s + a.provisionalEarnings, 0);
+              const qualified = agents.filter((a) => a.targetAchieved).length;
               return (
-                <Card key={cat.key} index={idx + 4} className="flex flex-col justify-between gap-4">
+                <Card key={cat.key} index={idx + 8} className="flex flex-col justify-between gap-4">
                   <div className="space-y-3">
                     <div className="flex items-start justify-between gap-2 border-b-[1.5px] border-rule pb-3">
                       <div>
                         <p className="text-[15px] font-semibold text-ink">{cat.label}</p>
-                        <p className="text-[11px] text-ink-muted">{PAYOUT_MODE_LABELS[v.rule.payoutMode]}</p>
+                        <p className="text-[11px] text-ink-muted">
+                          {agents.length} enrolled CSE{agents.length === 1 ? "" : "s"} · {qualified} target met
+                        </p>
                       </div>
-                      <Chip tone={v.rule.isActive ? "positive" : "neutral"}>
-                        {v.rule.isActive ? "Active" : "Paused"}
-                      </Chip>
+                      <Chip tone="neutral">{cat.shortLabel}</Chip>
                     </div>
 
                     <div className="grid grid-cols-2 gap-2.5 text-xs">
                       <Tile className="p-3">
-                        <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted">
-                          Approved
-                        </p>
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted">Eligible Claims</p>
                         <p className="mt-1 text-lg font-bold text-ink tabular-nums">
-                          {v.totalApproved.toLocaleString("en-IN")}
+                          <CountUp value={eligible} />
                         </p>
                       </Tile>
                       <Tile className="p-3">
-                        <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted">
-                          {data.canManage ? "Net Pool" : "Your Net"}
-                        </p>
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted">Provisional Pool</p>
                         <p className="mt-1 text-lg font-bold text-ink tabular-nums">
-                          {formatINR(v.totalNetPayable)}
+                          <CountUp value={provisional} kind="inr" />
                         </p>
                       </Tile>
                     </div>
-
-                    <div className="space-y-1.5 rounded-tile border border-divider/60 bg-surface-muted/30 p-3 text-xs">
-                      <div className="flex items-center justify-between text-ink-muted">
-                        <span>Minimum to unlock</span>
-                        <span className="font-semibold text-ink tabular-nums">
-                          {v.rule.monthlyMinPayments} payments
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between text-ink-muted">
-                        <span>Slabs</span>
-                        <span className="font-medium text-ink tabular-nums">
-                          {v.rule.slabs
-                            .map((s) => `${s.minPayments}→${slabRateText(v.rule.payoutMode, s.amount)}`)
-                            .join(" · ")}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between text-ink-muted">
-                        <span>Daily rule</span>
-                        <span className="font-medium text-ink tabular-nums">
-                          {v.rule.dailyTarget > 0
-                            ? `${v.rule.dailyTarget}/day · Loss ${formatINR(v.rule.dailyForfeitAmount)}`
-                            : "No daily penalty"}
-                        </span>
-                      </div>
-                      {!data.canManage && focused && (
-                        <div className="flex items-center justify-between border-t border-divider/50 pt-1.5 text-ink-muted">
-                          <span>Missed days</span>
-                          <span className="font-semibold text-negative tabular-nums">
-                            {focused.missedDays} day{focused.missedDays === 1 ? "" : "s"}
-                          </span>
-                        </div>
-                      )}
-                    </div>
                   </div>
 
-                  <div className="flex items-center justify-between gap-2 pt-1">
-                    {data.canManage ? (
-                      <Button
-                        variant="ghost"
-                        onClick={() => openRulesFor(cat.key)}
-                        className="h-8 px-2.5 text-xs"
-                      >
-                        <SlidersHorizontal size={13} />
-                        Edit Rules
-                      </Button>
-                    ) : (
-                      <span className="text-[11px] text-ink-faint">
-                        {workingDaySummary(v.rule.workingDays)}
-                      </span>
-                    )}
+                  <div className="flex items-center justify-end pt-1">
                     <Button
                       variant="secondary"
                       onClick={() => setTab(cat.key)}
-                      className="h-8 px-3 text-xs"
+                      className="group h-8 px-3 text-xs"
                     >
-                      Open {cat.shortLabel} Dashboard
-                      <ArrowRight size={13} />
+                      Open {cat.shortLabel} Dashboard{" "}
+                      <ArrowRight size={13} className="transition-transform duration-150 group-hover:translate-x-0.5" />
                     </Button>
                   </div>
                 </Card>
@@ -331,442 +373,212 @@ export function IncentivesShell({ data }: { data: IncentivesDashboardPayload }) 
             })}
           </div>
 
-          {/* Combined CSE Payout Table */}
-          <Card index={7}>
-            <CardHeader
-              title={data.canManage ? "CSE Monthly Incentive Summary (2W + 4W + CV)" : "Your Combined Monthly Summary"}
-              action={<GoalFlagMini />}
-            />
-            {data.overallByCse.length === 0 ? (
-              <EmptyState label="No staff incentive records for this month" className="py-10" />
+          {/* State Comparison Table (Proposal p. 13) */}
+          <Card index={11}>
+            <CardHeader title="State-Wise Incentive Comparison" action={<GoalFlagMini />} />
+            {data.stateStats.length === 0 ? (
+              <EmptyState
+                label="No agent assignments or state metrics yet"
+                hint="Assign CSEs under Assignments & PIN to track state-by-state incentive liabilities."
+                className="py-8"
+              />
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full border-collapse text-left text-xs">
                   <thead>
                     <tr className="border-b border-divider text-[10px] font-semibold uppercase tracking-wider text-ink-muted">
-                      <th className="pb-2.5 pr-4">CSE</th>
-                      <th className="pb-2.5 pr-4 text-right">2W (Count / Net)</th>
-                      <th className="pb-2.5 pr-4 text-right">4W (Count / Net)</th>
-                      <th className="pb-2.5 pr-4 text-right">CV (Count / Net)</th>
-                      <th className="pb-2.5 pr-4 text-right">Missed Days</th>
-                      <th className="pb-2.5 pr-4 text-right">Daily Loss</th>
-                      <th className="pb-2.5 text-right">Total Net Payout</th>
+                      <th className="pb-2.5 pr-4">State</th>
+                      <th className="pb-2.5 pr-4 text-right">Assigned Agents</th>
+                      <th className="pb-2.5 pr-4 text-right">Eligible Claims</th>
+                      <th className="pb-2.5 pr-4 text-right">Avg Incentive / Claim</th>
+                      <th className="pb-2.5 pr-4 text-right">Provisional Liability</th>
+                      <th className="pb-2.5 pr-4 text-right">Finalized Payable</th>
+                      <th className="pb-2.5 text-right">Paid</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-divider/60">
-                    {data.overallByCse
-                      .filter((r) => !data.canManage || filterStaffId === "__all__" || r.staffId === filterStaffId)
-                      .map((row) => (
-                        <tr
-                          key={row.staffId}
-                          className="h-12 transition-colors hover:bg-accent-soft/40"
-                        >
-                          <td className="py-2.5 pr-4 font-semibold text-ink">
-                            {row.staffName}
-                            {row.employeeCode && (
-                              <span className="ml-1.5 text-[11px] font-normal text-ink-faint">
-                                ({row.employeeCode})
-                              </span>
-                            )}
-                          </td>
-                          <td className="py-2.5 pr-4 text-right tabular-nums text-ink-muted">
-                            <span className="font-semibold text-ink">{row.counts["2W"]}</span> / {formatINR(row.nets["2W"])}
-                          </td>
-                          <td className="py-2.5 pr-4 text-right tabular-nums text-ink-muted">
-                            <span className="font-semibold text-ink">{row.counts["4W"]}</span> / {formatINR(row.nets["4W"])}
-                          </td>
-                          <td className="py-2.5 pr-4 text-right tabular-nums text-ink-muted">
-                            <span className="font-semibold text-ink">{row.counts.CV}</span> / {formatINR(row.nets.CV)}
-                          </td>
-                          <td className="py-2.5 pr-4 text-right tabular-nums">
-                            {row.totalMissedDays > 0 ? (
-                              <Chip tone="negative">{row.totalMissedDays}</Chip>
-                            ) : (
-                              <Chip tone="positive">0</Chip>
-                            )}
-                          </td>
-                          <td className="py-2.5 pr-4 text-right tabular-nums text-negative">
-                            {row.totalDailyPenalty > 0 ? `-${formatINR(row.totalDailyPenalty)}` : "₹0"}
-                          </td>
-                          <td className="py-2.5 text-right text-sm font-bold text-ink tabular-nums">
-                            {formatINR(row.totalNet)}
-                          </td>
-                        </tr>
-                      ))}
+                    {data.stateStats.map((st) => (
+                      <tr key={st.state} className="h-12 transition-colors hover:bg-accent-soft/30">
+                        <td className="py-2 pr-4 font-semibold text-ink">{st.state}</td>
+                        <td className="py-2 pr-4 text-right tabular-nums text-ink">{st.assignedAgents}</td>
+                        <td className="py-2 pr-4 text-right tabular-nums font-medium text-ink">{st.eligibleClaims}</td>
+                        <td className="py-2 pr-4 text-right tabular-nums text-ink-muted">{formatINR(st.avgPerClaim)}</td>
+                        <td className="py-2 pr-4 text-right tabular-nums font-semibold text-ink">{formatINR(st.provisionalEarnings)}</td>
+                        <td className="py-2 pr-4 text-right tabular-nums text-ink">{formatINR(st.finalizedPayable)}</td>
+                        <td className="py-2 text-right tabular-nums text-positive font-medium">{formatINR(st.paidAmount)}</td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
             )}
           </Card>
-        </>
+        </div>
       )}
 
-      {/* Mode 2: Dedicated Per-Vehicle Dashboard (2W | 4W | CV) */}
-      {activeVehicle && (
-        <VehicleDashboardView
-          vehicle={activeVehicle}
-          canManage={data.canManage}
-          filterStaffId={filterStaffId}
-          focusedStaffId={focusedStaffId}
-          onSelectStaff={(id) => setSelectedStaffId(id)}
-          onEditRule={() => openRulesFor(activeVehicle.category)}
-        />
+      {/* 2. DEDICATED 2W / 4W / CW VEHICLE DASHBOARDS (Proposal p. 13) */}
+      {(tab === "2W" || tab === "4W" || tab === "CW") && (
+        <div key={tab} className="fade-up">
+          <VehicleCategoryDashboard
+            category={tab}
+            data={data}
+            stateFilter={stateFilter}
+            stateFilterOptions={stateFilterOptions}
+            onStateFilterChange={setStateFilter}
+            onOpenRules={() => setTab("rules")}
+          />
+        </div>
       )}
 
-      {data.canManage && (
-        <>
-          <RuleEditorDrawer
-            open={ruleDrawerOpen}
-            initialCategory={ruleDrawerCat}
-            rules={data.rules}
-            onClose={() => setRuleDrawerOpen(false)}
-          />
-          <HolidayDrawer
-            open={holidayDrawerOpen}
-            holidays={data.holidays}
-            onClose={() => setHolidayDrawerOpen(false)}
-          />
-        </>
+      {tab === "ledger" && (
+        <div key="ledger" className="fade-up">
+          <DailyLedgerTab data={data} />
+        </div>
+      )}
+      {tab === "rules" && (
+        <div key="rules" className="fade-up">
+          <RulesTab data={data} />
+        </div>
+      )}
+      {tab === "assignments" && (
+        <div key="assignments" className="fade-up">
+          <AssignmentsPinTab data={data} />
+        </div>
+      )}
+      {tab === "settlements" && (
+        <div key="settlements" className="fade-up">
+          <SettlementsPayoutsTab data={data} />
+        </div>
       )}
     </div>
   );
 }
 
-function VehicleDashboardView({
-  vehicle,
-  canManage,
-  filterStaffId,
-  focusedStaffId,
-  onSelectStaff,
-  onEditRule,
+function VehicleCategoryDashboard({
+  category,
+  data,
+  stateFilter,
+  stateFilterOptions,
+  onStateFilterChange,
+  onOpenRules,
 }: {
-  vehicle: IncentivesDashboardPayload["dashboards"][VehicleCategory];
-  canManage: boolean;
-  filterStaffId: string;
-  focusedStaffId: string;
-  onSelectStaff: (staffId: string) => void;
-  onEditRule: () => void;
+  category: VehicleCategory;
+  data: IncentivesDashboardPayload;
+  stateFilter: string;
+  stateFilterOptions: { value: string; label: string }[];
+  onStateFilterChange: (val: string) => void;
+  onOpenRules: () => void;
 }) {
-  const visibleEntries = useMemo(() => {
-    if (!canManage || filterStaffId === "__all__") return vehicle.entries;
-    return vehicle.entries.filter((e) => e.staffId === filterStaffId);
-  }, [vehicle.entries, canManage, filterStaffId]);
+  const catMeta = VEHICLE_CATEGORIES.find((c) => c.key === category)!;
+  const rows = data.monthlyAgents.filter((m) => {
+    if (m.vehicleCategory !== category) return false;
+    if (stateFilter !== "__all__" && m.assignedState !== stateFilter) return false;
+    return true;
+  });
 
-  const focusedEntry =
-    visibleEntries.find((e) => e.staffId === focusedStaffId) ?? visibleEntries[0] ?? null;
-
-  const { rule } = vehicle;
+  const totalClaims = rows.reduce((s, r) => s + r.eligibleClaimsCount, 0);
+  const qualifiedAgents = rows.filter((r) => r.targetAchieved).length;
+  const totalProvisional = rows.reduce((s, r) => s + r.provisionalEarnings, 0);
+  const totalPayable = rows.reduce((s, r) => s + r.finalizedPayable, 0);
 
   return (
     <div className="space-y-4">
-      {/* Companion Rule Overview Banner */}
       <Card index={0} className="p-4 sm:px-5">
         <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex min-w-0 items-center gap-4">
+          <div className="flex items-center gap-4">
             <div className="hidden shrink-0 sm:block">
-              {focusedEntry?.qualified ? <ClaimTrophyCharacter /> : <VehicleScoutCharacter />}
+              <IncentiveVehicleCharacter variant={category} qualified={qualifiedAgents > 0} />
             </div>
-            <div className="min-w-0 space-y-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-[15px] font-semibold text-ink">{vehicle.label} Incentive Rules</h2>
-                <Chip tone={rule.isActive ? "positive" : "neutral"}>
-                  {rule.isActive ? "Active" : "Paused"}
-                </Chip>
-                <Chip tone="accent">{PAYOUT_MODE_LABELS[rule.payoutMode]}</Chip>
-              </div>
-              <p className="text-xs leading-relaxed text-ink-muted">
-                Unlock slab payout at <b className="text-ink">{rule.monthlyMinPayments} minimum approved payments</b> ·{" "}
-                Daily target <b className="text-ink">{rule.dailyTarget}/day</b>
-                {rule.dailyForfeitAmount > 0 && ` · Missed day deducts ${formatINR(rule.dailyForfeitAmount)}`}
-                {rule.dailyBonusAmount > 0 && ` · Completed day earns +${formatINR(rule.dailyBonusAmount)}`} ·{" "}
-                {workingDaySummary(rule.workingDays)}
+            <div className="space-y-1">
+              <h2 className="text-[15px] font-semibold text-ink">{catMeta.label} Incentive Dashboard</h2>
+              <p className="text-xs text-ink-muted">
+                Tracks {rows.length} assigned agent(s). Missed daily targets do not deduct prior earnings; monthly qualification unlocks payout.
               </p>
             </div>
           </div>
 
-          {canManage && (
-            <Button variant="secondary" onClick={onEditRule} className="h-9 shrink-0 px-3.5 text-xs">
-              <SlidersHorizontal size={14} />
-              Configure {vehicle.category} Rules
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="w-44">
+              <CustomSelect value={stateFilter} onChange={onStateFilterChange} options={stateFilterOptions} searchable className="h-9 text-xs" />
+            </div>
+            <Button variant="secondary" onClick={onOpenRules} className="h-9 px-3 text-xs">
+              Configure {category} Rules
             </Button>
-          )}
+          </div>
         </div>
       </Card>
 
-      {/* Vehicle KPIs */}
       <StatRow>
-        <MiniStat
-          index={1}
-          title={`${vehicle.category} Approved`}
-          icon={CheckCircle2}
-          value={
-            focusedEntry && (!canManage || filterStaffId !== "__all__")
-              ? focusedEntry.approvedCount
-              : vehicle.totalApproved
-          }
-        />
-        {canManage && filterStaffId === "__all__" ? (
-          <MiniStat index={2} title="Qualified CSEs" icon={Users} value={vehicle.qualifiedCount} />
-        ) : (
-          <MiniStat
-            index={2}
-            title="Needed to Unlock"
-            icon={Clock}
-            value={focusedEntry?.neededForMin ?? rule.monthlyMinPayments}
-          />
-        )}
-        <MiniStat
-          index={3}
-          title="Missed Working Days"
-          icon={TrendingDown}
-          value={
-            focusedEntry && (!canManage || filterStaffId !== "__all__")
-              ? focusedEntry.missedDays
-              : vehicle.totalMissedDays
-          }
-        />
-        <MiniStat
-          index={4}
-          title={`Net ${vehicle.category} Payable`}
-          icon={Wallet}
-          value={
-            focusedEntry && (!canManage || filterStaffId !== "__all__")
-              ? focusedEntry.netIncentive
-              : vehicle.totalNetPayable
-          }
-          kind="inr"
-        />
+        <MiniStat index={1} title={`${category} Eligible Claims`} icon={CheckCircle2} value={totalClaims} />
+        <MiniStat index={2} title="Targets Achieved" icon={Users} value={qualifiedAgents} />
+        <MiniStat index={3} title="Provisional Liability" icon={Clock} value={totalProvisional} kind="inr" />
+        <MiniStat index={4} title="Finalized Payable" icon={Wallet} value={totalPayable} kind="inr" />
       </StatRow>
 
-      {/* Slab Ladder Visualizer */}
       <Card index={5}>
-        <CardHeader
-          title={`${vehicle.category} Slab Ladder`}
-          action={
-            focusedEntry && (
-              <Chip tone={focusedEntry.qualified ? "positive" : "warning"}>
-                {focusedEntry.qualified
-                  ? `${focusedEntry.staffName}: Qualified (${focusedEntry.approvedCount}/${rule.monthlyMinPayments})`
-                  : `${focusedEntry.staffName}: ${focusedEntry.approvedCount}/${rule.monthlyMinPayments} to unlock`}
-              </Chip>
-            )
-          }
-        />
-        <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-4">
-          {rule.slabs.map((slab, idx) => {
-            const reached = (focusedEntry?.approvedCount ?? 0) >= slab.minPayments;
-            const active = focusedEntry?.activeSlab?.minPayments === slab.minPayments;
-            const unlocked = reached && Boolean(focusedEntry?.qualified);
-            return (
-              <Tile
-                key={slab.minPayments}
-                className={cn(
-                  "flex flex-col justify-between gap-2 border p-3.5 transition-colors",
-                  unlocked
-                    ? "border-positive/40 bg-positive-soft/45"
-                    : reached
-                      ? "border-accent-strong bg-accent-soft/45"
-                      : "border-divider bg-surface-strong",
-                )}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted">
-                    Slab {idx + 1}
-                  </span>
-                  <Chip tone={unlocked ? "positive" : reached ? "accent" : "neutral"}>
-                    {unlocked ? (active ? "Active" : "Passed") : reached ? "Locked (Min)" : `Need ${slab.minPayments - (focusedEntry?.approvedCount ?? 0)}`}
-                  </Chip>
-                </div>
-                <div>
-                  <p className="text-base font-bold text-ink tabular-nums">
-                    {slabRateText(rule.payoutMode, slab.amount)}
-                  </p>
-                  <p className="text-xs text-ink-muted tabular-nums">
-                    At {slab.minPayments.toLocaleString("en-IN")}+ approved payments
-                  </p>
-                </div>
-              </Tile>
-            );
-          })}
-        </div>
-      </Card>
-
-      {/* CSE Leaderboard / Breakdown */}
-      <Card index={6}>
-        <CardHeader
-          title={canManage ? `CSE Performance (${vehicle.category})` : `Your ${vehicle.category} Incentive Standing`}
-          action={
-            canManage && (
-              <span className="text-[11px] text-ink-faint">Click a CSE row to inspect daily attendance &amp; losses</span>
-            )
-          }
-        />
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-left text-xs">
-            <thead>
-              <tr className="border-b border-divider text-[10px] font-semibold uppercase tracking-wider text-ink-muted">
-                <th className="pb-2.5 pr-4">CSE</th>
-                <th className="pb-2.5 pr-4 text-right">Approved</th>
-                <th className="pb-2.5 pr-4">Min Target ({rule.monthlyMinPayments})</th>
-                <th className="pb-2.5 pr-4">Slab</th>
-                <th className="pb-2.5 pr-4 text-right">Gross Slab</th>
-                <th className="pb-2.5 pr-4 text-right">Days (Met / Missed)</th>
-                <th className="pb-2.5 pr-4 text-right">Daily +/-</th>
-                <th className="pb-2.5 text-right">Net Payout</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-divider/60">
-              {visibleEntries.map((entry) => {
-                const pct =
-                  rule.monthlyMinPayments === 0
-                    ? 100
-                    : Math.min(100, Math.round((entry.approvedCount / rule.monthlyMinPayments) * 100));
-                const isSelected = focusedEntry?.staffId === entry.staffId;
-                return (
-                  <tr
-                    key={entry.staffId}
-                    onClick={() => onSelectStaff(entry.staffId)}
-                    className={cn(
-                      "h-14 cursor-pointer transition-colors",
-                      isSelected ? "bg-accent-soft/55" : "hover:bg-accent-soft/30",
-                    )}
-                  >
-                    <td className="py-2.5 pr-4 font-semibold text-ink">
-                      {entry.staffName}
-                      {entry.employeeCode && (
-                        <span className="ml-1.5 text-[11px] font-normal text-ink-faint">
-                          ({entry.employeeCode})
+        <CardHeader title={`${category} Agent Performance Breakdown (${rows.length})`} />
+        {rows.length === 0 ? (
+          <EmptyState label={`No ${category} agents enrolled for the selected filter`} />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-left text-xs">
+              <thead>
+                <tr className="border-b border-divider text-[10px] font-semibold uppercase tracking-wider text-ink-muted">
+                  <th className="pb-2.5 pr-3">Agent / State</th>
+                  <th className="pb-2.5 pr-3 text-right">Eligible Claims</th>
+                  <th className="pb-2.5 pr-3">Monthly Target</th>
+                  <th className="pb-2.5 pr-3 text-right">Provisional</th>
+                  <th className="pb-2.5 pr-3 text-right">Finalized Payable</th>
+                  <th className="pb-2.5">Settlement &amp; Payout</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-divider/60">
+                {rows.map((r) => (
+                  <tr key={r.staffId} className="h-14 transition-colors hover:bg-accent-soft/30">
+                    <td className="py-2 pr-3">
+                      <p className="font-semibold text-ink">{r.staffName}</p>
+                      <p className="text-[11px] text-ink-muted">{r.assignedState ?? "Unassigned"}</p>
+                    </td>
+                    <td className="py-2 pr-3 text-right font-semibold text-ink tabular-nums">
+                      {r.eligibleClaimsCount}
+                      {r.nonQualifyingClaimsCount > 0 && (
+                        <span className="block text-[10px] font-normal text-ink-faint">
+                          +{r.nonQualifyingClaimsCount} excluded
                         </span>
                       )}
                     </td>
-                    <td className="py-2.5 pr-4 text-right font-semibold text-ink tabular-nums">
-                      {entry.approvedCount}
-                    </td>
-                    <td className="py-2.5 pr-4 min-w-[160px]">
+                    <td className="py-2 pr-3 min-w-[160px]">
                       <div className="flex items-center gap-2">
-                        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-muted">
-                          <div
-                            className={cn(
-                              "h-full transition-all duration-300",
-                              entry.qualified ? "bg-positive" : "bg-accent-strong",
-                            )}
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
-                        <span className="text-[11px] tabular-nums text-ink-muted">{pct}%</span>
+                        <AnimatedProgressBar pct={r.progressPct} positive={r.targetAchieved} className="h-1.5 flex-1" />
+                        <span className="text-[11px] tabular-nums text-ink-muted">
+                          {r.eligibleClaimsCount}/{r.effectiveTarget}
+                        </span>
                       </div>
                     </td>
-                    <td className="py-2.5 pr-4">
-                      {entry.activeSlab ? (
-                        <Chip tone={entry.qualified ? "positive" : "warning"}>
-                          {entry.activeSlab.minPayments}+ ({slabRateText(rule.payoutMode, entry.activeSlab.amount)})
+                    <td className="py-2 pr-3 text-right font-semibold text-ink tabular-nums">
+                      {formatINR(r.provisionalEarnings)}
+                    </td>
+                    <td className="py-2 pr-3 text-right font-bold text-ink tabular-nums">
+                      {formatINR(r.finalizedPayable)}
+                    </td>
+                    <td className="py-2">
+                      {r.settlementStatus ? (
+                        <Chip tone={chipFor(r.settlementStatus).tone}>
+                          {SETTLEMENT_STATUS_LABELS[r.settlementStatus as SettlementStatus] ?? r.settlementStatus}
                         </Chip>
                       ) : (
-                        <span className="text-ink-faint">—</span>
+                        <Chip tone={r.targetAchieved ? "positive" : "warning"}>
+                          {r.targetAchieved ? "Target Met" : "Open"}
+                        </Chip>
                       )}
-                    </td>
-                    <td className="py-2.5 pr-4 text-right tabular-nums text-ink">
-                      {formatINR(entry.grossSlabIncentive)}
-                    </td>
-                    <td className="py-2.5 pr-4 text-right tabular-nums">
-                      <span className="font-medium text-positive">{entry.completedDays}</span>
-                      <span className="text-ink-faint"> / </span>
-                      <span className={cn("font-medium", entry.missedDays > 0 ? "text-negative" : "text-ink-muted")}>
-                        {entry.missedDays}
-                      </span>
-                    </td>
-                    <td className="py-2.5 pr-4 text-right tabular-nums">
-                      {entry.dailyEarned > 0 && (
-                        <span className="text-positive">+{formatINR(entry.dailyEarned)}</span>
-                      )}
-                      {entry.dailyEarned > 0 && entry.dailyPenalty > 0 && " / "}
-                      {entry.dailyPenalty > 0 && (
-                        <span className="text-negative">-{formatINR(entry.dailyPenalty)}</span>
-                      )}
-                      {entry.dailyEarned === 0 && entry.dailyPenalty === 0 && (
-                        <span className="text-ink-faint">₹0</span>
-                      )}
-                    </td>
-                    <td className="py-2.5 text-right text-sm font-bold text-ink tabular-nums">
-                      {formatINR(entry.netIncentive)}
                     </td>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </Card>
-
-      {/* Daily Target & Loss Breakdown Grid for Focused CSE */}
-      {focusedEntry && (
-        <Card index={7}>
-          <CardHeader
-            title={`Daily Quota & Forfeit Ledger — ${focusedEntry.staffName}`}
-            action={
-              <span className="text-xs text-ink-muted tabular-nums">
-                {focusedEntry.completedDays} met · {focusedEntry.missedDays} missed of {focusedEntry.evaluatedWorkingDays} working days
-              </span>
-            }
-          />
-          {focusedEntry.days.length === 0 ? (
-            <EmptyState label="No working days have started in this month yet" className="py-8" />
-          ) : (
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 md:grid-cols-6 xl:grid-cols-7">
-              {focusedEntry.days.map((d) => {
-                const isMet = d.status === "met";
-                const isMissed = d.status === "missed";
-                const isHoliday = d.status === "holiday";
-                return (
-                  <div
-                    key={d.date}
-                    className={cn(
-                      "rounded-tile border p-2.5 text-xs transition-colors",
-                      isMet
-                        ? "border-positive/35 bg-positive-soft/45"
-                        : isMissed
-                          ? "border-negative/35 bg-negative-soft/50"
-                          : "border-divider/60 bg-surface-muted/40 opacity-80",
-                    )}
-                  >
-                    <div className="flex items-center justify-between gap-1">
-                      <span className="font-semibold text-ink tabular-nums">{formatDate(d.date)}</span>
-                      <span className="text-[10px] font-medium uppercase text-ink-muted">
-                        {WEEKDAYS[d.weekday - 1]?.short}
-                      </span>
-                    </div>
-                    <div className="mt-1.5 flex items-center justify-between gap-1 text-[11px] tabular-nums">
-                      {isHoliday ? (
-                        <span className="truncate text-ink-muted" title={d.holidayLabel}>
-                          Holiday: {d.holidayLabel}
-                        </span>
-                      ) : d.status === "weekend" ? (
-                        <span className="text-ink-faint">Off day ({d.approvedCount})</span>
-                      ) : isMet ? (
-                        <>
-                          <span className="font-semibold text-positive">
-                            {d.approvedCount}/{rule.dailyTarget} met
-                          </span>
-                          {d.bonus > 0 && <span className="font-semibold text-positive">+{formatINR(d.bonus)}</span>}
-                        </>
-                      ) : (
-                        <>
-                          <span className="font-semibold text-negative">
-                            {d.approvedCount}/{rule.dailyTarget} missed
-                          </span>
-                          {d.forfeit > 0 && (
-                            <span className="font-semibold text-negative">-{formatINR(d.forfeit)}</span>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </Card>
-      )}
     </div>
   );
 }

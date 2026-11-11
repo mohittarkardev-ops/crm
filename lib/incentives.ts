@@ -1,23 +1,60 @@
-import { daysInMonth, mondayIndex, pad2, toISO } from "@/lib/dates";
+import { addDays, daysInMonth, mondayIndex, pad2, toISO } from "@/lib/dates";
+import { canonicalStateName, normalizePincode } from "@/lib/states";
 
-export type VehicleCategory = "2W" | "4W" | "CV";
-export type PayoutMode = "flat_slab" | "per_payment" | "per_bundle";
+export type VehicleCategory = "2W" | "4W" | "CW";
+export type RuleScope = "exact_state" | "category_default" | "global_fallback";
+export type CalculationMethod = "fixed" | "progressive_slab" | "final_slab" | "combined";
+export type CombinationMode = "fixed_plus_progressive" | "fixed_plus_final_slab" | "fixed_plus_slab_bonus";
+export type NonWorkingDayPolicy = "hold_for_review" | "zero_credit" | "roll_to_next_working_day";
+export type MidMonthTargetPolicy = "full_target" | "prorated" | "admin_override";
+export type PostFinalizationPolicy = "next_period_adjustment" | "reopen_with_reason";
+export type AgentVisibilityMode = "immediate" | "after_daily_reconciliation";
+export type SettlementStatus =
+  | "open"
+  | "ready_for_review"
+  | "under_review"
+  | "finalized"
+  | "partially_paid"
+  | "paid"
+  | "forfeited";
 
 export type IncentiveSlab = {
-  minPayments: number;
-  amount: number;
+  slabOrder: number;
+  minClaims: number;
+  maxClaims: number | null; // null = unbounded (e.g. 21+)
+  ratePerClaim: number;
+  bonusAmount: number;
 };
 
 export type IncentiveRule = {
-  vehicleCategory: VehicleCategory;
+  id: string;
+  ruleName: string;
+  scope: RuleScope;
+  vehicleCategory: VehicleCategory | null; // null only for global_fallback
+  stateName: string | null; // null for category_default / global_fallback
   isActive: boolean;
-  payoutMode: PayoutMode;
-  monthlyMinPayments: number;
-  dailyTarget: number;
-  dailyBonusAmount: number;
-  dailyForfeitAmount: number;
-  workingDays: number[]; // ISO weekdays 1 (Mon) .. 7 (Sun)
+  calculationMethod: CalculationMethod;
+  fixedRate: number;
+  combinationMode: CombinationMode;
+  monthlyTarget: number;
+  eligibleClaimStatuses: string[];
+  effectiveFrom: string;
+  effectiveUntil: string | null;
+  currentVersion: number;
+  currentVersionId?: string;
   slabs: IncentiveSlab[];
+};
+
+export type IncentiveSettings = {
+  enableLiveCalculations: boolean;
+  allowCategoryDefaultFallback: boolean;
+  allowGlobalFallback: boolean;
+  eligibleClaimStatuses: string[];
+  nonWorkingDayPolicy: NonWorkingDayPolicy;
+  midMonthTargetPolicy: MidMonthTargetPolicy;
+  postFinalizationPolicy: PostFinalizationPolicy;
+  agentVisibilityMode: AgentVisibilityMode;
+  workingDays: number[]; // ISO 1 (Mon) .. 7 (Sun)
 };
 
 export type HolidayItem = {
@@ -25,63 +62,59 @@ export type HolidayItem = {
   label: string;
 };
 
-export type DailyBreakdown = {
-  date: string;
-  weekday: number; // 1..7
-  status: "met" | "missed" | "holiday" | "weekend";
-  holidayLabel?: string;
-  approvedCount: number;
-  bonus: number;
-  forfeit: number;
-};
-
-export type CseVehicleIncentive = {
+export type AgentAssignmentRecord = {
+  id: string;
   staffId: string;
   staffName: string;
   employeeCode: string | null;
   vehicleCategory: VehicleCategory;
-  approvedCount: number;
-  qualified: boolean;
-  neededForMin: number;
-  activeSlab: IncentiveSlab | null;
-  nextSlab: IncentiveSlab | null;
-  neededForNextSlab: number;
-  potentialSlabIfQualified: number;
-  grossSlabIncentive: number;
-  evaluatedWorkingDays: number;
-  completedDays: number;
-  missedDays: number;
-  dailyEarned: number;
-  dailyPenalty: number;
-  dailyMissedBonus: number;
-  netIncentive: number;
-  days: DailyBreakdown[];
+  assignedState: string;
+  effectiveFrom: string;
+  effectiveUntil: string | null;
+  status: "active" | "inactive";
+  notes: string | null;
+  createdAt?: string;
 };
 
-export type VehicleDashboardData = {
-  category: VehicleCategory;
-  label: string;
-  rule: IncentiveRule;
-  totalApproved: number;
-  qualifiedCount: number;
-  totalMissedDays: number;
-  totalDailyEarned: number;
-  totalDailyPenalty: number;
-  totalGrossSlab: number;
-  totalNetPayable: number;
-  entries: CseVehicleIncentive[];
-};
+export type LocationResolution =
+  | { status: "resolved_pin"; state: string; detail: string }
+  | { status: "manual_fallback"; state: string; detail: string }
+  | { status: "pin_conflict"; state: null; detail: string; conflictStates: string[] }
+  | { status: "unverified"; state: null; detail: string };
 
 export const VEHICLE_CATEGORIES: { key: VehicleCategory; label: string; shortLabel: string }[] = [
-  { key: "2W", label: "Two Wheeler (2W)", shortLabel: "2W" },
-  { key: "4W", label: "Four Wheeler (4W)", shortLabel: "4W" },
-  { key: "CV", label: "Commercial Vehicle (CV)", shortLabel: "CV" },
+  { key: "2W", label: "Two-Wheeler (2W)", shortLabel: "2W" },
+  { key: "4W", label: "Four-Wheeler (4W)", shortLabel: "4W" },
+  { key: "CW", label: "Commercial Vehicle (CW)", shortLabel: "CW" },
 ];
 
-export const PAYOUT_MODE_LABELS: Record<PayoutMode, string> = {
-  flat_slab: "Flat slab bonus",
-  per_payment: "Rate per payment",
-  per_bundle: "Per bundle step",
+export const CALCULATION_METHOD_LABELS: Record<CalculationMethod, string> = {
+  fixed: "Method A — Fixed per claim",
+  progressive_slab: "Method B — Progressive daily slabs",
+  final_slab: "Method C — Final slab rate",
+  combined: "Method D — Combined (Fixed + Slab)",
+};
+
+export const COMBINATION_MODE_LABELS: Record<CombinationMode, string> = {
+  fixed_plus_progressive: "Fixed rate + Progressive slab rate",
+  fixed_plus_final_slab: "Fixed rate + Final slab rate",
+  fixed_plus_slab_bonus: "Fixed rate + Tier bonus reward",
+};
+
+export const RULE_SCOPE_LABELS: Record<RuleScope, string> = {
+  exact_state: "Exact Vehicle + State",
+  category_default: "Vehicle Category Default",
+  global_fallback: "Global Fallback",
+};
+
+export const SETTLEMENT_STATUS_LABELS: Record<SettlementStatus, string> = {
+  open: "Open",
+  ready_for_review: "Ready for Review",
+  under_review: "Under Review",
+  finalized: "Finalized",
+  partially_paid: "Partially Paid",
+  paid: "Paid",
+  forfeited: "Forfeited",
 };
 
 export const WEEKDAYS = [
@@ -94,299 +127,495 @@ export const WEEKDAYS = [
   { value: 7, short: "Sun", label: "Sunday" },
 ];
 
-export const DEFAULT_RULES: Record<VehicleCategory, IncentiveRule> = {
-  "2W": {
-    vehicleCategory: "2W",
-    isActive: true,
-    payoutMode: "flat_slab",
-    monthlyMinPayments: 60,
-    dailyTarget: 2,
-    dailyBonusAmount: 0,
-    dailyForfeitAmount: 50,
-    workingDays: [1, 2, 3, 4, 5, 6],
-    slabs: [
-      { minPayments: 20, amount: 100 },
-      { minPayments: 40, amount: 250 },
-      { minPayments: 60, amount: 500 },
-    ],
-  },
-  "4W": {
-    vehicleCategory: "4W",
-    isActive: true,
-    payoutMode: "flat_slab",
-    monthlyMinPayments: 30,
-    dailyTarget: 1,
-    dailyBonusAmount: 0,
-    dailyForfeitAmount: 75,
-    workingDays: [1, 2, 3, 4, 5, 6],
-    slabs: [
-      { minPayments: 15, amount: 200 },
-      { minPayments: 30, amount: 500 },
-      { minPayments: 45, amount: 900 },
-    ],
-  },
-  CV: {
-    vehicleCategory: "CV",
-    isActive: true,
-    payoutMode: "flat_slab",
-    monthlyMinPayments: 20,
-    dailyTarget: 1,
-    dailyBonusAmount: 0,
-    dailyForfeitAmount: 100,
-    workingDays: [1, 2, 3, 4, 5, 6],
-    slabs: [
-      { minPayments: 10, amount: 300 },
-      { minPayments: 20, amount: 750 },
-      { minPayments: 35, amount: 1500 },
-    ],
-  },
+export const DEFAULT_SLABS_2W: IncentiveSlab[] = [
+  { slabOrder: 1, minClaims: 1, maxClaims: 5, ratePerClaim: 4, bonusAmount: 0 },
+  { slabOrder: 2, minClaims: 6, maxClaims: 10, ratePerClaim: 5, bonusAmount: 0 },
+  { slabOrder: 3, minClaims: 11, maxClaims: 20, ratePerClaim: 6, bonusAmount: 0 },
+  { slabOrder: 4, minClaims: 21, maxClaims: null, ratePerClaim: 7, bonusAmount: 0 },
+];
+
+export const DEFAULT_SLABS_4W: IncentiveSlab[] = [
+  { slabOrder: 1, minClaims: 1, maxClaims: 3, ratePerClaim: 8, bonusAmount: 0 },
+  { slabOrder: 2, minClaims: 4, maxClaims: 8, ratePerClaim: 10, bonusAmount: 0 },
+  { slabOrder: 3, minClaims: 9, maxClaims: null, ratePerClaim: 12, bonusAmount: 0 },
+];
+
+export const DEFAULT_SLABS_CW: IncentiveSlab[] = [
+  { slabOrder: 1, minClaims: 1, maxClaims: 2, ratePerClaim: 15, bonusAmount: 0 },
+  { slabOrder: 2, minClaims: 3, maxClaims: 5, ratePerClaim: 18, bonusAmount: 0 },
+  { slabOrder: 3, minClaims: 6, maxClaims: null, ratePerClaim: 22, bonusAmount: 0 },
+];
+
+export const DEFAULT_SETTINGS: IncentiveSettings = {
+  enableLiveCalculations: true,
+  allowCategoryDefaultFallback: true,
+  allowGlobalFallback: false,
+  eligibleClaimStatuses: ["approved"],
+  nonWorkingDayPolicy: "hold_for_review",
+  midMonthTargetPolicy: "admin_override",
+  postFinalizationPolicy: "next_period_adjustment",
+  agentVisibilityMode: "immediate",
+  workingDays: [1, 2, 3, 4, 5, 6],
 };
 
+export const DEFAULT_MONTHLY_TARGETS: Record<VehicleCategory, number> = {
+  "2W": 100,
+  "4W": 80,
+  CW: 60,
+};
+
+/** Maps legacy CRM 'CV', 'bike', 'car' values smoothly into canonical '2W' | '4W' | 'CW'. */
+export function normalizeVehicleCategory(
+  raw: string | null | undefined,
+  policyTypeCode?: string | null,
+): VehicleCategory | null {
+  const upper = (raw ?? "").trim().toUpperCase();
+  if (upper === "2W" || upper === "BIKE") return "2W";
+  if (upper === "4W" || upper === "CAR") return "4W";
+  if (upper === "CW" || upper === "CV" || upper === "COMMERCIAL" || upper === "OTHER") return "CW";
+
+  const pCode = (policyTypeCode ?? "").trim().toLowerCase();
+  if (pCode === "bike") return "2W";
+  if (pCode === "car") return "4W";
+  if (pCode === "other") return "CW";
+  return null;
+}
+
+/** Normalizes, validates, and sorts daily slabs cleanly with unambiguous claim ranges. */
 export function normalizeSlabs(raw: unknown): IncentiveSlab[] {
   if (!Array.isArray(raw)) return [];
-  const dedup = new Map<number, number>();
+  const items: IncentiveSlab[] = [];
+
   for (const item of raw) {
     if (!item || typeof item !== "object") continue;
-    const min = Math.floor(Number((item as Record<string, unknown>).minPayments));
-    const amt = Number((item as Record<string, unknown>).amount);
-    if (Number.isFinite(min) && min >= 1 && Number.isFinite(amt) && amt >= 0) {
-      dedup.set(min, amt);
-    }
+    const obj = item as Record<string, unknown>;
+    const min = Math.floor(Number(obj.minClaims ?? obj.min_claims ?? obj.minPayments ?? 0));
+    const maxRaw = obj.maxClaims ?? obj.max_claims;
+    const max =
+      maxRaw === null || maxRaw === undefined || maxRaw === ""
+        ? null
+        : Math.floor(Number(maxRaw));
+    const rate = Number(obj.ratePerClaim ?? obj.rate_per_claim ?? obj.amount ?? 0);
+    const bonus = Number(obj.bonusAmount ?? obj.bonus_amount ?? 0);
+
+    if (!Number.isFinite(min) || min < 1) continue;
+    if (max !== null && (!Number.isFinite(max) || max < min)) continue;
+    if (!Number.isFinite(rate) || rate < 0) continue;
+
+    items.push({
+      slabOrder: items.length + 1,
+      minClaims: min,
+      maxClaims: max,
+      ratePerClaim: rate,
+      bonusAmount: Number.isFinite(bonus) && bonus >= 0 ? bonus : 0,
+    });
   }
-  return Array.from(dedup.entries())
-    .sort((a, b) => a[0] - b[0])
-    .map(([minPayments, amount]) => ({ minPayments, amount }));
+
+  items.sort((a, b) => a.minClaims - b.minClaims);
+  return items.map((s, idx) => ({ ...s, slabOrder: idx + 1 }));
 }
 
-export function normalizeRule(cat: VehicleCategory, row?: Record<string, unknown> | null): IncentiveRule {
-  const def = DEFAULT_RULES[cat];
-  if (!row) return def;
-  const mode = String(row.payout_mode ?? def.payoutMode);
-  const payoutMode: PayoutMode =
-    mode === "per_payment" || mode === "per_bundle" ? mode : "flat_slab";
-  const workingDays = Array.isArray(row.working_days)
-    ? Array.from(
-        new Set(
-          row.working_days
-            .map((d) => Number(d))
-            .filter((d) => Number.isInteger(d) && d >= 1 && d <= 7),
-        ),
-      ).sort((a, b) => a - b)
-    : def.workingDays;
-
-  const parsedSlabs = normalizeSlabs(row.slabs);
-  return {
-    vehicleCategory: cat,
-    isActive: typeof row.is_active === "boolean" ? row.is_active : def.isActive,
-    payoutMode,
-    monthlyMinPayments: Math.max(0, Math.floor(Number(row.monthly_min_payments ?? def.monthlyMinPayments))),
-    dailyTarget: Math.max(0, Math.floor(Number(row.daily_target ?? def.dailyTarget))),
-    dailyBonusAmount: Math.max(0, Number(row.daily_bonus_amount ?? def.dailyBonusAmount)),
-    dailyForfeitAmount: Math.max(0, Number(row.daily_forfeit_amount ?? def.dailyForfeitAmount)),
-    workingDays: workingDays.length > 0 ? workingDays : def.workingDays,
-    slabs: parsedSlabs.length > 0 ? parsedSlabs : def.slabs,
-  };
+export function slabLabelText(slab: IncentiveSlab | null): string {
+  if (!slab) return "—";
+  return slab.maxClaims === null ? `${slab.minClaims}+` : `${slab.minClaims}–${slab.maxClaims}`;
 }
 
-/** Computes active slab, next slab, and raw slab rupee value before min-payment & daily adjustments. */
-export function computeSlabBreakdown(rule: IncentiveRule, approvedCount: number) {
-  const sorted = [...rule.slabs].sort((a, b) => a.minPayments - b.minPayments);
-  let activeSlab: IncentiveSlab | null = null;
-  let nextSlab: IncentiveSlab | null = null;
-
-  for (const s of sorted) {
-    if (approvedCount >= s.minPayments) {
-      activeSlab = s;
-    } else if (!nextSlab) {
-      nextSlab = s;
-    }
-  }
-
-  let potentialSlab = 0;
-  if (rule.payoutMode === "flat_slab") {
-    potentialSlab = activeSlab ? activeSlab.amount : 0;
-  } else if (rule.payoutMode === "per_payment") {
-    potentialSlab = activeSlab ? approvedCount * activeSlab.amount : 0;
-  } else {
-    // per_bundle: uses the first slab (e.g. every 20 payments = ₹100) or matched step bundle.
-    const step = sorted[0];
-    if (step && step.minPayments > 0) {
-      potentialSlab = Math.floor(approvedCount / step.minPayments) * step.amount;
-    }
-  }
-
-  const qualified = rule.isActive && approvedCount >= rule.monthlyMinPayments;
-  const grossSlabIncentive = qualified ? potentialSlab : 0;
-
-  return {
-    activeSlab,
-    nextSlab,
-    neededForNextSlab: nextSlab ? Math.max(0, nextSlab.minPayments - approvedCount) : 0,
-    neededForMin: Math.max(0, rule.monthlyMinPayments - approvedCount),
-    qualified,
-    potentialSlabIfQualified: potentialSlab,
-    grossSlabIncentive,
-  };
+export function defaultSlabsForCategory(cat: VehicleCategory | null): IncentiveSlab[] {
+  if (cat === "4W") return DEFAULT_SLABS_4W;
+  if (cat === "CW") return DEFAULT_SLABS_CW;
+  return DEFAULT_SLABS_2W;
 }
 
-/** Pure simulator used both in Server calculations and the interactive Rule Editor preview. */
-export function simulateRulePayout(
-  rule: IncentiveRule,
-  approvedCount: number,
-  completedDays: number,
-  missedDays: number,
-) {
-  const slab = computeSlabBreakdown(rule, approvedCount);
-  const dailyEarned = rule.isActive ? completedDays * rule.dailyBonusAmount : 0;
-  const dailyPenalty = rule.isActive ? missedDays * rule.dailyForfeitAmount : 0;
-  const dailyMissedBonus = rule.isActive ? missedDays * rule.dailyBonusAmount : 0;
-  const netIncentive = rule.isActive ? Math.max(0, slab.grossSlabIncentive + dailyEarned - dailyPenalty) : 0;
-  return { ...slab, dailyEarned, dailyPenalty, dailyMissedBonus, netIncentive };
-}
-
-/** Evaluates one vehicle category across every CSE for the requested YYYY-MM month up to `todayIso`. */
-export function evaluateVehicleDashboard(args: {
-  category: VehicleCategory;
-  label: string;
-  monthIso: string; // YYYY-MM
-  todayIso: string; // YYYY-MM-DD
-  rule: IncentiveRule;
-  holidays: HolidayItem[];
-  staffList: { id: string; name: string; employeeCode: string | null }[];
-  approvedClaims: { staffId: string; paymentDate: string; vehicleCategory: VehicleCategory }[];
-}): VehicleDashboardData {
-  const [yearStr, monthStr] = args.monthIso.split("-");
-  const year = Number(yearStr);
-  const month = Number(monthStr);
-  const lastDayNum = daysInMonth(year, month);
-  const monthEndIso = toISO(year, month, lastDayNum);
-  const monthStartIso = toISO(year, month, 1);
-
-  const holidayMap = new Map<string, string>();
-  for (const h of args.holidays) {
-    if (h.date >= monthStartIso && h.date <= monthEndIso) {
-      holidayMap.set(h.date, h.label);
-    }
-  }
-
-  // Only evaluate working days up to `todayIso` (or end of historical months; 0 days for future months).
-  const maxDayIso = args.todayIso < monthStartIso ? "" : args.todayIso < monthEndIso ? args.todayIso : monthEndIso;
-  const workingDaySet = new Set(args.rule.workingDays);
-
-  // Pre-index daily approved claim counts per staff member for this vehicle category.
-  const countsByStaffDay = new Map<string, Map<string, number>>();
-  const totalByStaff = new Map<string, number>();
-
-  for (const c of args.approvedClaims) {
-    if (c.vehicleCategory !== args.category) continue;
-    totalByStaff.set(c.staffId, (totalByStaff.get(c.staffId) ?? 0) + 1);
-    let dayMap = countsByStaffDay.get(c.staffId);
-    if (!dayMap) {
-      dayMap = new Map();
-      countsByStaffDay.set(c.staffId, dayMap);
-    }
-    dayMap.set(c.paymentDate, (dayMap.get(c.paymentDate) ?? 0) + 1);
-  }
-
-  const entries: CseVehicleIncentive[] = args.staffList.map((s) => {
-    const dayCounts = countsByStaffDay.get(s.id);
-    const approvedCount = totalByStaff.get(s.id) ?? 0;
-
-    const days: DailyBreakdown[] = [];
-    let evaluatedWorkingDays = 0;
-    let completedDays = 0;
-    let missedDays = 0;
-
-    if (maxDayIso) {
-      const maxDayNum = Number(maxDayIso.slice(8, 10));
-      for (let d = 1; d <= maxDayNum; d++) {
-        const date = toISO(year, month, d);
-        const weekday = mondayIndex(year, month, d) + 1; // 1=Mon .. 7=Sun
-        const count = dayCounts?.get(date) ?? 0;
-        const holidayLabel = holidayMap.get(date);
-
-        if (holidayLabel) {
-          days.push({ date, weekday, status: "holiday", holidayLabel, approvedCount: count, bonus: 0, forfeit: 0 });
-          continue;
-        }
-        if (!workingDaySet.has(weekday)) {
-          days.push({ date, weekday, status: "weekend", approvedCount: count, bonus: 0, forfeit: 0 });
-          continue;
-        }
-
-        evaluatedWorkingDays += 1;
-        const met = args.rule.dailyTarget <= 0 || count >= args.rule.dailyTarget;
-        if (met) {
-          completedDays += 1;
-          days.push({
-            date,
-            weekday,
-            status: "met",
-            approvedCount: count,
-            bonus: args.rule.isActive ? args.rule.dailyBonusAmount : 0,
-            forfeit: 0,
-          });
-        } else {
-          missedDays += 1;
-          days.push({
-            date,
-            weekday,
-            status: "missed",
-            approvedCount: count,
-            bonus: 0,
-            forfeit: args.rule.isActive ? args.rule.dailyForfeitAmount : 0,
-          });
-        }
-      }
-    }
-
-    const sim = simulateRulePayout(args.rule, approvedCount, completedDays, missedDays);
-
-    return {
-      staffId: s.id,
-      staffName: s.name,
-      employeeCode: s.employeeCode,
-      vehicleCategory: args.category,
-      approvedCount,
-      qualified: sim.qualified,
-      neededForMin: sim.neededForMin,
-      activeSlab: sim.activeSlab,
-      nextSlab: sim.nextSlab,
-      neededForNextSlab: sim.neededForNextSlab,
-      potentialSlabIfQualified: sim.potentialSlabIfQualified,
-      grossSlabIncentive: sim.grossSlabIncentive,
-      evaluatedWorkingDays,
-      completedDays,
-      missedDays,
-      dailyEarned: sim.dailyEarned,
-      dailyPenalty: sim.dailyPenalty,
-      dailyMissedBonus: sim.dailyMissedBonus,
-      netIncentive: sim.netIncentive,
-      days,
-    };
-  });
-
-  // Order highest earners / highest approved counts first.
-  entries.sort(
-    (a, b) =>
-      b.netIncentive - a.netIncentive ||
-      b.approvedCount - a.approvedCount ||
-      a.staffName.localeCompare(b.staffName),
+/**
+ * Location identification logic (PDF Section 05, p. 7 & Section 16 test):
+ *  - Query all active rows matching PIN.
+ *  - Multiple post offices mapping to DIFFERENT canonical states -> flag `pin_conflict`.
+ *  - PIN resolves to S_pin and manual state entered is S_manual != S_pin -> flag `pin_conflict`.
+ *  - PIN missing / not found -> use manually entered state (`manual_fallback`) if valid.
+ *  - Neither PIN nor manual state -> `unverified` (do not credit yet).
+ */
+export function resolveCustomerLocation(args: {
+  pincode: string | null | undefined;
+  pinDirectoryStates: string[];
+  manualState: string | null | undefined;
+}): LocationResolution {
+  const cleanPin = normalizePincode(args.pincode);
+  const manual = canonicalStateName(args.manualState);
+  const distinctStates = Array.from(
+    new Set(args.pinDirectoryStates.map((s) => canonicalStateName(s)).filter(Boolean)),
   );
 
+  if (cleanPin && distinctStates.length > 1) {
+    return {
+      status: "pin_conflict",
+      state: null,
+      conflictStates: distinctStates,
+      detail: `PIN ${cleanPin} maps to multiple states (${distinctStates.join(", ")}). Held for admin review.`,
+    };
+  }
+
+  if (cleanPin && distinctStates.length === 1) {
+    const resolvedPinState = distinctStates[0];
+    if (manual && manual.toLowerCase() !== resolvedPinState.toLowerCase()) {
+      return {
+        status: "pin_conflict",
+        state: null,
+        conflictStates: [resolvedPinState, manual],
+        detail: `PIN ${cleanPin} resolves to ${resolvedPinState}, conflicting with entered state ${manual}. Held for admin review.`,
+      };
+    }
+    return {
+      status: "resolved_pin",
+      state: resolvedPinState,
+      detail: `Resolved ${resolvedPinState} from PIN ${cleanPin}.`,
+    };
+  }
+
+  if (manual) {
+    return {
+      status: "manual_fallback",
+      state: manual,
+      detail: cleanPin
+        ? `PIN ${cleanPin} not in directory; used manually entered state ${manual}.`
+        : `PIN missing; used manually entered state ${manual}.`,
+    };
+  }
+
   return {
-    category: args.category,
-    label: args.label,
-    rule: args.rule,
-    totalApproved: entries.reduce((sum, e) => sum + e.approvedCount, 0),
-    qualifiedCount: entries.filter((e) => e.qualified).length,
-    totalMissedDays: entries.reduce((sum, e) => sum + e.missedDays, 0),
-    totalDailyEarned: entries.reduce((sum, e) => sum + e.dailyEarned, 0),
-    totalDailyPenalty: entries.reduce((sum, e) => sum + e.dailyPenalty, 0),
-    totalGrossSlab: entries.reduce((sum, e) => sum + e.grossSlabIncentive, 0),
-    totalNetPayable: entries.reduce((sum, e) => sum + e.netIncentive, 0),
-    entries,
+    status: "unverified",
+    state: null,
+    detail: cleanPin
+      ? `PIN ${cleanPin} not found in directory and no manual state entered.`
+      : "Customer PIN and state are missing; location unverified.",
   };
+}
+
+/** Finds an agent's single valid assignment on `submissionDate` without touching newer/older rows (Page 6). */
+export function findActiveAssignment(
+  assignments: AgentAssignmentRecord[],
+  staffId: string,
+  submissionDate: string,
+): AgentAssignmentRecord | null {
+  const matches = assignments.filter(
+    (a) =>
+      a.staffId === staffId &&
+      a.status === "active" &&
+      a.effectiveFrom <= submissionDate &&
+      (a.effectiveUntil === null || a.effectiveUntil >= submissionDate),
+  );
+  if (matches.length === 0) return null;
+  matches.sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom));
+  return matches[0];
+}
+
+/** Rule resolution hierarchy (Page 8): exact state -> optional category default -> optional global fallback. */
+export function resolveMatchingRule(
+  rules: IncentiveRule[],
+  args: {
+    vehicleCategory: VehicleCategory;
+    resolvedState: string;
+    submissionDate: string;
+    settings: Pick<IncentiveSettings, "allowCategoryDefaultFallback" | "allowGlobalFallback">;
+  },
+): { rule: IncentiveRule; resolutionTier: RuleScope } | null {
+  const activeOnDate = rules.filter(
+    (r) =>
+      r.isActive &&
+      r.effectiveFrom <= args.submissionDate &&
+      (r.effectiveUntil === null || r.effectiveUntil >= args.submissionDate),
+  );
+
+  const canonicalTargetState = canonicalStateName(args.resolvedState).toLowerCase();
+
+  // 1. Exact vehicle + state
+  const exact = activeOnDate.find(
+    (r) =>
+      r.scope === "exact_state" &&
+      r.vehicleCategory === args.vehicleCategory &&
+      canonicalStateName(r.stateName).toLowerCase() === canonicalTargetState,
+  );
+  if (exact) return { rule: exact, resolutionTier: "exact_state" };
+
+  // 2. Category default fallback (if enabled)
+  if (args.settings.allowCategoryDefaultFallback) {
+    const catDef = activeOnDate.find(
+      (r) => r.scope === "category_default" && r.vehicleCategory === args.vehicleCategory,
+    );
+    if (catDef) return { rule: catDef, resolutionTier: "category_default" };
+  }
+
+  // 3. Global fallback (if enabled)
+  if (args.settings.allowGlobalFallback) {
+    const globalDef = activeOnDate.find((r) => r.scope === "global_fallback");
+    if (globalDef) return { rule: globalDef, resolutionTier: "global_fallback" };
+  }
+
+  return null;
+}
+
+export function isWorkingDate(
+  dateIso: string,
+  holidays: HolidayItem[],
+  workingDays: number[],
+): { working: boolean; holidayLabel?: string } {
+  const holiday = holidays.find((h) => h.date === dateIso);
+  if (holiday) return { working: false, holidayLabel: holiday.label };
+
+  const y = Number(dateIso.slice(0, 4));
+  const m = Number(dateIso.slice(5, 7));
+  const d = Number(dateIso.slice(8, 10));
+  if (!y || !m || !d) return { working: true };
+
+  const weekday = mondayIndex(y, m, d) + 1;
+  if (!workingDays.includes(weekday)) return { working: false };
+  return { working: true };
+}
+
+export function shiftToNextWorkingDay(
+  dateIso: string,
+  holidays: HolidayItem[],
+  workingDays: number[],
+): string {
+  if (workingDays.length === 0) return dateIso;
+  let cur = dateIso;
+  for (let i = 0; i < 31; i++) {
+    if (isWorkingDate(cur, holidays, workingDays).working) return cur;
+    cur = addDays(cur, 1);
+  }
+  return dateIso;
+}
+
+export type ClaimDailyRewardItem = {
+  sequenceNo: number; // 1..N
+  slabLabel: string;
+  appliedRate: number;
+  amount: number;
+};
+
+/**
+ * Pure daily slab calculation engine (PDF Section 07, p. 9):
+ *  - Method A (`fixed`): `fixedRate * N`
+ *  - Method B (`progressive_slab`): each claim `k` earns bracket rate for position `k` (`(5×4) + (5×5) + (2×6) = 57`)
+ *  - Method C (`final_slab`): bracket for total day count `N` applied across ALL `N` claims (`12 × 6 = 72`)
+ *  - Method D (`combined`): fixed component + slab component (`fixed_plus_progressive`, `fixed_plus_final_slab`, `fixed_plus_slab_bonus`)
+ */
+export function calculateDayClaimRewards(
+  rule: Pick<IncentiveRule, "calculationMethod" | "fixedRate" | "combinationMode" | "slabs">,
+  dailyEligibleCount: number,
+): { items: ClaimDailyRewardItem[]; dayTotal: number; summaryLabel: string } {
+  if (dailyEligibleCount <= 0) {
+    return { items: [], dayTotal: 0, summaryLabel: "No eligible claims" };
+  }
+
+  const slabs = normalizeSlabs(rule.slabs);
+  const findBracket = (count: number): IncentiveSlab | null => {
+    for (const s of slabs) {
+      if (count >= s.minClaims && (s.maxClaims === null || count <= s.maxClaims)) return s;
+    }
+    const reached = slabs.filter((s) => count >= s.minClaims);
+    return reached.length > 0 ? reached[reached.length - 1] : null;
+  };
+
+  const items: ClaimDailyRewardItem[] = [];
+  const fixedRate = Math.max(0, Number(rule.fixedRate) || 0);
+
+  if (rule.calculationMethod === "fixed") {
+    for (let k = 1; k <= dailyEligibleCount; k++) {
+      items.push({
+        sequenceNo: k,
+        slabLabel: "Fixed",
+        appliedRate: fixedRate,
+        amount: fixedRate,
+      });
+    }
+    return {
+      items,
+      dayTotal: items.reduce((sum, x) => sum + x.amount, 0),
+      summaryLabel: `${dailyEligibleCount} × ₹${fixedRate}`,
+    };
+  }
+
+  if (rule.calculationMethod === "progressive_slab") {
+    for (let k = 1; k <= dailyEligibleCount; k++) {
+      const br = findBracket(k);
+      const rate = br ? br.ratePerClaim : 0;
+      items.push({
+        sequenceNo: k,
+        slabLabel: slabLabelText(br),
+        appliedRate: rate,
+        amount: rate,
+      });
+    }
+    const dayTotal = items.reduce((sum, x) => sum + x.amount, 0);
+    return {
+      items,
+      dayTotal,
+      summaryLabel: `Progressive (${dailyEligibleCount} claims)`,
+    };
+  }
+
+  if (rule.calculationMethod === "final_slab") {
+    const finalBr = findBracket(dailyEligibleCount);
+    const rate = finalBr ? finalBr.ratePerClaim : 0;
+    const label = `Final ${slabLabelText(finalBr)}`;
+    for (let k = 1; k <= dailyEligibleCount; k++) {
+      items.push({
+        sequenceNo: k,
+        slabLabel: label,
+        appliedRate: rate,
+        amount: rate,
+      });
+    }
+    return {
+      items,
+      dayTotal: items.reduce((sum, x) => sum + x.amount, 0),
+      summaryLabel: `${dailyEligibleCount} × ₹${rate} (${slabLabelText(finalBr)})`,
+    };
+  }
+
+  // Method D: Combined
+  if (rule.combinationMode === "fixed_plus_final_slab") {
+    const finalBr = findBracket(dailyEligibleCount);
+    const slabRate = finalBr ? finalBr.ratePerClaim : 0;
+    const rate = fixedRate + slabRate;
+    const label = `₹${fixedRate} + ${slabLabelText(finalBr)}`;
+    for (let k = 1; k <= dailyEligibleCount; k++) {
+      items.push({ sequenceNo: k, slabLabel: label, appliedRate: rate, amount: rate });
+    }
+    return {
+      items,
+      dayTotal: items.reduce((sum, x) => sum + x.amount, 0),
+      summaryLabel: `${dailyEligibleCount} × (₹${fixedRate} + ₹${slabRate})`,
+    };
+  }
+
+  if (rule.combinationMode === "fixed_plus_slab_bonus") {
+    const highestBr = findBracket(dailyEligibleCount);
+    const tierBonus = highestBr ? highestBr.bonusAmount || highestBr.ratePerClaim : 0;
+    for (let k = 1; k <= dailyEligibleCount; k++) {
+      const isLast = k === dailyEligibleCount && tierBonus > 0;
+      const amt = fixedRate + (isLast ? tierBonus : 0);
+      items.push({
+        sequenceNo: k,
+        slabLabel: isLast ? `Fixed + Bonus (${slabLabelText(highestBr)})` : "Fixed base",
+        appliedRate: fixedRate,
+        amount: amt,
+      });
+    }
+    return {
+      items,
+      dayTotal: items.reduce((sum, x) => sum + x.amount, 0),
+      summaryLabel: `${dailyEligibleCount} × ₹${fixedRate} + ₹${tierBonus} bonus`,
+    };
+  }
+
+  // Default Method D: fixed_plus_progressive
+  for (let k = 1; k <= dailyEligibleCount; k++) {
+    const br = findBracket(k);
+    const slabRate = br ? br.ratePerClaim : 0;
+    const rate = fixedRate + slabRate;
+    items.push({
+      sequenceNo: k,
+      slabLabel: `₹${fixedRate} + ${slabLabelText(br)}`,
+      appliedRate: rate,
+      amount: rate,
+    });
+  }
+  return {
+    items,
+    dayTotal: items.reduce((sum, x) => sum + x.amount, 0),
+    summaryLabel: `Combined progressive (${dailyEligibleCount} claims)`,
+  };
+}
+
+export function computeProRatedTarget(args: {
+  baseTarget: number;
+  periodStart: string;
+  periodEnd: string;
+  activeFrom: string;
+  activeUntil: string | null;
+}): number {
+  const start = args.activeFrom > args.periodStart ? args.activeFrom : args.periodStart;
+  const end = args.activeUntil && args.activeUntil < args.periodEnd ? args.activeUntil : args.periodEnd;
+  if (end < start) return 0;
+
+  const totalDays =
+    Math.round((Date.parse(`${args.periodEnd}T00:00:00Z`) - Date.parse(`${args.periodStart}T00:00:00Z`)) / 86_400_000) + 1;
+  const activeDays =
+    Math.round((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86_400_000) + 1;
+
+  if (totalDays <= 0) return args.baseTarget;
+  return Math.max(1, Math.round((args.baseTarget * activeDays) / totalDays));
+}
+
+export function deriveSettlementStatus(args: {
+  targetAchieved: boolean;
+  finalizedPayable: number;
+  paidAmount: number;
+  workflowState: "open" | "ready_for_review" | "under_review" | "finalized";
+}): {
+  status: SettlementStatus;
+  eligibilityStatus: "eligible" | "forfeited" | "under_review" | "ready_for_review";
+  paymentStatus: "unpaid" | "partially_paid" | "paid" | "not_applicable";
+  outstanding: number;
+} {
+  if (!args.targetAchieved) {
+    return {
+      status: "forfeited",
+      eligibilityStatus: "forfeited",
+      paymentStatus: "not_applicable",
+      outstanding: 0,
+    };
+  }
+
+  const payable = Math.max(0, Number(args.finalizedPayable) || 0);
+  const paid = Math.max(0, Number(args.paidAmount) || 0);
+  const outstanding = Math.max(0, payable - paid);
+
+  if (args.workflowState === "open") {
+    return { status: "open", eligibilityStatus: "eligible", paymentStatus: "unpaid", outstanding };
+  }
+  if (args.workflowState === "ready_for_review") {
+    return {
+      status: "ready_for_review",
+      eligibilityStatus: "ready_for_review",
+      paymentStatus: "unpaid",
+      outstanding,
+    };
+  }
+  if (args.workflowState === "under_review") {
+    return { status: "under_review", eligibilityStatus: "under_review", paymentStatus: "unpaid", outstanding };
+  }
+
+  if (payable === 0 || outstanding === 0) {
+    return {
+      status: paid > 0 || payable === 0 ? "paid" : "finalized",
+      eligibilityStatus: "eligible",
+      paymentStatus: paid > 0 || payable === 0 ? "paid" : "unpaid",
+      outstanding: 0,
+    };
+  }
+  if (paid > 0) {
+    return {
+      status: "partially_paid",
+      eligibilityStatus: "eligible",
+      paymentStatus: "partially_paid",
+      outstanding,
+    };
+  }
+  return {
+    status: "finalized",
+    eligibilityStatus: "eligible",
+    paymentStatus: "unpaid",
+    outstanding,
+  };
+}
+
+export function monthBounds(monthIso: string): { startDate: string; endDate: string; label: string } {
+  const [y, m] = monthIso.split("-").map(Number);
+  const startDate = toISO(y, m, 1);
+  const endDate = toISO(y, m, daysInMonth(y, m));
+  return { startDate, endDate, label: formatMonthTitle(monthIso) };
 }
 
 export function formatMonthTitle(monthIso: string): string {

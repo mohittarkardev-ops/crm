@@ -4,7 +4,9 @@ import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { verifyPortalCode } from "@/lib/claim-portal";
 import { checkFile, normalizeMobile, parseDate, text } from "@/lib/actions/shared";
-import { addDays, todayIST } from "@/lib/data/helpers";
+import { addDays, dateIST, todayIST } from "@/lib/data/helpers";
+import { syncIncentivesForDateSafe } from "@/lib/incentives-engine";
+import { canonicalStateName, normalizePincode } from "@/lib/states";
 
 /*
  * Actions behind the public claim form (/claim). Visitors are not signed in, so every call carries the access code and
@@ -12,7 +14,7 @@ import { addDays, todayIST } from "@/lib/data/helpers";
  */
 
 const PAYMENT_MODES = ["Online", "NEFT", "Cheque", "GPay(UPI)", "Cash"];
-const VEHICLE_GROUPS = ["2W", "4W", "CV"];
+const VEHICLE_GROUPS = ["2W", "4W", "CW", "CV"];
 const NO_KEY = "The server is missing its service key (SUPABASE_SERVICE_ROLE_KEY). Ask the admin.";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -20,7 +22,7 @@ export type PortalEmployee = { id: string; name: string };
 
 export type PortalLookup =
   | { ok: true; state: "claimed"; message: string }
-  | { ok: true; state: "known"; vehicle: string; customer: string; saodDue: string | null }
+  | { ok: true; state: "known"; vehicle: string; customer: string; saodDue: string | null; pin: string | null }
   | { ok: true; state: "unknown"; vehicle: string }
   | { ok: false; error: string };
 
@@ -98,7 +100,7 @@ export async function lookupClaimVehicle(code: string, regInput: string): Promis
 
   const policy = await db
     .from("policies")
-    .select("owner_name, holder_name, saod_due_date, due_date")
+    .select("owner_name, holder_name, saod_due_date, due_date, pin")
     .eq("vehicle_reg_no", reg)
     .order("due_date", { ascending: false })
     .limit(1);
@@ -112,11 +114,12 @@ export async function lookupClaimVehicle(code: string, regInput: string): Promis
     vehicle: reg,
     customer: ((found.owner_name ?? found.holder_name) as string | null) ?? "Not recorded",
     saodDue: ((found.saod_due_date ?? found.due_date) as string | null) ?? null,
+    pin: (found.pin as string | null) ?? null,
   };
 }
 
 /**
- * Saves the claim from the public agent portal (with optional payment amount and policy document upload).
+ * Saves the claim from the public agent portal (with optional payment amount, PIN/State & policy document upload).
  * A known vehicle becomes a pending claim linked to its policy; an unknown vehicle carries customer details for admin approval.
  * Any attached policy document stages cleanly in DOCUMENTS under `claims/{id}/...` and publishes to the customer app on approval.
  */
@@ -140,6 +143,8 @@ export async function submitPortalClaim(formData: FormData): Promise<PortalResul
   const saodRaw = text(formData, "saodDueDate");
   const saod = saodRaw ? parseDate(saodRaw) : null;
   const group = text(formData, "vehicleGroup");
+  const pinRaw = text(formData, "customerPincode");
+  const stateRaw = text(formData, "customerState");
   const docType = (text(formData, "documentType") || "Policy copy").slice(0, 60);
   const fileCheck = checkFile(formData.get("document"));
 
@@ -158,6 +163,10 @@ export async function submitPortalClaim(formData: FormData): Promise<PortalResul
       fieldErrors.amount = "Enter a valid payment amount.";
     }
   }
+  const pincode = pinRaw ? normalizePincode(pinRaw) : null;
+  if (pinRaw && !pincode) fieldErrors.customerPincode = "Enter a valid 6-digit PIN code.";
+  const customerState = stateRaw ? canonicalStateName(stateRaw) : null;
+
   if (remarks.length > 500) fieldErrors.remarks = "Use 500 characters or fewer.";
   if (fileCheck.error) fieldErrors.document = fileCheck.error;
   if (Object.keys(fieldErrors).length > 0) return { ok: false, error: "Please fix the highlighted fields.", fieldErrors };
@@ -191,24 +200,36 @@ export async function submitPortalClaim(formData: FormData): Promise<PortalResul
     }
   }
 
-  const inserted = await db
+  const basePayload = {
+    staff_id: agent.data.id,
+    employee_name: agent.data.full_name,
+    vehicle_reg_no: reg,
+    policy_id: policyId,
+    payment_date: paymentDate,
+    payment_mode: paymentMode,
+    payment_amount: amount,
+    remarks: remarks || null,
+    customer_name: policyId ? null : customerName,
+    customer_mobile: policyId ? null : mobile,
+    saod_due_date: policyId ? null : saod,
+    vehicle_category: policyId ? null : group,
+  };
+
+  let inserted = await db
     .from("claims")
-    .insert({
-      staff_id: agent.data.id,
-      employee_name: agent.data.full_name,
-      vehicle_reg_no: reg,
-      policy_id: policyId,
-      payment_date: paymentDate,
-      payment_mode: paymentMode,
-      payment_amount: amount,
-      remarks: remarks || null,
-      customer_name: policyId ? null : customerName,
-      customer_mobile: policyId ? null : mobile,
-      saod_due_date: policyId ? null : saod,
-      vehicle_category: policyId ? null : group,
-    })
-    .select("id")
+    .insert({ ...basePayload, customer_pincode: pincode, customer_state: customerState })
+    .select("id, created_at")
     .single();
+  if (inserted.error && inserted.error.message.includes("customer_pincode")) {
+    inserted = await db.from("claims").insert(basePayload).select("id, created_at").single();
+  }
+  if (inserted.error && inserted.error.code === "23514" && group === "CW") {
+    inserted = await db
+      .from("claims")
+      .insert({ ...basePayload, vehicle_category: "CV" })
+      .select("id, created_at")
+      .single();
+  }
   if (inserted.error) {
     if (inserted.error.code === "23505") {
       return { ok: false, error: "This vehicle was just claimed by someone else." };
@@ -251,6 +272,10 @@ export async function submitPortalClaim(formData: FormData): Promise<PortalResul
   } catch {
     /* the audit trail must not break a save */
   }
+  await syncIncentivesForDateSafe(dateIST(inserted.data.created_at as string | undefined) ?? today, {
+    id: agent.data.id as string,
+    name: agent.data.full_name as string,
+  });
   revalidatePath("/claims");
   revalidatePath("/incentives");
 

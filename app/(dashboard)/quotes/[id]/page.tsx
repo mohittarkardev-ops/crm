@@ -8,6 +8,8 @@ import { DetailList } from "@/components/ui/detail-list";
 import { EmptyState } from "@/components/ui/empty-state";
 import { DetailHeader } from "@/components/layout/detail-header";
 import { DocumentsCard } from "@/components/modules/documents-card";
+import { QuoteDocumentsCard } from "@/components/modules/quote-documents-card";
+import { getQuoteAttachments } from "@/lib/data/quote-documents";
 import { getQuoteDetail } from "@/lib/data/details";
 import { formatDate, formatINR } from "@/lib/format";
 import { StatusButtons } from "@/components/ui/status-buttons";
@@ -20,7 +22,7 @@ import { categoryLabel } from "@/lib/status";
 export default async function QuoteDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const staff = await requirePermission("quotes.view");
-  const q = await getQuoteDetail(id);
+  const [q, attachments] = await Promise.all([getQuoteDetail(id), getQuoteAttachments(id)]);
   const who = q.client?.name ?? q.client?.mobile ?? "Unknown user";
   const whatsapp = q.client ? `https://wa.me/${q.client.mobile.replace(/\D/g, "")}` : null;
 
@@ -146,7 +148,13 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
             )}
           </Card>
 
-          {q.policy && <DocumentsCard index={3} policyId={q.policy.id} documents={q.documents} canEdit={can(staff, "policies.edit")} />}
+          <QuoteDocumentsCard
+            quoteId={q.id}
+            documents={attachments}
+            canEdit={can(staff, "quotes.update")}
+            index={3}
+          />
+          {q.policy && <DocumentsCard index={4} policyId={q.policy.id} documents={q.documents} canEdit={can(staff, "policies.edit")} />}
         </div>
       </div>
     </div>

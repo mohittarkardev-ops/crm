@@ -105,8 +105,8 @@ export const MODULES = [
     key: "incentives",
     label: "Incentives",
     permissions: [
-      { key: "incentives.view", label: "View incentives dashboard" },
-      { key: "incentives.manage", label: "Configure vehicle incentive rules & view all staff payouts", adminOnly: true },
+      { key: "incentives.view", label: "View own incentives, daily earnings & payouts" },
+      { key: "incentives.manage", label: "Manage incentive rules, assignments, settlements & payouts", adminOnly: true },
     ],
   },
   {

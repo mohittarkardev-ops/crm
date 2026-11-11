@@ -25,8 +25,8 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const path = request.nextUrl.pathname;
-  // /login and the agents' public claim form (exactly /claim, not /claims) are open to signed-out visitors.
-  const isPublic = path.startsWith("/login") || path === "/claim";
+  // /login, the public agent claim form (/claim), and bearer-authenticated cron endpoints bypass cookie redirect.
+  const isPublic = path.startsWith("/login") || path === "/claim" || path.startsWith("/api/cron/");
   if (!user && !isPublic) {
     const redirect = NextResponse.redirect(new URL("/login", request.url));
     response.cookies.getAll().forEach((cookie) => redirect.cookies.set(cookie));

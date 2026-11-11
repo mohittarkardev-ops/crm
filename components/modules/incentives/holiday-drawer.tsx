@@ -12,6 +12,7 @@ import { addIncentiveHoliday, deleteIncentiveHoliday } from "@/lib/actions/incen
 import { cn } from "@/lib/cn";
 import { formatDate } from "@/lib/format";
 import type { HolidayItem } from "@/lib/incentives";
+import { useErrorNudge, useRowFlash, useSavedFlag } from "@/lib/use-transient-state";
 
 export function HolidayDrawer({
   open,
@@ -25,18 +26,25 @@ export function HolidayDrawer({
   const [date, setDate] = useState("");
   const [label, setLabel] = useState("");
   const [busy, setBusy] = useState(false);
+  const [addedSaved, flashAddedSaved] = useSavedFlag();
+  const { triggerFlash, flashClassFor } = useRowFlash();
+  const { error, errorPulse, setError } = useErrorNudge();
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true);
+    setError(null);
     try {
-      const res = await addIncentiveHoliday(date, label);
+      const targetDate = date;
+      const res = await addIncentiveHoliday(targetDate, label);
       if (res.ok) {
         toast(res.message ?? "Holiday added.");
+        flashAddedSaved();
+        triggerFlash(targetDate, "positive");
         setDate("");
         setLabel("");
       } else {
-        toast(res.error ?? "Could not add holiday.", "error");
+        setError(res.error ?? "Could not add holiday.");
       }
     } finally {
       setBusy(false);
@@ -76,8 +84,20 @@ export function HolidayDrawer({
               className={cn(CONTROL, "h-10")}
             />
           </label>
+          {error && (
+            <p key={errorPulse} role="alert" className="micro-shake rounded-control bg-negative-soft px-3 py-2 text-xs text-negative">
+              {error}
+            </p>
+          )}
           <div className="flex justify-end">
-            <Button type="submit" loading={busy} disabled={!date || label.trim().length < 2} className="h-9 px-3 text-xs">
+            <Button
+              type="submit"
+              loading={busy}
+              saved={addedSaved}
+              savedLabel="Added"
+              disabled={!date || label.trim().length < 2}
+              className="h-9 px-3 text-xs"
+            >
               <Plus size={14} />
               Add Holiday
             </Button>
@@ -93,7 +113,7 @@ export function HolidayDrawer({
           ) : (
             <ul className="divide-y divide-divider rounded-tile border border-divider bg-surface-strong px-3">
               {holidays.map((h) => (
-                <li key={h.date} className="flex items-center justify-between gap-2 py-2.5 text-xs">
+                <li key={h.date} className={cn("reveal-down flex items-center justify-between gap-2 py-2.5 text-xs", flashClassFor(h.date))}>
                   <div>
                     <p className="font-semibold text-ink">{h.label}</p>
                     <p className="text-[11px] text-ink-faint tabular-nums">{formatDate(h.date)}</p>

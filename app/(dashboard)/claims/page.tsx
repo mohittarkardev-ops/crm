@@ -8,6 +8,7 @@ import type { FieldDef, Option } from "@/lib/module-types";
 import { DOCUMENT_TYPE_OPTIONS } from "@/lib/options";
 import { can } from "@/lib/rbac/permissions";
 import { requirePermission } from "@/lib/rbac/server";
+import { STATE_OPTIONS } from "@/lib/states";
 
 const STATUS_OPTIONS: Option[] = [
   { value: "pending", label: "Pending" },
@@ -27,8 +28,10 @@ const GROUP_OPTIONS: Option[] = [
   { value: "", label: "Not needed (vehicle is in Policies)" },
   { value: "2W", label: "Two wheeler (2W)" },
   { value: "4W", label: "Four wheeler (4W)" },
-  { value: "CV", label: "Commercial vehicle (CV)" },
+  { value: "CW", label: "Commercial vehicle (CW)" },
 ];
+
+const CLAIM_STATE_OPTIONS: Option[] = [{ value: "", label: "Resolve automatically from PIN" }, ...STATE_OPTIONS];
 
 export default async function ClaimsPage() {
   const staff = await requirePermission("claims.view");
@@ -49,6 +52,12 @@ export default async function ClaimsPage() {
     { name: "paymentDate", label: "Payment date", type: "date", required: true, maxToday: true },
     { name: "paymentMode", label: "Paid by", type: "select", options: MODE_OPTIONS, required: true },
     { name: "amount", label: "Amount (₹)", type: "number" },
+    {
+      name: "customerPincode",
+      label: "Customer PIN code",
+      hint: "6-digit PIN for state incentive eligibility (uses policy PIN if blank).",
+    },
+    { name: "customerState", label: "Customer state (fallback)", type: "select", options: CLAIM_STATE_OPTIONS },
     { name: "remarks", label: "Remarks", type: "textarea", full: true },
     // Policy document attached here is published to the customer's policy in the app upon approval.
     {

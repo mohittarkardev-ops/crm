@@ -15,13 +15,15 @@ import {
   text,
   type Db,
 } from "@/lib/actions/shared";
-import { todayIST } from "@/lib/data/helpers";
+import { dateIST, todayIST } from "@/lib/data/helpers";
+import { syncIncentivesForDateSafe } from "@/lib/incentives-engine";
+import { canonicalStateName, normalizePincode } from "@/lib/states";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const PAYMENT_MODES = ["Online", "NEFT", "Cheque", "GPay(UPI)", "Cash"]; // claims_payment_mode_check
-const VEHICLE_GROUPS = ["2W", "4W", "CV"];
+const VEHICLE_GROUPS = ["2W", "4W", "CW", "CV"];
 // Which policy type a vehicle group becomes when approving a claim creates a new policy.
-const TYPE_FOR_GROUP: Record<string, string> = { "2W": "bike", "4W": "car", CV: "other" };
+const TYPE_FOR_GROUP: Record<string, string> = { "2W": "bike", "4W": "car", CW: "other", CV: "other" };
 
 function parseClaimForm(formData: FormData, forcedAgentId?: string) {
   const agentId = forcedAgentId ?? text(formData, "agent");
@@ -34,6 +36,8 @@ function parseClaimForm(formData: FormData, forcedAgentId?: string) {
   const mobileRaw = text(formData, "customerMobile");
   const group = text(formData, "vehicleGroup");
   const saodRaw = text(formData, "saodDueDate");
+  const pinRaw = text(formData, "customerPincode");
+  const stateRaw = text(formData, "customerState");
   const docType = text(formData, "documentType") || "Policy copy";
   const fileCheck = checkFile(formData.get("document"));
 
@@ -58,8 +62,11 @@ function parseClaimForm(formData: FormData, forcedAgentId?: string) {
   if (mobileRaw && !mobile) fieldErrors.customerMobile = "Enter a valid 10-digit Indian mobile number.";
   const saod = saodRaw ? parseDate(saodRaw) : null;
   if (saodRaw && !saod) fieldErrors.saodDueDate = "Enter a valid date.";
-  if (group && !VEHICLE_GROUPS.includes(group)) fieldErrors.vehicleGroup = "Choose 2W, 4W or CV.";
+  if (group && !VEHICLE_GROUPS.includes(group)) fieldErrors.vehicleGroup = "Choose 2W, 4W or CW.";
   if (customerName.length > 120) fieldErrors.customerName = "Name is too long.";
+  const pincode = pinRaw ? normalizePincode(pinRaw) : null;
+  if (pinRaw && !pincode) fieldErrors.customerPincode = "Enter a valid 6-digit PIN code.";
+  const customerState = stateRaw ? canonicalStateName(stateRaw) : null;
   if (fileCheck.error) fieldErrors.document = fileCheck.error;
 
   return {
@@ -75,6 +82,8 @@ function parseClaimForm(formData: FormData, forcedAgentId?: string) {
       mobile,
       group,
       saod,
+      pincode,
+      customerState,
       docType: docType.slice(0, 60),
       file: fileCheck.file,
     },
@@ -219,24 +228,40 @@ export async function createClaim(_previous: ActionState, formData: FormData): P
     }
   }
 
-  const inserted = await db
+  const baseInsert = {
+    staff_id: agent.data.id,
+    employee_name: agent.data.full_name,
+    vehicle_reg_no: parsed.reg,
+    policy_id: policyId,
+    payment_date: parsed.paymentDate,
+    payment_mode: parsed.mode,
+    payment_amount: parsed.amount,
+    remarks: parsed.remarks || null,
+    customer_name: parsed.customerName || null,
+    customer_mobile: parsed.mobile,
+    saod_due_date: parsed.saod,
+    vehicle_category: parsed.group || null,
+  };
+
+  let inserted = await db
     .from("claims")
     .insert({
-      staff_id: agent.data.id,
-      employee_name: agent.data.full_name,
-      vehicle_reg_no: parsed.reg,
-      policy_id: policyId,
-      payment_date: parsed.paymentDate,
-      payment_mode: parsed.mode,
-      payment_amount: parsed.amount,
-      remarks: parsed.remarks || null,
-      customer_name: parsed.customerName || null,
-      customer_mobile: parsed.mobile,
-      saod_due_date: parsed.saod,
-      vehicle_category: parsed.group || null,
+      ...baseInsert,
+      customer_pincode: parsed.pincode,
+      customer_state: parsed.customerState,
     })
     .select("id")
     .single();
+  if (inserted.error && inserted.error.message.includes("customer_pincode")) {
+    inserted = await db.from("claims").insert(baseInsert).select("id").single();
+  }
+  if (inserted.error && inserted.error.code === "23514" && parsed.group === "CW") {
+    inserted = await db
+      .from("claims")
+      .insert({ ...baseInsert, vehicle_category: "CV" })
+      .select("id")
+      .single();
+  }
   if (inserted.error) {
     if (inserted.error.code === "23505") {
       return fail("A claim for this vehicle is already open.", {
@@ -249,6 +274,7 @@ export async function createClaim(_previous: ActionState, formData: FormData): P
 
   const claimId = inserted.data.id as string;
   await audit(db, staff.id, "claim.create", "claim", claimId);
+  await syncIncentivesForDateSafe(todayIST(), { id: staff.id, name: staff.full_name });
 
   if (parsed.file) {
     const docErr = await stageClaimDocument(db, {
@@ -341,25 +367,39 @@ export async function updateClaim(id: string, _previous: ActionState, formData: 
     }
   }
 
-  const updated = await db
+  const baseUpdate = {
+    staff_id: agent.data.id,
+    employee_name: agent.data.full_name,
+    vehicle_reg_no: parsed.reg,
+    policy_id: policyId,
+    payment_date: parsed.paymentDate,
+    payment_mode: parsed.mode,
+    payment_amount: parsed.amount,
+    remarks: parsed.remarks || null,
+    customer_name: parsed.customerName || null,
+    customer_mobile: parsed.mobile,
+    saod_due_date: parsed.saod,
+    vehicle_category: parsed.group || null,
+  };
+
+  let updated = await db
     .from("claims")
     .update({
-      staff_id: agent.data.id,
-      employee_name: agent.data.full_name,
-      vehicle_reg_no: parsed.reg,
-      policy_id: policyId,
-      payment_date: parsed.paymentDate,
-      payment_mode: parsed.mode,
-      payment_amount: parsed.amount,
-      remarks: parsed.remarks || null,
-      customer_name: parsed.customerName || null,
-      customer_mobile: parsed.mobile,
-      saod_due_date: parsed.saod,
-      vehicle_category: parsed.group || null,
+      ...baseUpdate,
+      customer_pincode: parsed.pincode,
+      customer_state: parsed.customerState,
     })
     .eq("id", id)
     .eq("status", "pending")
-    .select("id");
+    .select("id, created_at");
+  if (updated.error && updated.error.message.includes("customer_pincode")) {
+    updated = await db
+      .from("claims")
+      .update(baseUpdate)
+      .eq("id", id)
+      .eq("status", "pending")
+      .select("id, created_at");
+  }
 
   if (updated.error) {
     if (updated.error.code === "23505") {
@@ -373,6 +413,10 @@ export async function updateClaim(id: string, _previous: ActionState, formData: 
   if ((updated.data ?? []).length === 0) return fail("This claim was already reviewed.", { values });
 
   await audit(db, staff.id, "claim.update", "claim", id);
+  await syncIncentivesForDateSafe(dateIST(updated.data?.[0]?.created_at as string | undefined), {
+    id: staff.id,
+    name: staff.full_name,
+  });
 
   if (parsed.file) {
     const docErr = await stageClaimDocument(db, {
@@ -409,24 +453,26 @@ export async function approveClaim(id: string): Promise<ActionState> {
     customer_mobile: string | null;
     saod_due_date: string | null;
     vehicle_category: string | null;
+    created_at: string;
     document_path?: string | null;
     document_type?: string | null;
+    customer_pincode?: string | null;
   };
   let claim: ApproveClaimRow | null = null;
 
   const foundExt = await db
     .from("claims")
     .select(
-      "id, status, policy_id, vehicle_reg_no, customer_name, customer_mobile, saod_due_date, vehicle_category, document_path, document_type",
+      "id, status, policy_id, vehicle_reg_no, customer_name, customer_mobile, saod_due_date, vehicle_category, created_at, document_path, document_type, customer_pincode",
     )
     .eq("id", id)
     .maybeSingle();
 
   if (foundExt.error) {
-    if (foundExt.error.message.includes("document_path")) {
+    if (foundExt.error.message.includes("document_path") || foundExt.error.message.includes("customer_pincode")) {
       const fb = await db
         .from("claims")
-        .select("id, status, policy_id, vehicle_reg_no, customer_name, customer_mobile, saod_due_date, vehicle_category")
+        .select("id, status, policy_id, vehicle_reg_no, customer_name, customer_mobile, saod_due_date, vehicle_category, created_at")
         .eq("id", id)
         .maybeSingle();
       if (fb.error) return fail(dbMessage(fb.error));
@@ -472,24 +518,29 @@ export async function approveClaim(id: string): Promise<ActionState> {
     }
     policyUserId = userId;
 
-    const policy = await db
-      .from("policies")
-      .insert({
-        user_id: userId,
-        type_id: type.data.id,
-        policy_number: null,
-        due_date: saod,
-        saod_due_date: saod,
-        owner_name: name,
-        holder_name: name,
-        holder_mobile: mobile,
-        vehicle_reg_no: claim.vehicle_reg_no,
-        vehicle_category: group,
-        source: "advisor_added",
-        verification_status: "verified",
-      })
-      .select("id")
-      .single();
+    const policyPayload = {
+      user_id: userId,
+      type_id: type.data.id,
+      policy_number: null,
+      due_date: saod,
+      saod_due_date: saod,
+      owner_name: name,
+      holder_name: name,
+      holder_mobile: mobile,
+      vehicle_reg_no: claim.vehicle_reg_no,
+      vehicle_category: group,
+      pin: claim.customer_pincode ?? null,
+      source: "advisor_added",
+      verification_status: "verified",
+    };
+    let policy = await db.from("policies").insert(policyPayload).select("id").single();
+    if (policy.error && policy.error.code === "23514" && group === "CW") {
+      policy = await db
+        .from("policies")
+        .insert({ ...policyPayload, vehicle_category: "CV" })
+        .select("id")
+        .single();
+    }
     if (policy.error) return fail(dbMessage(policy.error));
     policyId = policy.data.id as string;
     createdPolicyId = policyId;
@@ -510,6 +561,7 @@ export async function approveClaim(id: string): Promise<ActionState> {
   }
 
   await audit(db, staff.id, "claim.approve", "claim", id);
+  await syncIncentivesForDateSafe(dateIST(claim.created_at), { id: staff.id, name: staff.full_name });
 
   let docNote = "";
   if (claim.document_path && policyId && policyUserId) {
@@ -547,11 +599,15 @@ export async function rejectClaim(id: string): Promise<ActionState> {
     .update({ status: "rejected", reviewed_by: staff.id, reviewed_at: new Date().toISOString() })
     .eq("id", id)
     .eq("status", "pending")
-    .select("id");
+    .select("id, created_at");
   if (updated.error) return fail(dbMessage(updated.error));
   if ((updated.data ?? []).length === 0) return fail("This claim was already reviewed or could not be found.");
 
   await audit(db, staff.id, "claim.reject", "claim", id);
+  await syncIncentivesForDateSafe(dateIST(updated.data?.[0]?.created_at as string | undefined), {
+    id: staff.id,
+    name: staff.full_name,
+  });
   return done("Claim rejected.");
 }
 

@@ -31,6 +31,7 @@ import { cn } from "@/lib/cn";
 import { todayIST } from "@/lib/dates";
 import { formatDate, formatINR } from "@/lib/format";
 import { DOCUMENT_TYPE_OPTIONS } from "@/lib/options";
+import { STATE_OPTIONS } from "@/lib/states";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL } from "@/lib/upload-limits";
 
 const ALLOWED_DOC_TYPES = ["application/pdf", "image/jpeg", "image/png", "image/webp"];
@@ -46,8 +47,10 @@ const PAYMENT_MODES = [
 const VEHICLE_CATEGORIES = [
   { value: "2W", label: "Two wheeler (2W)" },
   { value: "4W", label: "Four wheeler (4W)" },
-  { value: "CV", label: "Commercial vehicle (CV)" },
+  { value: "CW", label: "Commercial vehicle (CW)" },
 ];
+
+const PORTAL_STATE_OPTIONS = [{ value: "", label: "Auto-resolve from PIN" }, ...STATE_OPTIONS];
 
 type BusyState = "unlock" | "lookup" | "submit" | null;
 
@@ -66,6 +69,8 @@ export function ClaimPortal() {
   const [amount, setAmount] = useState("");
   const [remarks, setRemarks] = useState("");
   const [paymentDate, setPaymentDate] = useState(todayIST());
+  const [customerPincode, setCustomerPincode] = useState("");
+  const [customerState, setCustomerState] = useState("");
   const [documentFile, setDocumentFile] = useState<File | null>(null);
   const [documentType, setDocumentType] = useState("Policy copy");
   const [isDraggingDoc, setIsDraggingDoc] = useState(false);
@@ -151,6 +156,9 @@ export function ClaimPortal() {
       const res = await lookupClaimVehicle(code, cleanReg);
       if (res.ok) {
         setLookup(res);
+        if (res.state === "known" && res.pin) {
+          setCustomerPincode(res.pin);
+        }
       } else {
         setLookup(null);
         setErrors({ vehicleRegNo: res.error });
@@ -185,6 +193,8 @@ export function ClaimPortal() {
       fd.set("customerMobile", customerMobile);
       fd.set("vehicleGroup", vehicleGroup);
       fd.set("saodDueDate", saodDueDate);
+      fd.set("customerPincode", customerPincode.trim());
+      fd.set("customerState", customerState);
       fd.set("documentType", documentType);
       if (documentFile) fd.set("document", documentFile);
 
@@ -227,6 +237,8 @@ export function ClaimPortal() {
     setCustomerMobile("");
     setVehicleGroup("");
     setSaodDueDate("");
+    setCustomerPincode("");
+    setCustomerState("");
     setErrors({});
     setSubmitSuccess(null);
     setTimeout(() => regInputRef.current?.focus(), 50);
@@ -776,6 +788,50 @@ export function ClaimPortal() {
             />
             <span className="text-[11px] text-ink-faint">Optional reference note or UTR.</span>
           </label>
+        </div>
+
+        {/* Customer Location (PIN & fallback State for state-based incentive matching) */}
+        <div className="grid gap-4 sm:grid-cols-2 border-t border-divider pt-4">
+          <label className="flex flex-col gap-1.5">
+            <span className="text-xs font-medium text-ink-muted">
+              Customer PIN Code <span className="font-normal text-ink-faint">(6 digits)</span>
+            </span>
+            <input
+              type="text"
+              inputMode="numeric"
+              maxLength={6}
+              value={customerPincode}
+              onChange={(e) => {
+                setCustomerPincode(e.target.value.replace(/\D/g, "").slice(0, 6));
+                if (errors.customerPincode) setErrors((prev) => ({ ...prev, customerPincode: "" }));
+              }}
+              placeholder="e.g. 380001"
+              className={cn(CONTROL, "h-10 tabular-nums", errors.customerPincode && "border-negative")}
+            />
+            {errors.customerPincode ? (
+              <span className="text-xs text-negative">{errors.customerPincode}</span>
+            ) : (
+              <span className="text-[11px] text-ink-faint">
+                Used by the incentive engine to verify customer state locally.
+              </span>
+            )}
+          </label>
+
+          <div className="flex flex-col gap-1.5">
+            <span className="text-xs font-medium text-ink-muted">
+              Customer State <span className="font-normal text-ink-faint">(Fallback)</span>
+            </span>
+            <CustomSelect
+              value={customerState}
+              onChange={(val) => setCustomerState(val)}
+              options={PORTAL_STATE_OPTIONS}
+              searchable
+              className="h-10 text-xs"
+            />
+            <span className="text-[11px] text-ink-faint">
+              Optional manual state if customer PIN is missing or not listed.
+            </span>
+          </div>
         </div>
 
         {/* Policy Document Upload (auto-published to customer app once Admin approves) */}

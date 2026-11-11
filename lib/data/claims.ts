@@ -20,11 +20,14 @@ type ClaimRecord = {
   created_at: string;
   document_path?: string | null;
   document_type?: string | null;
+  customer_pincode?: string | null;
+  customer_state?: string | null;
 };
 
 const BASE_COLS =
   "id, staff_id, vehicle_reg_no, employee_name, payment_date, payment_mode, payment_amount, remarks, customer_name, customer_mobile, saod_due_date, vehicle_category, policy_id, status, created_at";
-const EXT_COLS = `${BASE_COLS}, document_path, document_type`;
+const DOC_COLS = `${BASE_COLS}, document_path, document_type`;
+const FULL_COLS = `${DOC_COLS}, customer_pincode, customer_state`;
 
 /** Claims for the list (paged past 1,000 rows up to 10,000), agent filter options, and stat tiles. */
 export async function getClaims() {
@@ -41,7 +44,7 @@ export async function getClaims() {
         (from, to) =>
           db
             .from("claims")
-            .select(EXT_COLS)
+            .select(FULL_COLS)
             .order("created_at", { ascending: false })
             .order("id", { ascending: false })
             .range(from, to),
@@ -49,6 +52,36 @@ export async function getClaims() {
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";
+      if (msg.includes("customer_pincode") || msg.includes("customer_state")) {
+        try {
+          return await pagedRows<ClaimRecord>(
+            (from, to) =>
+              db
+                .from("claims")
+                .select(DOC_COLS)
+                .order("created_at", { ascending: false })
+                .order("id", { ascending: false })
+                .range(from, to),
+            "Claims",
+          );
+        } catch (err2) {
+          const msg2 = err2 instanceof Error ? err2.message : "";
+          if (msg2.includes("document_path") || msg2.includes("document_type")) {
+            migrationMissingDocs = true;
+            return await pagedRows<ClaimRecord>(
+              (from, to) =>
+                db
+                  .from("claims")
+                  .select(BASE_COLS)
+                  .order("created_at", { ascending: false })
+                  .order("id", { ascending: false })
+                  .range(from, to),
+              "Claims",
+            );
+          }
+          throw err2;
+        }
+      }
       if (msg.includes("document_path") || msg.includes("document_type")) {
         migrationMissingDocs = true;
         return await pagedRows<ClaimRecord>(
@@ -102,6 +135,8 @@ export async function getClaims() {
     saodDueDate: c.saod_due_date,
     policyId: c.policy_id,
     vehicleKind: c.policy_id ? "In Policies" : "New vehicle",
+    customerPincode: c.customer_pincode ?? "",
+    customerState: c.customer_state ?? "",
     doc: c.document_path ? (c.document_type || "Policy copy") : null,
     docHref: c.document_path ? `/claims/${c.id}/document` : null,
     documentType: c.document_type ?? "Policy copy",
