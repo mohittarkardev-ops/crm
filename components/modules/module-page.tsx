@@ -3,7 +3,7 @@
 import { Suspense, useActionState, useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowUpRight, ChevronLeft, ChevronRight, Download, Plus, Search } from "lucide-react";
+import { ArrowUpRight, ChevronLeft, ChevronRight, Download, FileText, Plus, Search } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { formatDate, formatINR, formatNumber } from "@/lib/format";
 import { chipFor } from "@/lib/status";
@@ -49,8 +49,8 @@ type ModulePageProps = {
   search?: string;
   filters?: FilterDef[];
   tabs?: TabsDef;
-  /** Adds a date selector (presets plus custom date or range) on the date column `key`, soonest first. */
-  dateFilter?: { key: string; label: string };
+  /** Adds a date selector (presets plus custom date or range) on the date column `key`. */
+  dateFilter?: { key: string; label: string; direction?: "future" | "past" };
   primary?: PrimaryAction;
   /** Adds an Edit button to every row. */
   edit?: EditAction;
@@ -132,6 +132,23 @@ function renderCell(column: Column, row: Row) {
       const rawLogo = row[`${column.key}LogoUrl`];
       const logoUrl = typeof rawLogo === "string" ? rawLogo : null;
       return <InsurerBadge name={text} logoUrl={logoUrl} showFallback={false} className="max-w-[240px]" />;
+    }
+    case "link": {
+      const text = String(value);
+      const rawHref = row[`${column.key}Href`];
+      const href = typeof rawHref === "string" && rawHref ? rawHref : null;
+      if (!href) return <span className="text-sm text-ink-muted">{text}</span>;
+      return (
+        <a
+          href={href}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-medium text-ink underline-offset-2 hover:underline"
+        >
+          <FileText size={13} strokeWidth={1.75} className="shrink-0 text-ink-muted" aria-hidden="true" />
+          {text}
+        </a>
+      );
     }
     default: {
       const text = String(value);
@@ -513,9 +530,9 @@ export function ModulePage({
       return true;
     });
     if (bounds && dateFilter) {
-      // Soonest first, so the policies that need action next are on top. Expired: most recent first.
+      // Future expiry: soonest first. Expired / past dates (like Claims payment date): newest first.
       const key = dateFilter.key;
-      const direction = dateRange.mode === "expired" ? -1 : 1;
+      const direction = dateRange.mode === "expired" || dateFilter.direction === "past" ? -1 : 1;
       result.sort((a, b) => direction * String(a[key]).localeCompare(String(b[key])));
     }
     return result;
@@ -628,7 +645,14 @@ export function ModulePage({
                 </div>
               );
             })}
-            {dateFilter && <DateRangeFilter label={dateFilter.label} value={dateRange} onChange={setDateRange} />}
+            {dateFilter && (
+              <DateRangeFilter
+                label={dateFilter.label}
+                value={dateRange}
+                onChange={setDateRange}
+                direction={dateFilter.direction}
+              />
+            )}
             {exportName && (
               <Button
                 variant="secondary"

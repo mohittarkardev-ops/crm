@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-export type ColumnType = "text" | "person" | "chip" | "inr" | "date" | "number" | "image" | "insurer";
+export type ColumnType = "text" | "person" | "chip" | "inr" | "date" | "number" | "image" | "insurer" | "link";
 
 export type Column = {
   key: string;

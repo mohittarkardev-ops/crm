@@ -18,28 +18,56 @@ type ClaimRecord = {
   policy_id: string | null;
   status: string;
   created_at: string;
+  document_path?: string | null;
+  document_type?: string | null;
 };
 
-/** Claims for the list (paged past 1,000 rows up to 10,000) and the four stat tiles. */
+const BASE_COLS =
+  "id, staff_id, vehicle_reg_no, employee_name, payment_date, payment_mode, payment_amount, remarks, customer_name, customer_mobile, saod_due_date, vehicle_category, policy_id, status, created_at";
+const EXT_COLS = `${BASE_COLS}, document_path, document_type`;
+
+/** Claims for the list (paged past 1,000 rows up to 10,000), agent filter options, and stat tiles. */
 export async function getClaims() {
   const db = await createClient();
   // A month starts at midnight in India.
   const monthFrom = `${monthStart(todayIST())}T00:00:00+05:30`;
   const head = { count: "exact", head: true } as const;
 
+  let migrationMissingDocs = false;
+
+  const fetchClaims = async () => {
+    try {
+      return await pagedRows<ClaimRecord>(
+        (from, to) =>
+          db
+            .from("claims")
+            .select(EXT_COLS)
+            .order("created_at", { ascending: false })
+            .order("id", { ascending: false })
+            .range(from, to),
+        "Claims",
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "";
+      if (msg.includes("document_path") || msg.includes("document_type")) {
+        migrationMissingDocs = true;
+        return await pagedRows<ClaimRecord>(
+          (from, to) =>
+            db
+              .from("claims")
+              .select(BASE_COLS)
+              .order("created_at", { ascending: false })
+              .order("id", { ascending: false })
+              .range(from, to),
+          "Claims",
+        );
+      }
+      throw err;
+    }
+  };
+
   const [records, totalRes, pending, reviewed] = await Promise.all([
-    pagedRows<ClaimRecord>(
-      (from, to) =>
-        db
-          .from("claims")
-          .select(
-            "id, staff_id, vehicle_reg_no, employee_name, payment_date, payment_mode, payment_amount, remarks, customer_name, customer_mobile, saod_due_date, vehicle_category, policy_id, status, created_at",
-          )
-          .order("created_at", { ascending: false })
-          .order("id", { ascending: false })
-          .range(from, to),
-      "Claims",
-    ),
+    fetchClaims(),
     db.from("claims").select("id", head),
     db.from("claims").select("id", head).eq("status", "pending"),
     pagedRows<{ status: string; payment_amount: number | null }>(
@@ -74,15 +102,29 @@ export async function getClaims() {
     saodDueDate: c.saod_due_date,
     policyId: c.policy_id,
     vehicleKind: c.policy_id ? "In Policies" : "New vehicle",
+    doc: c.document_path ? (c.document_type || "Policy copy") : null,
+    docHref: c.document_path ? `/claims/${c.id}/document` : null,
+    documentType: c.document_type ?? "Policy copy",
     remarks: c.remarks,
     status: c.status,
     submitted: dateIST(c.created_at),
+  }));
+
+  const uniqueAgents = Array.from(
+    new Set(records.map((c) => c.employee_name?.trim()).filter((v): v is string => Boolean(v))),
+  ).sort((a, b) => a.localeCompare(b));
+
+  const agentFilterOptions: Option[] = uniqueAgents.map((name) => ({
+    value: name,
+    label: name,
   }));
 
   const approved = reviewed.filter((c) => c.status === "approved");
 
   return {
     rows,
+    agentFilterOptions,
+    migrationMissingDocs,
     totalCount: countOf(totalRes, "Claims count"),
     stats: {
       pending: countOf(pending, "Pending claims"),

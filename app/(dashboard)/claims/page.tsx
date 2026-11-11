@@ -1,10 +1,11 @@
-import { CircleCheck, CircleX, Clock, IndianRupee } from "lucide-react";
+import { CircleCheck, CircleX, Clock, IndianRupee, TriangleAlert } from "lucide-react";
 import { ModulePage } from "@/components/modules/module-page";
 import { ModuleEmptyCharacter } from "@/components/ui/characters";
 import { MiniStat, StatRow } from "@/components/ui/mini-stat";
 import { approveClaim, createClaim, deleteClaim, rejectClaim, updateClaim } from "@/lib/actions/claims";
 import { getAgentOptions, getClaims } from "@/lib/data/claims";
 import type { FieldDef, Option } from "@/lib/module-types";
+import { DOCUMENT_TYPE_OPTIONS } from "@/lib/options";
 import { can } from "@/lib/rbac/permissions";
 import { requirePermission } from "@/lib/rbac/server";
 
@@ -35,7 +36,7 @@ export default async function ClaimsPage() {
   const canCreate = can(staff, "claims.create");
   const canReview = can(staff, "claims.approve");
 
-  const [{ rows, totalCount, stats }, editAgents] = await Promise.all([
+  const [{ rows, agentFilterOptions, migrationMissingDocs, totalCount, stats }, editAgents] = await Promise.all([
     getClaims(),
     canReview ? getAgentOptions(staff.id, true) : Promise.resolve([]),
   ]);
@@ -49,6 +50,15 @@ export default async function ClaimsPage() {
     { name: "paymentMode", label: "Paid by", type: "select", options: MODE_OPTIONS, required: true },
     { name: "amount", label: "Amount (₹)", type: "number" },
     { name: "remarks", label: "Remarks", type: "textarea", full: true },
+    // Policy document attached here is published to the customer's policy in the app upon approval.
+    {
+      name: "document",
+      label: "Policy document",
+      type: "file",
+      accept: ".pdf,.jpg,.jpeg,.png,.webp",
+      hint: "Optional PDF, JPG, PNG or WebP (max 4 MB). Auto-attaches to the customer's app on approval.",
+    },
+    { name: "documentType", label: "Document type", type: "select", options: DOCUMENT_TYPE_OPTIONS },
     // Only needed when the vehicle is not already in Policies.
     { name: "customerName", label: "Customer name", hint: "Only if the vehicle is not in Policies yet." },
     { name: "customerMobile", label: "Customer mobile", type: "tel" },
@@ -62,6 +72,15 @@ export default async function ClaimsPage() {
 
   return (
     <div className="space-y-4">
+      {migrationMissingDocs && (
+        <p className="flex items-start gap-2 rounded-control bg-warning-soft px-3 py-2 text-xs text-warning">
+          <TriangleAlert size={14} strokeWidth={1.75} className="mt-0.5 shrink-0" aria-hidden="true" />
+          <span>
+            Run <b>supabase/migrations/0014_claims_doc_and_incentives.sql</b> in Supabase SQL Editor to enable attaching policy documents on claims.
+          </span>
+        </p>
+      )}
+
       <StatRow>
         <MiniStat index={0} title="Waiting for review" icon={Clock} value={stats.pending} />
         <MiniStat index={1} title="Approved this month" icon={CircleCheck} value={stats.approvedThisMonth} />
@@ -76,9 +95,11 @@ export default async function ClaimsPage() {
         exportName="claims"
         emptyLabel="No claims yet"
         emptyIllustration={<ModuleEmptyCharacter variant="claims" />}
+        dateFilter={{ key: "paymentDate", label: "Payment date", direction: "past" }}
         search="Search ref, vehicle, agent or customer…"
         filters={[
           { key: "status", label: "All statuses", options: STATUS_OPTIONS },
+          { key: "agentName", label: "All agents", options: agentFilterOptions },
           { key: "mode", label: "All payment modes", options: MODE_OPTIONS },
         ]}
         columns={[
@@ -90,6 +111,7 @@ export default async function ClaimsPage() {
           { key: "amount", label: "Amount", type: "inr", align: "right" },
           { key: "customer", label: "Customer" },
           { key: "vehicleKind", label: "Policy" },
+          { key: "doc", label: "Document", type: "link" },
           { key: "status", label: "Status", type: "chip" },
           { key: "submitted", label: "Added", type: "date" },
         ]}

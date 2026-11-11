@@ -4,16 +4,29 @@ import { useEffect, useRef, useState } from "react";
 import { CalendarDays, ChevronDown } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/cn";
-import { addDays, todayIST } from "@/lib/dates";
+import { addDays, daysInMonth, parseISO, shiftMonth, toISO, todayIST } from "@/lib/dates";
 import { formatDate } from "@/lib/format";
 
 export { todayIST };
 
-export type DateMode = "all" | "today" | "7" | "15" | "30" | "60" | "expired" | "custom";
+export type DateMode =
+  | "all"
+  | "today"
+  | "7"
+  | "15"
+  | "30"
+  | "60"
+  | "expired"
+  | "last_7"
+  | "last_15"
+  | "last_30"
+  | "this_month"
+  | "last_month"
+  | "custom";
 export type DateRangeValue = { mode: DateMode; from: string; to: string };
 export const DEFAULT_DATE_RANGE: DateRangeValue = { mode: "all", from: "", to: "" };
 
-const PRESETS: { mode: DateMode; label: string }[] = [
+const FUTURE_PRESETS: { mode: DateMode; label: string }[] = [
   { mode: "today", label: "Today" },
   { mode: "7", label: "Next 7 days" },
   { mode: "15", label: "Next 15 days" },
@@ -21,6 +34,17 @@ const PRESETS: { mode: DateMode; label: string }[] = [
   { mode: "60", label: "Next 60 days" },
   { mode: "expired", label: "Already expired" },
 ];
+
+const PAST_PRESETS: { mode: DateMode; label: string }[] = [
+  { mode: "today", label: "Today" },
+  { mode: "last_7", label: "Last 7 days" },
+  { mode: "last_15", label: "Last 15 days" },
+  { mode: "last_30", label: "Last 30 days" },
+  { mode: "this_month", label: "This month" },
+  { mode: "last_month", label: "Last month" },
+];
+
+const ALL_PRESETS = [...FUTURE_PRESETS, ...PAST_PRESETS];
 
 /** Inclusive date bounds for a selection, or null when no filter applies. A null bound is open-ended. */
 export function rangeOf(value: DateRangeValue, today: string): { from: string | null; to: string | null } | null {
@@ -36,6 +60,20 @@ export function rangeOf(value: DateRangeValue, today: string): { from: string | 
       return { from: today, to: addDays(today, Number(value.mode)) };
     case "expired":
       return { from: null, to: addDays(today, -1) };
+    case "last_7":
+      return { from: addDays(today, -6), to: today };
+    case "last_15":
+      return { from: addDays(today, -14), to: today };
+    case "last_30":
+      return { from: addDays(today, -29), to: today };
+    case "this_month":
+      return { from: `${today.slice(0, 8)}01`, to: today };
+    case "last_month": {
+      const p = parseISO(today);
+      if (!p) return null;
+      const prev = shiftMonth(p.y, p.m, -1);
+      return { from: toISO(prev.y, prev.m, 1), to: toISO(prev.y, prev.m, daysInMonth(prev.y, prev.m)) };
+    }
     case "custom":
       if (!value.from && !value.to) return null;
       // Only a first date: exactly that day.
@@ -52,7 +90,7 @@ function summary(value: DateRangeValue, label: string) {
     if (!value.from) return `${label}: until ${formatDate(value.to)}`;
     return `${label}: ${formatDate(value.from)} – ${formatDate(value.to)}`;
   }
-  return `${label}: ${PRESETS.find((p) => p.mode === value.mode)?.label ?? ""}`;
+  return `${label}: ${ALL_PRESETS.find((p) => p.mode === value.mode)?.label ?? ""}`;
 }
 
 type Span = "day" | "range";
@@ -62,11 +100,14 @@ export function DateRangeFilter({
   label,
   value,
   onChange,
+  direction = "future",
 }: {
   label: string;
   value: DateRangeValue;
   onChange: (value: DateRangeValue) => void;
+  direction?: "future" | "past";
 }) {
+  const presets = direction === "past" ? PAST_PRESETS : FUTURE_PRESETS;
   const [open, setOpen] = useState(false);
   const [span, setSpan] = useState<Span>(
     value.mode === "custom" && value.from && value.to && value.to !== value.from ? "range" : "day",
@@ -133,7 +174,7 @@ export function DateRangeFilter({
               {label} date
             </p>
             <ul>
-              {PRESETS.map((preset) => (
+              {presets.map((preset) => (
                 <li key={preset.mode}>
                   <button
                     type="button"

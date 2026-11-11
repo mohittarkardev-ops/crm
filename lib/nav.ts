@@ -1,4 +1,5 @@
 import {
+  Award,
   Bell,
   FileText,
   LayoutDashboard,
@@ -33,6 +34,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/policies", label: "Policies", icon: FileText, permission: "policies.view" },
   { href: "/renewals", label: "Renewals", icon: RefreshCcw, permission: "renewals.view" },
   { href: "/claims", label: "Claims", icon: Wallet, permission: "claims.view" },
+  { href: "/incentives", label: "Incentives", icon: Award, permission: "incentives.view" },
   { href: "/quotes", label: "Quote Requests", icon: MessageSquareQuote, permission: "quotes.view" },
 
   // Tools & Analytics

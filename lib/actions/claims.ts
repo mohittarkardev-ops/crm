@@ -2,7 +2,19 @@
 
 import { createClient } from "@/lib/supabase/server";
 import type { ActionState } from "@/lib/module-types";
-import { audit, authorize, dbMessage, done, fail, formValues, normalizeMobile, parseDate, text } from "@/lib/actions/shared";
+import {
+  audit,
+  authorize,
+  checkFile,
+  dbMessage,
+  done,
+  fail,
+  formValues,
+  normalizeMobile,
+  parseDate,
+  text,
+  type Db,
+} from "@/lib/actions/shared";
 import { todayIST } from "@/lib/data/helpers";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -22,6 +34,8 @@ function parseClaimForm(formData: FormData, forcedAgentId?: string) {
   const mobileRaw = text(formData, "customerMobile");
   const group = text(formData, "vehicleGroup");
   const saodRaw = text(formData, "saodDueDate");
+  const docType = text(formData, "documentType") || "Policy copy";
+  const fileCheck = checkFile(formData.get("document"));
 
   const fieldErrors: Record<string, string> = {};
   if (!UUID.test(agentId)) fieldErrors.agent = "Choose the agent.";
@@ -46,6 +60,7 @@ function parseClaimForm(formData: FormData, forcedAgentId?: string) {
   if (saodRaw && !saod) fieldErrors.saodDueDate = "Enter a valid date.";
   if (group && !VEHICLE_GROUPS.includes(group)) fieldErrors.vehicleGroup = "Choose 2W, 4W or CV.";
   if (customerName.length > 120) fieldErrors.customerName = "Name is too long.";
+  if (fileCheck.error) fieldErrors.document = fileCheck.error;
 
   return {
     fieldErrors,
@@ -60,8 +75,86 @@ function parseClaimForm(formData: FormData, forcedAgentId?: string) {
       mobile,
       group,
       saod,
+      docType: docType.slice(0, 60),
+      file: fileCheck.file,
     },
   };
+}
+
+/** Stages an uploaded claim document safely under `claims/{claimId}/...` until claim approval. */
+async function stageClaimDocument(
+  db: Db,
+  args: { claimId: string; file: File; docType: string; previousPath?: string | null },
+): Promise<string | null> {
+  const safeName = args.file.name.replace(/[^A-Za-z0-9._-]+/g, "_").slice(-80) || "document";
+  const path = `claims/${args.claimId}/${Date.now()}-${safeName}`;
+
+  const upload = await db.storage
+    .from("DOCUMENTS")
+    .upload(path, args.file, { contentType: args.file.type, upsert: false });
+  if (upload.error) return upload.error.message;
+
+  const update = await db
+    .from("claims")
+    .update({ document_path: path, document_type: args.docType })
+    .eq("id", args.claimId);
+  if (update.error) {
+    await db.storage.from("DOCUMENTS").remove([path]);
+    if (update.error.message.includes("document_path")) {
+      return "Run migration 0014_claims_doc_and_incentives.sql in Supabase before uploading documents on claims.";
+    }
+    return dbMessage(update.error);
+  }
+
+  if (args.previousPath && args.previousPath.startsWith("claims/")) {
+    await db.storage.from("DOCUMENTS").remove([args.previousPath]);
+  }
+  return null;
+}
+
+/**
+ * Publishes a staged `claims/{id}/...` document into `{userId}/{policyId}/...` and `policy_documents`
+ * when a claim is approved, so it immediately appears to the customer in the mobile app.
+ */
+async function publishClaimDocumentToPolicy(
+  db: Db,
+  args: { claimId: string; stagedPath: string; docType: string | null; userId: string; policyId: string },
+): Promise<string | null> {
+  const rawName = args.stagedPath.split("/").pop() ?? "document";
+  const strippedTs = rawName.replace(/^\d{10,}-/, "");
+  const cleanName = strippedTs.replace(/[^A-Za-z0-9._-]+/g, "_").slice(-80) || "document";
+  const finalPath = `${args.userId}/${args.policyId}/${Date.now()}-${cleanName}`;
+
+  const copied = await db.storage.from("DOCUMENTS").copy(args.stagedPath, finalPath);
+  if (copied.error) {
+    // Fallback if server storage copy rejects: stream down and re-upload into the client folder.
+    const dl = await db.storage.from("DOCUMENTS").download(args.stagedPath);
+    if (dl.error || !dl.data) return copied.error.message;
+    const up = await db.storage
+      .from("DOCUMENTS")
+      .upload(finalPath, dl.data, { contentType: dl.data.type || "application/pdf", upsert: false });
+    if (up.error) return up.error.message;
+  }
+
+  const record = await db
+    .from("policy_documents")
+    .insert({
+      policy_id: args.policyId,
+      file_path: finalPath,
+      document_type: args.docType || "Policy copy",
+      uploaded_by: "staff",
+    });
+
+  if (record.error) {
+    await db.storage.from("DOCUMENTS").remove([finalPath]);
+    return dbMessage(record.error);
+  }
+
+  await db.from("claims").update({ document_path: finalPath }).eq("id", args.claimId);
+  if (args.stagedPath.startsWith("claims/")) {
+    await db.storage.from("DOCUMENTS").remove([args.stagedPath]);
+  }
+  return null;
 }
 
 /**
@@ -156,6 +249,19 @@ export async function createClaim(_previous: ActionState, formData: FormData): P
 
   const claimId = inserted.data.id as string;
   await audit(db, staff.id, "claim.create", "claim", claimId);
+
+  if (parsed.file) {
+    const docErr = await stageClaimDocument(db, {
+      claimId,
+      file: parsed.file,
+      docType: parsed.docType,
+    });
+    if (docErr) {
+      return done(`Claim CLM-${claimId.slice(0, 8).toUpperCase()} added, but document could not be uploaded (${docErr}).`);
+    }
+    return done(`Claim CLM-${claimId.slice(0, 8).toUpperCase()} and document added for ${parsed.reg}.`);
+  }
+
   return done(`Claim CLM-${claimId.slice(0, 8).toUpperCase()} added for ${parsed.reg}.`);
 }
 
@@ -171,10 +277,22 @@ export async function updateClaim(id: string, _previous: ActionState, formData: 
   if (Object.keys(fieldErrors).length > 0) return fail("Please fix the highlighted fields.", { fieldErrors, values });
 
   const db = await createClient();
-  const existing = await db.from("claims").select("id, status").eq("id", id).maybeSingle();
-  if (existing.error) return fail(dbMessage(existing.error), { values });
-  if (!existing.data) return fail("That claim could not be found.", { values });
-  if (existing.data.status !== "pending") return fail("Only pending claims can be edited.", { values });
+  let existingDocPath: string | null = null;
+  const existingRes = await db.from("claims").select("id, status, document_path").eq("id", id).maybeSingle();
+  if (existingRes.error) {
+    if (existingRes.error.message.includes("document_path")) {
+      const fb = await db.from("claims").select("id, status").eq("id", id).maybeSingle();
+      if (fb.error) return fail(dbMessage(fb.error), { values });
+      if (!fb.data) return fail("That claim could not be found.", { values });
+      if (fb.data.status !== "pending") return fail("Only pending claims can be edited.", { values });
+    } else {
+      return fail(dbMessage(existingRes.error), { values });
+    }
+  } else {
+    if (!existingRes.data) return fail("That claim could not be found.", { values });
+    if (existingRes.data.status !== "pending") return fail("Only pending claims can be edited.", { values });
+    existingDocPath = (existingRes.data.document_path as string | null) ?? null;
+  }
 
   const agent = await db
     .from("staff_users")
@@ -255,12 +373,25 @@ export async function updateClaim(id: string, _previous: ActionState, formData: 
   if ((updated.data ?? []).length === 0) return fail("This claim was already reviewed.", { values });
 
   await audit(db, staff.id, "claim.update", "claim", id);
+
+  if (parsed.file) {
+    const docErr = await stageClaimDocument(db, {
+      claimId: id,
+      file: parsed.file,
+      docType: parsed.docType,
+      previousPath: existingDocPath,
+    });
+    if (docErr) return done(`Claim updated, but document could not be uploaded (${docErr}).`);
+    return done(`Claim and policy document updated for ${parsed.reg}.`);
+  }
+
   return done(`Claim updated for ${parsed.reg}.`);
 }
 
 /**
  * Approves a pending claim. When the vehicle was not in Policies, the policy is created first (finding or creating the
- * client by mobile number), then the claim is marked approved. If the second step fails the new policy is removed again.
+ * client by mobile number), then the claim is marked approved. Any staged claim document is published into the
+ * policy's DOCUMENTS folder so the customer immediately sees it in the mobile app.
  */
 export async function approveClaim(id: string): Promise<ActionState> {
   const auth = await authorize("claims.approve");
@@ -269,24 +400,56 @@ export async function approveClaim(id: string): Promise<ActionState> {
   if (!UUID.test(id)) return fail("That claim could not be found.");
 
   const db = await createClient();
-  const found = await db
+  type ApproveClaimRow = {
+    id: string;
+    status: string;
+    policy_id: string | null;
+    vehicle_reg_no: string;
+    customer_name: string | null;
+    customer_mobile: string | null;
+    saod_due_date: string | null;
+    vehicle_category: string | null;
+    document_path?: string | null;
+    document_type?: string | null;
+  };
+  let claim: ApproveClaimRow | null = null;
+
+  const foundExt = await db
     .from("claims")
-    .select("id, status, policy_id, vehicle_reg_no, customer_name, customer_mobile, saod_due_date, vehicle_category")
+    .select(
+      "id, status, policy_id, vehicle_reg_no, customer_name, customer_mobile, saod_due_date, vehicle_category, document_path, document_type",
+    )
     .eq("id", id)
     .maybeSingle();
-  if (found.error) return fail(dbMessage(found.error));
-  const claim = found.data;
+
+  if (foundExt.error) {
+    if (foundExt.error.message.includes("document_path")) {
+      const fb = await db
+        .from("claims")
+        .select("id, status, policy_id, vehicle_reg_no, customer_name, customer_mobile, saod_due_date, vehicle_category")
+        .eq("id", id)
+        .maybeSingle();
+      if (fb.error) return fail(dbMessage(fb.error));
+      claim = (fb.data as ApproveClaimRow | null) ?? null;
+    } else {
+      return fail(dbMessage(foundExt.error));
+    }
+  } else {
+    claim = (foundExt.data as ApproveClaimRow | null) ?? null;
+  }
+
   if (!claim) return fail("That claim could not be found.");
   if (claim.status !== "pending") return fail("This claim was already reviewed.");
 
-  let policyId = (claim.policy_id as string | null) ?? null;
+  let policyId = claim.policy_id ?? null;
   let createdPolicyId: string | null = null;
+  let policyUserId: string | null = null;
 
   if (!policyId) {
-    const name = ((claim.customer_name as string | null) ?? "").trim();
-    const mobile = claim.customer_mobile ? normalizeMobile(claim.customer_mobile as string) : null;
-    const saod = (claim.saod_due_date as string | null) ?? null;
-    const group = (claim.vehicle_category as string | null) ?? null;
+    const name = (claim.customer_name ?? "").trim();
+    const mobile = claim.customer_mobile ? normalizeMobile(claim.customer_mobile) : null;
+    const saod = claim.saod_due_date ?? null;
+    const group = claim.vehicle_category ?? null;
     if (!name || !mobile || !saod || !group || !TYPE_FOR_GROUP[group]) {
       return fail("This vehicle is not in Policies and the claim lacks the customer name, mobile, vehicle group or own-damage due date.");
     }
@@ -307,6 +470,7 @@ export async function approveClaim(id: string): Promise<ActionState> {
       if (user.error) return fail(dbMessage(user.error));
       userId = user.data.id as string;
     }
+    policyUserId = userId;
 
     const policy = await db
       .from("policies")
@@ -329,6 +493,9 @@ export async function approveClaim(id: string): Promise<ActionState> {
     if (policy.error) return fail(dbMessage(policy.error));
     policyId = policy.data.id as string;
     createdPolicyId = policyId;
+  } else if (claim.document_path) {
+    const existingPolicy = await db.from("policies").select("user_id").eq("id", policyId).maybeSingle();
+    policyUserId = (existingPolicy.data?.user_id as string | undefined) ?? null;
   }
 
   const updated = await db
@@ -343,7 +510,28 @@ export async function approveClaim(id: string): Promise<ActionState> {
   }
 
   await audit(db, staff.id, "claim.approve", "claim", id);
-  return done(createdPolicyId ? "Claim approved and a policy was added for this vehicle." : "Claim approved.");
+
+  let docNote = "";
+  if (claim.document_path && policyId && policyUserId) {
+    const pubErr = await publishClaimDocumentToPolicy(db, {
+      claimId: id,
+      stagedPath: claim.document_path,
+      docType: claim.document_type ?? "Policy copy",
+      userId: policyUserId,
+      policyId,
+    });
+    if (pubErr) {
+      docNote = ` Document could not be published automatically (${pubErr}).`;
+    } else {
+      await audit(db, staff.id, "document.upload", "policy", policyId);
+      docNote = " Policy document published to the customer's policy.";
+    }
+  }
+
+  const base = createdPolicyId
+    ? "Claim approved and a policy was added for this vehicle."
+    : "Claim approved.";
+  return done(`${base}${docNote}`);
 }
 
 /** Rejects a pending claim. A rejected claim no longer blocks a new claim for the same vehicle. */
@@ -367,7 +555,7 @@ export async function rejectClaim(id: string): Promise<ActionState> {
   return done("Claim rejected.");
 }
 
-/** Permanently deletes a rejected claim. Admin only (enforced by database RLS as well). */
+/** Permanently deletes a rejected claim (plus any staged unapproved document). Admin only. */
 export async function deleteClaim(id: string): Promise<ActionState> {
   const auth = await authorize("claims.approve");
   if (!auth.staff) return auth.error;
@@ -376,14 +564,30 @@ export async function deleteClaim(id: string): Promise<ActionState> {
   if (!UUID.test(id)) return fail("That claim could not be found.");
 
   const db = await createClient();
-  const found = await db.from("claims").select("id, status").eq("id", id).maybeSingle();
-  if (found.error) return fail(dbMessage(found.error));
-  if (!found.data) return fail("That claim could not be found.");
-  if (found.data.status !== "rejected") return fail("Only rejected claims can be deleted.");
+  let stagedDocPath: string | null = null;
+  const foundExt = await db.from("claims").select("id, status, document_path").eq("id", id).maybeSingle();
+  if (foundExt.error) {
+    if (foundExt.error.message.includes("document_path")) {
+      const fb = await db.from("claims").select("id, status").eq("id", id).maybeSingle();
+      if (fb.error) return fail(dbMessage(fb.error));
+      if (!fb.data) return fail("That claim could not be found.");
+      if (fb.data.status !== "rejected") return fail("Only rejected claims can be deleted.");
+    } else {
+      return fail(dbMessage(foundExt.error));
+    }
+  } else {
+    if (!foundExt.data) return fail("That claim could not be found.");
+    if (foundExt.data.status !== "rejected") return fail("Only rejected claims can be deleted.");
+    stagedDocPath = (foundExt.data.document_path as string | null) ?? null;
+  }
 
   const removed = await db.from("claims").delete().eq("id", id).eq("status", "rejected").select("id");
   if (removed.error) return fail(dbMessage(removed.error));
   if ((removed.data ?? []).length === 0) return fail("That claim could not be deleted.");
+
+  if (stagedDocPath && stagedDocPath.startsWith("claims/")) {
+    await db.storage.from("DOCUMENTS").remove([stagedDocPath]);
+  }
 
   await audit(db, staff.id, "claim.delete", "claim", id);
   return done("Rejected claim deleted.");
