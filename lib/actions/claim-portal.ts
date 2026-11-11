@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { verifyPortalCode } from "@/lib/claim-portal";
-import { normalizeMobile, parseDate } from "@/lib/actions/shared";
+import { checkFile, normalizeMobile, parseDate, text } from "@/lib/actions/shared";
 import { addDays, todayIST } from "@/lib/data/helpers";
 
 /*
@@ -11,7 +11,7 @@ import { addDays, todayIST } from "@/lib/data/helpers";
  * checks it again; the database is reached with the service key (the public API has no table access at all).
  */
 
-const PAYMENT_MODES = ["Online", "NEFT", "Cheque", "GPay(UPI)"];
+const PAYMENT_MODES = ["Online", "NEFT", "Cheque", "GPay(UPI)", "Cash"];
 const VEHICLE_GROUPS = ["2W", "4W", "CV"];
 const NO_KEY = "The server is missing its service key (SUPABASE_SERVICE_ROLE_KEY). Ask the admin.";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -24,23 +24,12 @@ export type PortalLookup =
   | { ok: true; state: "unknown"; vehicle: string }
   | { ok: false; error: string };
 
-export type PortalSubmitInput = {
-  employeeId: string;
-  vehicleRegNo: string;
-  paymentDate: string;
-  paymentMode: string;
-  remarks: string;
-  customerName: string;
-  customerMobile: string;
-  vehicleGroup: string;
-  saodDueDate: string;
-};
-
 export type PortalResult = {
   ok: boolean;
   message?: string;
   claimId?: string;
   refCode?: string;
+  documentAttached?: boolean;
   error?: string;
   fieldErrors?: Record<string, string>;
 };
@@ -127,37 +116,53 @@ export async function lookupClaimVehicle(code: string, regInput: string): Promis
 }
 
 /**
- * Saves the claim. The vehicle is checked again here. A known vehicle becomes a pending claim linked to its policy; an
- * unknown vehicle becomes a pending claim with the customer details, which the admin verifies on the Claims page.
+ * Saves the claim from the public agent portal (with optional payment amount and policy document upload).
+ * A known vehicle becomes a pending claim linked to its policy; an unknown vehicle carries customer details for admin approval.
+ * Any attached policy document stages cleanly in DOCUMENTS under `claims/{id}/...` and publishes to the customer app on approval.
  */
-export async function submitPortalClaim(code: string, input: PortalSubmitInput): Promise<PortalResult> {
-  const check = await verifyPortalCode(String(code ?? ""));
+export async function submitPortalClaim(formData: FormData): Promise<PortalResult> {
+  const code = text(formData, "code");
+  const check = await verifyPortalCode(code);
   if (!check.ok) return { ok: false, error: check.error };
   const db = createAdminClient();
   if (!db) return { ok: false, error: NO_KEY };
 
   const today = todayIST();
-  const reg = normalizeReg(String(input.vehicleRegNo ?? ""));
-  const paymentDate = parseDate(String(input.paymentDate ?? ""));
-  const remarks = String(input.remarks ?? "").trim();
-  const customerName = String(input.customerName ?? "").trim();
-  const mobileRaw = String(input.customerMobile ?? "").trim();
+  const employeeId = text(formData, "employeeId");
+  const reg = normalizeReg(text(formData, "vehicleRegNo"));
+  const paymentDate = parseDate(text(formData, "paymentDate"));
+  const paymentMode = text(formData, "paymentMode");
+  const amountRaw = text(formData, "amount").replace(/,/g, "");
+  const remarks = text(formData, "remarks");
+  const customerName = text(formData, "customerName");
+  const mobileRaw = text(formData, "customerMobile");
   const mobile = mobileRaw ? normalizeMobile(mobileRaw) : null;
-  const saodRaw = String(input.saodDueDate ?? "").trim();
+  const saodRaw = text(formData, "saodDueDate");
   const saod = saodRaw ? parseDate(saodRaw) : null;
-  const group = String(input.vehicleGroup ?? "");
+  const group = text(formData, "vehicleGroup");
+  const docType = (text(formData, "documentType") || "Policy copy").slice(0, 60);
+  const fileCheck = checkFile(formData.get("document"));
 
   const fieldErrors: Record<string, string> = {};
-  if (!UUID.test(String(input.employeeId ?? ""))) fieldErrors.employeeId = "Choose your name.";
+  if (!UUID.test(employeeId)) fieldErrors.employeeId = "Choose your name.";
   if (!REG_PATTERN.test(reg)) fieldErrors.vehicleRegNo = "Enter a valid registration number.";
   if (!paymentDate || paymentDate > today || paymentDate < addDays(today, -365)) {
     fieldErrors.paymentDate = "Enter the payment date (today or earlier, within a year).";
   }
-  if (!PAYMENT_MODES.includes(input.paymentMode)) fieldErrors.paymentMode = "Choose how it was paid.";
+  if (!PAYMENT_MODES.includes(paymentMode)) fieldErrors.paymentMode = "Choose how it was paid.";
+
+  let amount: number | null = null;
+  if (amountRaw) {
+    amount = Number(amountRaw);
+    if (!Number.isFinite(amount) || amount < 0 || amount > 1_000_000_000) {
+      fieldErrors.amount = "Enter a valid payment amount.";
+    }
+  }
   if (remarks.length > 500) fieldErrors.remarks = "Use 500 characters or fewer.";
+  if (fileCheck.error) fieldErrors.document = fileCheck.error;
   if (Object.keys(fieldErrors).length > 0) return { ok: false, error: "Please fix the highlighted fields.", fieldErrors };
 
-  const agent = await db.from("staff_users").select("id, full_name").eq("id", input.employeeId).eq("is_active", true).maybeSingle();
+  const agent = await db.from("staff_users").select("id, full_name").eq("id", employeeId).eq("is_active", true).maybeSingle();
   if (agent.error) return { ok: false, error: "Could not check the employee. Please try again." };
   if (!agent.data) return { ok: false, error: "That employee is not available.", fieldErrors: { employeeId: "Not available." } };
 
@@ -194,7 +199,8 @@ export async function submitPortalClaim(code: string, input: PortalSubmitInput):
       vehicle_reg_no: reg,
       policy_id: policyId,
       payment_date: paymentDate,
-      payment_mode: input.paymentMode,
+      payment_mode: paymentMode,
+      payment_amount: amount,
       remarks: remarks || null,
       customer_name: policyId ? null : customerName,
       customer_mobile: policyId ? null : mobile,
@@ -213,19 +219,50 @@ export async function submitPortalClaim(code: string, input: PortalSubmitInput):
   const claimId = inserted.data.id as string;
   const refCode = `CLM-${claimId.slice(0, 8).toUpperCase()}`;
 
+  let documentAttached = false;
+  let docNote = "";
+  if (fileCheck.file) {
+    const safeName = fileCheck.file.name.replace(/[^A-Za-z0-9._-]+/g, "_").slice(-80) || "document";
+    const stagedPath = `claims/${claimId}/${Date.now()}-${safeName}`;
+    const up = await db.storage
+      .from("DOCUMENTS")
+      .upload(stagedPath, fileCheck.file, { contentType: fileCheck.file.type, upsert: false });
+
+    if (up.error) {
+      docNote = ` Policy document could not be uploaded (${up.error.message}).`;
+    } else {
+      const upd = await db
+        .from("claims")
+        .update({ document_path: stagedPath, document_type: docType })
+        .eq("id", claimId);
+      if (upd.error) {
+        await db.storage.from("DOCUMENTS").remove([stagedPath]);
+        docNote = upd.error.message.includes("document_path")
+          ? " Note: ask admin to run migration 0014 so policy documents can attach to claims."
+          : " Policy document could not be saved.";
+      } else {
+        documentAttached = true;
+      }
+    }
+  }
+
   try {
     await db.from("audit_logs").insert({ staff_id: agent.data.id, action: "claim.submit", entity: "claim", entity_id: claimId });
   } catch {
     /* the audit trail must not break a save */
   }
   revalidatePath("/claims");
+  revalidatePath("/incentives");
+
+  const baseMessage = policyId
+    ? `Claim ${refCode} submitted for ${reg}. The admin will review it.`
+    : `Claim ${refCode} sent for admin approval. ${reg} will be verified and added by the admin.`;
 
   return {
     ok: true,
     claimId,
     refCode,
-    message: policyId
-      ? `Claim ${refCode} submitted for ${reg}. The admin will review it.`
-      : `Claim ${refCode} sent for admin approval. ${reg} will be verified and added by the admin.`,
+    documentAttached,
+    message: `${baseMessage}${docNote}`,
   };
 }

@@ -8,6 +8,9 @@ import {
   Car,
   PlusCircle,
   ArrowRight,
+  UploadCloud,
+  FileText,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
@@ -26,13 +29,18 @@ import {
 } from "@/lib/actions/claim-portal";
 import { cn } from "@/lib/cn";
 import { todayIST } from "@/lib/dates";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatINR } from "@/lib/format";
+import { DOCUMENT_TYPE_OPTIONS } from "@/lib/options";
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL } from "@/lib/upload-limits";
+
+const ALLOWED_DOC_TYPES = ["application/pdf", "image/jpeg", "image/png", "image/webp"];
 
 const PAYMENT_MODES = [
   { value: "Online", label: "Online" },
   { value: "GPay(UPI)", label: "GPay (UPI)" },
   { value: "NEFT", label: "NEFT" },
   { value: "Cheque", label: "Cheque" },
+  { value: "Cash", label: "Cash" },
 ];
 
 const VEHICLE_CATEGORIES = [
@@ -55,8 +63,12 @@ export function ClaimPortal() {
   const [employeeId, setEmployeeId] = useState("");
   const [regInput, setRegInput] = useState("");
   const [paymentMode, setPaymentMode] = useState("Online");
+  const [amount, setAmount] = useState("");
   const [remarks, setRemarks] = useState("");
   const [paymentDate, setPaymentDate] = useState(todayIST());
+  const [documentFile, setDocumentFile] = useState<File | null>(null);
+  const [documentType, setDocumentType] = useState("Policy copy");
+  const [isDraggingDoc, setIsDraggingDoc] = useState(false);
 
   // Unknown vehicle fields
   const [customerName, setCustomerName] = useState("");
@@ -72,9 +84,37 @@ export function ClaimPortal() {
     message: string;
     refCode: string;
     isUnknown: boolean;
+    amountNum: number | null;
+    documentName: string | null;
+    documentAttached: boolean;
   } | null>(null);
 
   const regInputRef = useRef<HTMLInputElement>(null);
+  const docInputRef = useRef<HTMLInputElement>(null);
+
+  function pickDocumentFile(file: File | null) {
+    if (!file) return;
+    if (!ALLOWED_DOC_TYPES.includes(file.type)) {
+      setDocumentFile(null);
+      if (docInputRef.current) docInputRef.current.value = "";
+      setErrors((prev) => ({
+        ...prev,
+        document: "Documents must be a PDF, JPG, PNG or WebP file.",
+      }));
+      return;
+    }
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setDocumentFile(null);
+      if (docInputRef.current) docInputRef.current.value = "";
+      setErrors((prev) => ({
+        ...prev,
+        document: `That file is ${(file.size / 1024 / 1024).toFixed(1)} MB. Choose a file of ${MAX_UPLOAD_LABEL} or less.`,
+      }));
+      return;
+    }
+    setDocumentFile(file);
+    setErrors((prev) => ({ ...prev, document: "" }));
+  }
 
   // 1. Unlock Portal with Access Code
   async function handleUnlock(event: React.FormEvent) {
@@ -133,24 +173,34 @@ export function ClaimPortal() {
 
     try {
       const cleanReg = regInput.toUpperCase().replace(/\s+/g, "");
-      const res = await submitPortalClaim(code, {
-        employeeId,
-        vehicleRegNo: cleanReg,
-        paymentDate,
-        paymentMode,
-        remarks,
-        customerName,
-        customerMobile,
-        vehicleGroup,
-        saodDueDate,
-      });
+      const fd = new FormData();
+      fd.set("code", code);
+      fd.set("employeeId", employeeId);
+      fd.set("vehicleRegNo", cleanReg);
+      fd.set("paymentDate", paymentDate);
+      fd.set("paymentMode", paymentMode);
+      fd.set("amount", amount.trim());
+      fd.set("remarks", remarks);
+      fd.set("customerName", customerName);
+      fd.set("customerMobile", customerMobile);
+      fd.set("vehicleGroup", vehicleGroup);
+      fd.set("saodDueDate", saodDueDate);
+      fd.set("documentType", documentType);
+      if (documentFile) fd.set("document", documentFile);
+
+      const res = await submitPortalClaim(fd);
 
       if (res.ok) {
+        const cleanAmt = amount.trim().replace(/,/g, "");
+        const parsedAmt = cleanAmt && Number.isFinite(Number(cleanAmt)) ? Number(cleanAmt) : null;
         setSubmitSuccess({
           vehicle: cleanReg,
           message: res.message || "Claim submitted successfully.",
           refCode: res.refCode || "",
           isUnknown: lookup.state === "unknown",
+          amountNum: parsedAmt,
+          documentName: documentFile ? documentFile.name : null,
+          documentAttached: Boolean(res.documentAttached),
         });
       } else {
         setErrors(res.fieldErrors || { form: res.error || "Failed to submit claim." });
@@ -168,7 +218,11 @@ export function ClaimPortal() {
   function handleClaimAnother() {
     setRegInput("");
     setLookup(null);
+    setAmount("");
     setRemarks("");
+    setDocumentFile(null);
+    setDocumentType("Policy copy");
+    if (docInputRef.current) docInputRef.current.value = "";
     setCustomerName("");
     setCustomerMobile("");
     setVehicleGroup("");
@@ -286,6 +340,22 @@ export function ClaimPortal() {
             <span className="text-ink-muted">Payment Mode</span>
             <span className="font-medium text-ink">{paymentMode}</span>
           </div>
+          {submitSuccess.amountNum !== null && (
+            <div className="flex items-center justify-between border-b border-divider/60 pb-2 text-xs">
+              <span className="text-ink-muted">Payment Amount</span>
+              <span className="font-semibold text-ink tabular-nums">{formatINR(submitSuccess.amountNum)}</span>
+            </div>
+          )}
+          {submitSuccess.documentName && (
+            <div className="flex items-center justify-between border-b border-divider/60 pb-2 text-xs">
+              <span className="text-ink-muted">Policy Document</span>
+              <Chip tone={submitSuccess.documentAttached ? "positive" : "warning"}>
+                {submitSuccess.documentAttached
+                  ? `Queued (${submitSuccess.documentName})`
+                  : "Upload skipped"}
+              </Chip>
+            </div>
+          )}
           <div className="flex items-center justify-between text-xs">
             <span className="text-ink-muted">Status</span>
             <Chip tone={submitSuccess.isUnknown ? "warning" : "positive"}>
@@ -632,13 +702,35 @@ export function ClaimPortal() {
       {/* ------------------------------------------------------------------ */}
       {/* Card 3: Payment & Claim Transaction Details */}
       {/* ------------------------------------------------------------------ */}
-      <Card className="p-5 sm:p-6">
+      <Card className="p-5 sm:p-6 space-y-5">
         <CardHeader
           title="Payment & Claim Transaction Details"
           action={<Chip tone="accent">Step 2 of 2</Chip>}
         />
 
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <label className="flex flex-col gap-1.5">
+            <span className="text-xs font-medium text-ink-muted">Amount (₹)</span>
+            <input
+              type="number"
+              min={0}
+              step="any"
+              inputMode="decimal"
+              value={amount}
+              onChange={(e) => {
+                setAmount(e.target.value);
+                if (errors.amount) setErrors((prev) => ({ ...prev, amount: "" }));
+              }}
+              placeholder="e.g. 4500"
+              className={cn(CONTROL, "h-10 tabular-nums", errors.amount && "border-negative")}
+            />
+            {errors.amount ? (
+              <span className="text-xs text-negative">{errors.amount}</span>
+            ) : (
+              <span className="text-[11px] text-ink-faint">Total premium / amount received.</span>
+            )}
+          </label>
+
           <div className="flex flex-col gap-1.5">
             <span className="text-xs font-medium text-ink-muted">
               Payment Date <span className="text-negative">*</span>
@@ -678,12 +770,102 @@ export function ClaimPortal() {
               type="text"
               value={remarks}
               onChange={(e) => setRemarks(e.target.value)}
-              placeholder="e.g. UTR12345678 or Policy Renewal"
+              placeholder="e.g. UTR12345678"
               maxLength={500}
               className={cn(CONTROL, "h-10")}
             />
-            <span className="text-[11px] text-ink-faint">Optional reference note or UTR number.</span>
+            <span className="text-[11px] text-ink-faint">Optional reference note or UTR.</span>
           </label>
+        </div>
+
+        {/* Policy Document Upload (auto-published to customer app once Admin approves) */}
+        <div className="border-t border-divider pt-4 grid gap-4 sm:grid-cols-12 items-start">
+          <div className="sm:col-span-8 flex flex-col gap-1.5">
+            <span className="text-xs font-medium text-ink-muted">
+              Policy Document Upload <span className="font-normal text-ink-faint">(Optional)</span>
+            </span>
+
+            {documentFile ? (
+              <div className="flex h-11 items-center justify-between gap-2 rounded-control border border-ink/25 bg-accent-soft/35 px-3 text-xs">
+                <span className="flex min-w-0 items-center gap-2 font-medium text-ink">
+                  <FileText size={15} className="shrink-0 text-ink" />
+                  <span className="truncate">{documentFile.name}</span>
+                  <span className="shrink-0 text-[11px] text-ink-muted tabular-nums">
+                    ({(documentFile.size / 1024).toFixed(0)} KB)
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  aria-label="Remove policy document"
+                  onClick={() => {
+                    setDocumentFile(null);
+                    if (docInputRef.current) docInputRef.current.value = "";
+                  }}
+                  className="grid size-7 shrink-0 place-items-center rounded-control text-ink-muted hover:bg-surface-strong hover:text-ink"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            ) : (
+              <div
+                onClick={() => docInputRef.current?.click()}
+                onDragEnter={(e) => {
+                  if (!e.dataTransfer?.types?.includes("Files")) return;
+                  e.preventDefault();
+                  setIsDraggingDoc(true);
+                }}
+                onDragOver={(e) => {
+                  if (!e.dataTransfer?.types?.includes("Files")) return;
+                  e.preventDefault();
+                }}
+                onDragLeave={() => setIsDraggingDoc(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setIsDraggingDoc(false);
+                  pickDocumentFile(e.dataTransfer.files?.[0] ?? null);
+                }}
+                className={cn(
+                  "flex cursor-pointer items-center gap-3 rounded-control border border-dashed px-3.5 py-2.5 text-xs transition-colors",
+                  errors.document
+                    ? "border-negative bg-negative-soft/30"
+                    : isDraggingDoc
+                      ? "border-accent-strong bg-accent-soft/45"
+                      : "border-divider bg-surface-muted/30 hover:border-ink/50 hover:bg-surface-muted/50",
+                )}
+              >
+                <UploadCloud size={18} className="shrink-0 text-ink-muted" />
+                <div className="min-w-0">
+                  <span className="block font-medium text-ink">
+                    Click or drop policy PDF / image here
+                  </span>
+                  <span className="block text-[11px] text-ink-faint">
+                    PDF, JPG, PNG or WebP · max {MAX_UPLOAD_LABEL}. Shows in customer app once Admin approves.
+                  </span>
+                </div>
+              </div>
+            )}
+
+            <input
+              ref={docInputRef}
+              type="file"
+              accept=".pdf,.jpg,.jpeg,.png,.webp"
+              onChange={(e) => pickDocumentFile(e.target.files?.[0] ?? null)}
+              className="hidden"
+            />
+            {errors.document && (
+              <span className="text-xs font-medium text-negative">{errors.document}</span>
+            )}
+          </div>
+
+          <div className="sm:col-span-4 flex flex-col gap-1.5">
+            <span className="text-xs font-medium text-ink-muted">Document Type</span>
+            <CustomSelect
+              value={documentType}
+              onChange={(val) => setDocumentType(val || "Policy copy")}
+              options={DOCUMENT_TYPE_OPTIONS}
+              className="h-11 text-xs"
+            />
+          </div>
         </div>
       </Card>
 
