@@ -106,6 +106,7 @@ Deno.serve(async (req) => {
   const expiresAtIso = new Date(now + OTP_TTL_MS).toISOString();
   const hashSecret = (Deno.env.get("OTP_HASH_SECRET") ?? "").trim() || serviceKey;
 
+  // Enforce per-IP request ceiling to protect MSG91 credits against rotating-phone floods.
   const clientIp = getClientIp(req);
   let ipHash: string | null = null;
   let nextIpCount = 1;
@@ -119,6 +120,7 @@ Deno.serve(async (req) => {
       .eq("ip_hash", ipHash)
       .maybeSingle();
 
+    // Only enforce if migration 0019 table exists cleanly.
     if (!ipErr && ipRow) {
       const ipWinMs = new Date(ipRow.window_started_at as string).getTime();
       if (now - ipWinMs < IP_WINDOW_MS) {
@@ -136,18 +138,31 @@ Deno.serve(async (req) => {
         ipWindowStart = ipRow.window_started_at as string;
       }
     } else if (ipErr) {
-      ipHash = null;
+      ipHash = null; // Skip update cleanly if 0019 isn't applied yet.
     }
   }
 
-  const { data: existing, error: fetchErr } = await admin
-    .from("whatsapp_otps")
+  const { data: limitRow, error: limitErr } = await admin
+    .from("whatsapp_otp_phone_limits")
     .select("resend_count, window_started_at, last_sent_at")
     .eq("phone", phone)
     .maybeSingle();
 
-  if (fetchErr) {
-    return json({ ok: false, error: fetchErr.message }, 500);
+  let existing: { resend_count: unknown; window_started_at: unknown; last_sent_at: unknown } | null =
+    !limitErr ? limitRow : null;
+
+  if (limitErr) {
+    // Backwards-compatible fallback before migration 0021 is applied.
+    const { data: legacyRow, error: fetchErr } = await admin
+      .from("whatsapp_otps")
+      .select("resend_count, window_started_at, last_sent_at")
+      .eq("phone", phone)
+      .maybeSingle();
+
+    if (fetchErr) {
+      return json({ ok: false, error: fetchErr.message }, 500);
+    }
+    existing = legacyRow;
   }
 
   let resendCount = 1;
@@ -283,6 +298,18 @@ Deno.serve(async (req) => {
     return json({ ok: false, error: upsertErr.message }, 500);
   }
 
+  if (!limitErr) {
+    await admin.from("whatsapp_otp_phone_limits").upsert(
+      {
+        phone,
+        resend_count: resendCount,
+        window_started_at: windowStartedAt,
+        last_sent_at: nowIso,
+      },
+      { onConflict: "phone" },
+    );
+  }
+
   if (ipHash) {
     await admin.from("whatsapp_otp_ip_limits").upsert(
       {
@@ -295,8 +322,12 @@ Deno.serve(async (req) => {
     );
   }
 
+  // Opportunistically clean stale expired OTP rows and finished 1-hour rate windows.
   const staleCutoff = new Date(now - 60 * 60 * 1000).toISOString();
   await admin.from("whatsapp_otps").delete().lt("expires_at", staleCutoff);
+  if (!limitErr) {
+    await admin.from("whatsapp_otp_phone_limits").delete().lt("window_started_at", staleCutoff);
+  }
 
   return json({
     ok: true,

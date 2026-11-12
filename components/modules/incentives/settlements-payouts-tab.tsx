@@ -240,6 +240,8 @@ export function SettlementsPayoutsTab({ data }: { data: IncentivesDashboardPaylo
       "Monthly Target",
       "Eligible Claims",
       "Provisional ₹",
+      "Monthly Milestone ₹",
+      "Stretch Uplift ₹",
       "Adjustment ₹",
       "Eligibility",
       "Workflow Status",
@@ -255,6 +257,8 @@ export function SettlementsPayoutsTab({ data }: { data: IncentivesDashboardPaylo
       s.monthlyTarget,
       s.eligibleClaims,
       s.provisionalAmount,
+      s.monthlyMilestoneBonus,
+      s.stretchBonusAmount,
       s.adjustmentAmount,
       s.eligibilityStatus,
       s.status,
@@ -469,6 +473,12 @@ export function SettlementsPayoutsTab({ data }: { data: IncentivesDashboardPaylo
                       </td>
                       <td className="py-2 pr-3 text-right font-semibold text-ink tabular-nums">
                         {formatINR(s.finalizedPayable)}
+                        {(s.monthlyMilestoneBonus > 0 || s.stretchBonusAmount > 0) && (
+                          <span className="block text-[10px] font-normal text-accent-text">
+                            {s.monthlyMilestoneBonus > 0 ? `+${formatINR(s.monthlyMilestoneBonus)} mo ` : ""}
+                            {s.stretchBonusAmount > 0 ? `+${formatINR(s.stretchBonusAmount)} stretch` : ""}
+                          </span>
+                        )}
                         {s.adjustmentAmount !== 0 && (
                           <span className="block text-[10px] text-ink-faint">
                             Adj {s.adjustmentAmount > 0 ? `+${formatINR(s.adjustmentAmount)}` : formatINR(s.adjustmentAmount)}

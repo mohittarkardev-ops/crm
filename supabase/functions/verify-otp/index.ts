@@ -85,49 +85,48 @@ Deno.serve(async (req) => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  const { data: row, error: fetchErr } = await admin
-    .from("whatsapp_otps")
-    .select("otp_hash, expires_at, attempts")
-    .eq("phone", phone)
-    .maybeSingle();
+  type ClaimRow = { status: string; otp_hash: string | null; attempts_used: number | null };
+  const { data: claimData, error: claimErr } = await admin.rpc("claim_whatsapp_otp_attempt", {
+    p_phone: phone,
+    p_max: MAX_ATTEMPTS,
+  });
 
-  if (fetchErr) {
-    return json({ ok: false, error: fetchErr.message }, 500);
+  if (claimErr) {
+    return json({ ok: false, error: claimErr.message }, 500);
   }
-  if (!row) {
+
+  const claimList = Array.isArray(claimData) ? claimData : claimData ? [claimData] : [];
+  const claim = (claimList[0] as ClaimRow | undefined) ?? null;
+
+  if (!claim || claim.status === "missing") {
     return json({ ok: false, error: "Verification code expired or not requested. Please request a new code." }, 400);
   }
-
-  if (new Date(row.expires_at as string).getTime() <= Date.now()) {
-    await admin.from("whatsapp_otps").delete().eq("phone", phone);
+  if (claim.status === "expired") {
     return json({ ok: false, error: "That code has expired. Tap Resend for a new WhatsApp code." }, 400);
   }
-
-  const attempts = Number(row.attempts ?? 0);
-  if (attempts >= MAX_ATTEMPTS) {
-    await admin.from("whatsapp_otps").delete().eq("phone", phone);
+  if (claim.status === "locked") {
     return json({ ok: false, error: "Too many incorrect attempts. Please request a new code." }, 429);
   }
 
+  const storedHash = String(claim.otp_hash ?? "");
+  const attemptsUsed = Number(claim.attempts_used ?? MAX_ATTEMPTS);
   const hashSecret = (Deno.env.get("OTP_HASH_SECRET") ?? "").trim() || serviceKey;
   const candidateHash = await hashOtp(phone, otp, hashSecret);
 
-  if (!constantTimeEquals(candidateHash, String(row.otp_hash))) {
-    const nextAttempts = attempts + 1;
-    if (nextAttempts >= MAX_ATTEMPTS) {
-      await admin.from("whatsapp_otps").delete().eq("phone", phone);
+  if (!storedHash || !constantTimeEquals(candidateHash, storedHash)) {
+    if (attemptsUsed >= MAX_ATTEMPTS) {
+      await admin.from("whatsapp_otps").delete().eq("phone", phone).eq("otp_hash", storedHash);
       return json({ ok: false, error: "Too many incorrect attempts. Please request a new code." }, 429);
     }
-    await admin.from("whatsapp_otps").update({ attempts: nextAttempts }).eq("phone", phone);
-    const left = MAX_ATTEMPTS - nextAttempts;
+    const left = MAX_ATTEMPTS - attemptsUsed;
     return json(
       { ok: false, error: `Wrong verification code (${left} attempt${left === 1 ? "" : "s"} left).` },
       400,
     );
   }
 
-  // Consume code immediately on valid match.
-  await admin.from("whatsapp_otps").delete().eq("phone", phone);
+  // Consume code immediately on valid match without clearing persistent rate limits.
+  await admin.from("whatsapp_otps").delete().eq("phone", phone).eq("otp_hash", storedHash);
 
   const e164Phone = `+91${phone}`;
   const syntheticEmail = `${phone}@wa.securedrive.local`;
@@ -172,6 +171,7 @@ Deno.serve(async (req) => {
       user_metadata: cleanName ? { full_name: cleanName } : undefined,
     });
     if (createErr) {
+      // Handle rare concurrent sign-up collision cleanly.
       const retry = await lookupExisting().catch(() => null);
       if (!retry?.id) {
         return json({ ok: false, error: createErr.message }, 500);

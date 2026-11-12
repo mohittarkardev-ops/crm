@@ -9,14 +9,17 @@ import { todayIST } from "@/lib/data/helpers";
 import { addDays } from "@/lib/dates";
 import {
   deriveSettlementStatus,
+  normalizeMonthlyMilestones,
   normalizeSlabs,
   type AgentVisibilityMode,
   type CalculationMethod,
   type CombinationMode,
   type MidMonthTargetPolicy,
+  type MonthlyMilestoneTier,
   type NonWorkingDayPolicy,
   type PostFinalizationPolicy,
   type RuleScope,
+  type StretchRateMode,
   type VehicleCategory,
 } from "@/lib/incentives";
 import {
@@ -31,8 +34,14 @@ import { canonicalStateName, normalizeIndianState, normalizePincode } from "@/li
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CATEGORIES: VehicleCategory[] = ["2W", "4W", "CW"];
 const SCOPES: RuleScope[] = ["exact_state", "category_default", "global_fallback"];
-const METHODS: CalculationMethod[] = ["fixed", "progressive_slab", "final_slab", "combined"];
+const METHODS: CalculationMethod[] = ["fixed", "progressive_slab", "final_slab", "combined", "milestone"];
 const COMBO_MODES: CombinationMode[] = ["fixed_plus_progressive", "fixed_plus_final_slab", "fixed_plus_slab_bonus"];
+const STRETCH_MODES: StretchRateMode[] = [
+  "replace_from_base",
+  "extra_per_claim_from_base",
+  "replace_all_claims",
+  "lump_sum_bonus",
+];
 const PAYOUT_MODES = ["Bank", "UPI", "Cash", "Other"] as const;
 
 /* ------------------------------------------------------------------ */
@@ -95,6 +104,18 @@ export async function saveIncentiveSettings(input: SaveSettingsInput) {
     entityId: "singleton",
     afterData: input as unknown as Record<string, unknown>,
   });
+
+  // Immediately re-sync the active open month when governance rules change
+  const curMonth = todayIST().slice(0, 7);
+  const period = await ensureMonthPeriod(db, curMonth);
+  if (period.status === "open" || period.status === "ready_for_review") {
+    await reconcilePeriodIncentives(db, curMonth, {
+      actorId: staff.id,
+      actorName: staff.full_name,
+      preserveSnapshotVersions: true,
+    }).catch(() => {});
+  }
+
   revalidatePath("/incentives");
   return done("Saved incentive policy settings.");
 }
@@ -117,6 +138,7 @@ export type SaveRuleInput = {
   effectiveFrom: string;
   effectiveUntil: string | null;
   slabs: { minClaims: number; maxClaims: number | null; ratePerClaim: number; bonusAmount: number }[];
+  monthlyMilestones?: MonthlyMilestoneTier[];
 };
 
 export async function saveIncentiveRule(input: SaveRuleInput) {
@@ -157,8 +179,9 @@ export async function saveIncentiveRule(input: SaveRuleInput) {
   if (eligibleStatuses.length === 0) return fail("Select at least one eligible claim status.");
 
   const slabs = normalizeSlabs(input.slabs);
-  if (input.calculationMethod !== "fixed" && slabs.length === 0) {
-    return fail("Add at least one valid daily slab row.");
+  const monthlyMilestones = normalizeMonthlyMilestones(input.monthlyMilestones ?? []);
+  if (input.calculationMethod !== "fixed" && slabs.length === 0 && monthlyMilestones.length === 0) {
+    return fail("Add at least one daily milestone/slab row or configure a monthly milestone ladder.");
   }
 
   const db = await createClient();
@@ -169,47 +192,64 @@ export async function saveIncentiveRule(input: SaveRuleInput) {
     if (!existingRes.data) return fail("That rule no longer exists.");
 
     const nextVersion = Number(existingRes.data.current_version ?? 1) + 1;
-    const upd = await db
-      .from("incentive_rules")
-      .update({
-        rule_name: ruleName,
-        scope: input.scope,
-        vehicle_category: cat,
-        state_name: stateName,
-        is_active: Boolean(input.isActive),
-        calculation_method: input.calculationMethod,
-        fixed_rate: fixedRate,
-        combination_mode: input.combinationMode,
-        monthly_target: monthlyTarget,
-        eligible_claim_statuses: eligibleStatuses,
-        effective_from: effectiveFrom,
-        effective_until: effectiveUntil,
-        current_version: nextVersion,
-        updated_by: staff.id,
-      })
-      .eq("id", input.id);
-    if (upd.error) return fail(dbMessage(upd.error));
+    const baseRuleUpdate = {
+      rule_name: ruleName,
+      scope: input.scope,
+      vehicle_category: cat,
+      state_name: stateName,
+      is_active: Boolean(input.isActive),
+      calculation_method: input.calculationMethod,
+      fixed_rate: fixedRate,
+      combination_mode: input.combinationMode,
+      monthly_target: monthlyTarget,
+      eligible_claim_statuses: eligibleStatuses,
+      effective_from: effectiveFrom,
+      effective_until: effectiveUntil,
+      current_version: nextVersion,
+      updated_by: staff.id,
+    };
 
-    const ver = await db
+    let upd = await db
+      .from("incentive_rules")
+      .update({ ...baseRuleUpdate, monthly_milestones: monthlyMilestones })
+      .eq("id", input.id);
+    if (upd.error && upd.error.message.includes("monthly_milestones")) {
+      if (monthlyMilestones.length > 0) {
+        return fail("Run migration 0020_milestone_stretch_and_claim_notif.sql in Supabase to save monthly milestones.");
+      }
+      upd = await db.from("incentive_rules").update(baseRuleUpdate).eq("id", input.id);
+    }
+    if (upd.error) {
+      if (upd.error.code === "23514" && input.calculationMethod === "milestone") {
+        return fail("Run migration 0020_milestone_stretch_and_claim_notif.sql in Supabase to enable Milestone rules.");
+      }
+      return fail(dbMessage(upd.error));
+    }
+
+    const baseVerInsert = {
+      rule_id: input.id,
+      version_number: nextVersion,
+      rule_name: ruleName,
+      scope: input.scope,
+      vehicle_category: cat,
+      state_name: stateName,
+      calculation_method: input.calculationMethod,
+      fixed_rate: fixedRate,
+      combination_mode: input.combinationMode,
+      monthly_target: monthlyTarget,
+      eligible_claim_statuses: eligibleStatuses,
+      effective_from: effectiveFrom,
+      effective_until: effectiveUntil,
+      created_by: staff.id,
+    };
+    let ver = await db
       .from("incentive_rule_versions")
-      .insert({
-        rule_id: input.id,
-        version_number: nextVersion,
-        rule_name: ruleName,
-        scope: input.scope,
-        vehicle_category: cat,
-        state_name: stateName,
-        calculation_method: input.calculationMethod,
-        fixed_rate: fixedRate,
-        combination_mode: input.combinationMode,
-        monthly_target: monthlyTarget,
-        eligible_claim_statuses: eligibleStatuses,
-        effective_from: effectiveFrom,
-        effective_until: effectiveUntil,
-        created_by: staff.id,
-      })
+      .insert({ ...baseVerInsert, monthly_milestones: monthlyMilestones })
       .select("id")
       .single();
+    if (ver.error && ver.error.message.includes("monthly_milestones")) {
+      ver = await db.from("incentive_rule_versions").insert(baseVerInsert).select("id").single();
+    }
     if (ver.error) return fail(dbMessage(ver.error));
 
     if (slabs.length > 0) {
@@ -231,57 +271,73 @@ export async function saveIncentiveRule(input: SaveRuleInput) {
       action: "incentive_rule.new_version",
       entityType: "incentive_rule",
       entityId: input.id,
-      afterData: { ruleName, version: nextVersion, calculationMethod: input.calculationMethod },
+      afterData: { ruleName, version: nextVersion, calculationMethod: input.calculationMethod, monthlyMilestones },
     });
     revalidatePath("/incentives");
     return done(`Saved "${ruleName}" (v${nextVersion}). Previous calculations stay on their snapshot version.`);
   }
 
   // Create brand-new rule + version 1
-  const insRule = await db
+  const baseRuleInsert = {
+    rule_name: ruleName,
+    scope: input.scope,
+    vehicle_category: cat,
+    state_name: stateName,
+    is_active: Boolean(input.isActive),
+    calculation_method: input.calculationMethod,
+    fixed_rate: fixedRate,
+    combination_mode: input.combinationMode,
+    monthly_target: monthlyTarget,
+    eligible_claim_statuses: eligibleStatuses,
+    effective_from: effectiveFrom,
+    effective_until: effectiveUntil,
+    current_version: 1,
+    created_by: staff.id,
+    updated_by: staff.id,
+  };
+  let insRule = await db
     .from("incentive_rules")
-    .insert({
-      rule_name: ruleName,
-      scope: input.scope,
-      vehicle_category: cat,
-      state_name: stateName,
-      is_active: Boolean(input.isActive),
-      calculation_method: input.calculationMethod,
-      fixed_rate: fixedRate,
-      combination_mode: input.combinationMode,
-      monthly_target: monthlyTarget,
-      eligible_claim_statuses: eligibleStatuses,
-      effective_from: effectiveFrom,
-      effective_until: effectiveUntil,
-      current_version: 1,
-      created_by: staff.id,
-      updated_by: staff.id,
-    })
+    .insert({ ...baseRuleInsert, monthly_milestones: monthlyMilestones })
     .select("id")
     .single();
-  if (insRule.error) return fail(dbMessage(insRule.error));
+  if (insRule.error && insRule.error.message.includes("monthly_milestones")) {
+    if (monthlyMilestones.length > 0) {
+      return fail("Run migration 0020_milestone_stretch_and_claim_notif.sql in Supabase to save monthly milestones.");
+    }
+    insRule = await db.from("incentive_rules").insert(baseRuleInsert).select("id").single();
+  }
+  if (insRule.error) {
+    if (insRule.error.code === "23514" && input.calculationMethod === "milestone") {
+      return fail("Run migration 0020_milestone_stretch_and_claim_notif.sql in Supabase to enable Milestone rules.");
+    }
+    return fail(dbMessage(insRule.error));
+  }
 
   const ruleId = insRule.data.id as string;
-  const insVer = await db
+  const baseVerInsert = {
+    rule_id: ruleId,
+    version_number: 1,
+    rule_name: ruleName,
+    scope: input.scope,
+    vehicle_category: cat,
+    state_name: stateName,
+    calculation_method: input.calculationMethod,
+    fixed_rate: fixedRate,
+    combination_mode: input.combinationMode,
+    monthly_target: monthlyTarget,
+    eligible_claim_statuses: eligibleStatuses,
+    effective_from: effectiveFrom,
+    effective_until: effectiveUntil,
+    created_by: staff.id,
+  };
+  let insVer = await db
     .from("incentive_rule_versions")
-    .insert({
-      rule_id: ruleId,
-      version_number: 1,
-      rule_name: ruleName,
-      scope: input.scope,
-      vehicle_category: cat,
-      state_name: stateName,
-      calculation_method: input.calculationMethod,
-      fixed_rate: fixedRate,
-      combination_mode: input.combinationMode,
-      monthly_target: monthlyTarget,
-      eligible_claim_statuses: eligibleStatuses,
-      effective_from: effectiveFrom,
-      effective_until: effectiveUntil,
-      created_by: staff.id,
-    })
+    .insert({ ...baseVerInsert, monthly_milestones: monthlyMilestones })
     .select("id")
     .single();
+  if (insVer.error && insVer.error.message.includes("monthly_milestones")) {
+    insVer = await db.from("incentive_rule_versions").insert(baseVerInsert).select("id").single();
+  }
   if (insVer.error) return fail(dbMessage(insVer.error));
 
   if (slabs.length > 0) {
@@ -303,7 +359,7 @@ export async function saveIncentiveRule(input: SaveRuleInput) {
     action: "incentive_rule.create",
     entityType: "incentive_rule",
     entityId: ruleId,
-    afterData: { ruleName, scope: input.scope, cat, stateName, monthlyTarget },
+    afterData: { ruleName, scope: input.scope, cat, stateName, monthlyTarget, calculationMethod: input.calculationMethod },
   });
   revalidatePath("/incentives");
   return done(`Created rule "${ruleName}" (v1).`);
@@ -493,9 +549,16 @@ export async function setAgentTargetOverride(input: {
   if (reason.length < 3) return fail("Provide an audit reason for the mid-month target adjustment.");
 
   const db = await createClient();
-  const period = await ensureMonthPeriod(db, input.periodKey);
+  const [period, settings] = await Promise.all([ensureMonthPeriod(db, input.periodKey), loadSettings(db)]);
   if (period.status === "finalized" || period.status === "closed") {
     return fail("Period is already finalized; target overrides are locked.");
+  }
+
+  const newTarget = input.targetOverride === null ? null : Math.max(0, Math.floor(Number(input.targetOverride)));
+  if (newTarget !== null && settings.midMonthTargetPolicy === "full_target") {
+    return fail(
+      "Mid-Month Target Policy is set to 'Require full category monthly target'. Switch policy in Settings to enable manual overrides.",
+    );
   }
 
   const existingRes = await db
@@ -506,7 +569,6 @@ export async function setAgentTargetOverride(input: {
     .maybeSingle();
 
   const prevTarget = Number(existingRes.data?.effective_target ?? 0);
-  const newTarget = input.targetOverride === null ? null : Math.max(0, Math.floor(Number(input.targetOverride)));
 
   const upsertRes = await db
     .from("agent_monthly_incentives")
@@ -553,6 +615,167 @@ export async function setAgentTargetOverride(input: {
 
   revalidatePath("/incentives");
   return done(newTarget === null ? "Cleared custom target override." : `Updated agent target to ${newTarget} claims.`);
+}
+
+export type SaveAgentStretchInput = {
+  periodKey: string;
+  agentId: string;
+  assignmentId?: string | null;
+  stretchTarget?: number | null;
+  stretchSpecialRate?: number;
+  stretchMilestones?: MonthlyMilestoneTier[];
+  stretchRateMode?: StretchRateMode;
+  stretchLabel?: string | null;
+  reason?: string;
+};
+
+/**
+ * Sets a personalized Performance Milestone Chart (step rewards after base target) for a specific agent
+ * (visible only in that agent's staff login + Admin workspace) alongside the common minimum target.
+ */
+export async function saveAgentStretchConfigAction(input: SaveAgentStretchInput) {
+  const auth = await authorize("incentives.manage", "Only admins can configure agent stretch goals.");
+  if (!auth.staff) return auth.error;
+  const staff = auth.staff;
+  if (!UUID.test(input.agentId)) return fail("Choose a valid agent.");
+
+  const legacyTarget =
+    input.stretchTarget === null || input.stretchTarget === undefined
+      ? null
+      : Math.max(1, Math.min(50_000, Math.floor(Number(input.stretchTarget) || 0)));
+  const legacyRate = Math.max(0, Number(input.stretchSpecialRate ?? 0) || 0);
+  let tiers = normalizeMonthlyMilestones(input.stretchMilestones ?? []);
+  if (tiers.length === 0 && legacyTarget) {
+    tiers = [{ minClaims: legacyTarget, rewardAmount: legacyRate }];
+  }
+
+  const stretchTarget = tiers[0]?.minClaims ?? null;
+  const specialRate = tiers[0]?.rewardAmount ?? 0;
+  const mode: StretchRateMode =
+    input.stretchRateMode && STRETCH_MODES.includes(input.stretchRateMode)
+      ? input.stretchRateMode
+      : "lump_sum_bonus";
+  const label = input.stretchLabel?.trim().slice(0, 120) || null;
+  const tiersSummary = tiers.map((t) => `${t.minClaims}→₹${t.rewardAmount}`).join(", ");
+  const reason = (input.reason ?? "").trim() || (tiers.length > 0 ? `Special milestones: ${tiersSummary}` : "Cleared special milestone chart");
+
+  if (tiers.some((t) => t.rewardAmount <= 0)) {
+    return fail("Each milestone step must have a reward amount greater than ₹0.");
+  }
+
+  const db = await createClient();
+  const period = await ensureMonthPeriod(db, input.periodKey);
+  if (period.status === "finalized" || period.status === "closed") {
+    return fail("Period is already finalized; personal target edits for this month are locked.");
+  }
+
+  // Persist on agent's active assignment so it carries forward smoothly
+  let targetAssignmentId = input.assignmentId && UUID.test(input.assignmentId) ? input.assignmentId : null;
+  if (!targetAssignmentId) {
+    const activeAssignRes = await db
+      .from("incentive_agent_assignments")
+      .select("id")
+      .eq("staff_id", input.agentId)
+      .eq("status", "active")
+      .order("effective_from", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!activeAssignRes.error && activeAssignRes.data?.id) {
+      targetAssignmentId = String(activeAssignRes.data.id);
+    }
+  }
+
+  if (targetAssignmentId) {
+    const assignPayload = {
+      stretch_target: stretchTarget,
+      stretch_special_rate: tiers.length > 0 ? specialRate : 0,
+      stretch_rate_mode: mode,
+      stretch_label: tiers.length > 0 ? label : null,
+      stretch_milestones: tiers,
+    };
+    let assignUpd = await db.from("incentive_agent_assignments").update(assignPayload).eq("id", targetAssignmentId);
+    if (assignUpd.error && assignUpd.error.message.includes("stretch_milestones")) {
+      const { stretch_milestones: _sm, ...legacyAssignPayload } = assignPayload;
+      assignUpd = await db.from("incentive_agent_assignments").update(legacyAssignPayload).eq("id", targetAssignmentId);
+    }
+    if (assignUpd.error) {
+      if (assignUpd.error.message.includes("stretch_target")) {
+        return fail("Run migration 0020_milestone_stretch_and_claim_notif.sql in Supabase before saving stretch goals.");
+      }
+      return fail(dbMessage(assignUpd.error));
+    }
+  }
+
+  // Also ensure monthly snapshot row carries it even before reconciliation or without assignment
+  const monthlyPayload = {
+    period_id: period.id,
+    agent_id: input.agentId,
+    stretch_target: stretchTarget,
+    stretch_special_rate: tiers.length > 0 ? specialRate : 0,
+    stretch_rate_mode: mode,
+    stretch_label: tiers.length > 0 ? label : null,
+    stretch_milestones: tiers,
+  };
+  let mUpd = await db
+    .from("agent_monthly_incentives")
+    .upsert(monthlyPayload, { onConflict: "period_id,agent_id" });
+  if (mUpd.error && mUpd.error.message.includes("stretch_milestones")) {
+    const { stretch_milestones: _sm, ...legacyMonthlyPayload } = monthlyPayload;
+    mUpd = await db.from("agent_monthly_incentives").upsert(legacyMonthlyPayload, { onConflict: "period_id,agent_id" });
+  }
+  if (mUpd.error) {
+    if (mUpd.error.message.includes("stretch_target")) {
+      return fail("Run migration 0020_milestone_stretch_and_claim_notif.sql in Supabase before saving stretch goals.");
+    }
+    return fail(dbMessage(mUpd.error));
+  }
+
+  const adjIns = await db.from("incentive_adjustments").insert({
+    period_id: period.id,
+    agent_id: input.agentId,
+    adjustment_type: "stretch_config",
+    original_value: "Base Rule",
+    updated_value: tiers.length > 0 ? `${tiersSummary} (${mode})` : "Cleared",
+    delta_amount: 0,
+    reason,
+    admin_id: staff.id,
+  });
+  if (adjIns.error && adjIns.error.code === "23514") {
+    await db.from("incentive_adjustments").insert({
+      period_id: period.id,
+      agent_id: input.agentId,
+      adjustment_type: "target_override",
+      original_value: "Base Rule",
+      updated_value: tiers.length > 0 ? `${tiersSummary} (${mode})` : "Cleared",
+      delta_amount: 0,
+      reason,
+      admin_id: staff.id,
+    });
+  }
+
+  await recordIncentiveAudit(db, {
+    actorId: staff.id,
+    actorName: staff.full_name,
+    action: tiers.length > 0 ? "incentive_stretch.set" : "incentive_stretch.clear",
+    entityType: "agent_monthly_incentive",
+    entityId: input.agentId,
+    periodId: period.id,
+    agentId: input.agentId,
+    reason,
+    afterData: { tiers, mode, label },
+  });
+
+  await reconcilePeriodIncentives(db, input.periodKey, {
+    actorId: staff.id,
+    actorName: staff.full_name,
+  });
+
+  revalidatePath("/incentives");
+  return done(
+    tiers.length > 0
+      ? `Saved personal milestone chart (${tiersSummary}) — visible on the agent's dashboard.`
+      : "Cleared agent's personal milestone chart.",
+  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -918,7 +1141,8 @@ export async function addManualAdjustmentAction(input: {
       }
       originalVal = `Payable ₹${Number(s.finalized_payable ?? 0)}`;
       const nextAdj = Number(s.adjustment_amount ?? 0) + delta;
-      const nextPayable = Math.max(0, Number(s.provisional_amount ?? 0) + nextAdj);
+      const nextPayable =
+        s.eligibility_status === "forfeited" ? 0 : Math.max(0, Number(s.provisional_amount ?? 0) + nextAdj);
       updatedVal = `Payable ₹${nextPayable}`;
 
       await db
@@ -977,8 +1201,13 @@ export async function generatePeriodSettlementsAction(periodKey: string) {
   const db = await createClient();
   const period = await ensureMonthPeriod(db, periodKey);
 
-  // Sync open period calculations right before generating settlement summaries
-  if (period.status === "open" || period.status === "ready_for_review") {
+  const preSettlementsRes = await db.from("incentive_settlements").select("status").eq("period_id", period.id);
+  const hasUnlockedSettlement = (preSettlementsRes.data ?? []).some((s) =>
+    ["open", "ready_for_review", "under_review"].includes(String(s.status)),
+  );
+
+  // Sync period calculations right before generating settlement summaries (protects locked/finalized agents inside engine)
+  if (period.status === "open" || period.status === "ready_for_review" || hasUnlockedSettlement) {
     await reconcilePeriodIncentives(db, periodKey, {
       actorId: staff.id,
       actorName: staff.full_name,
@@ -1017,6 +1246,7 @@ export async function generatePeriodSettlementsAction(periodKey: string) {
       workflowState: "ready_for_review",
     });
 
+    const mExtra = m as Record<string, unknown>;
     const rowPayload = {
       period_id: period.id,
       agent_id: agentId,
@@ -1025,6 +1255,8 @@ export async function generatePeriodSettlementsAction(periodKey: string) {
       monthly_target: Number(m.effective_target ?? 0),
       eligible_claims: Number(m.eligible_claims_count ?? 0),
       provisional_amount: Number(m.provisional_earnings ?? 0),
+      monthly_milestone_bonus: Number(mExtra.monthly_milestone_bonus ?? 0),
+      stretch_bonus_amount: Number(mExtra.stretch_bonus_amount ?? 0),
       adjustment_amount: Number(m.adjustments_total ?? 0),
       eligibility_status: derived.eligibilityStatus,
       payment_status: derived.paymentStatus,
@@ -1036,7 +1268,11 @@ export async function generatePeriodSettlementsAction(periodKey: string) {
       generated_at: nowIso,
     };
 
-    const up = await db.from("incentive_settlements").upsert(rowPayload, { onConflict: "period_id,agent_id" });
+    let up = await db.from("incentive_settlements").upsert(rowPayload, { onConflict: "period_id,agent_id" });
+    if (up.error && (up.error.message.includes("monthly_milestone_bonus") || up.error.message.includes("stretch_bonus_amount"))) {
+      const { monthly_milestone_bonus: _mm, stretch_bonus_amount: _sb, ...legacyPayload } = rowPayload;
+      up = await db.from("incentive_settlements").upsert(legacyPayload, { onConflict: "period_id,agent_id" });
+    }
     if (up.error) return fail(dbMessage(up.error));
     createdOrRefreshed += 1;
   }
@@ -1258,6 +1494,12 @@ export async function reopenSettlementAction(settlementId: string, reason: strin
     .from("incentive_settlements")
     .update({ status: "under_review", eligibility_status: "under_review" })
     .eq("id", settlementId);
+
+  await db
+    .from("incentive_periods")
+    .update({ status: "ready_for_review" })
+    .eq("id", s.period_id as string)
+    .eq("status", "finalized");
 
   await db
     .from("agent_incentive_ledger")

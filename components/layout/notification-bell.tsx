@@ -197,7 +197,18 @@ export function NotificationBell({ staffId }: { staffId: string }) {
           { event: "INSERT", schema: "public", table: "policies", filter: "source=eq.user_added" },
           onChange,
         )
-        .on("postgres_changes", { event: "INSERT", schema: "public", table: "users" }, onChange)
+        // Ignore CRM-created clients (/claim, import, manual add) where auth_user_id is null;
+        // only notify when someone actually registers on the mobile app (auth_user_id linked).
+        .on("postgres_changes", { event: "INSERT", schema: "public", table: "users" }, (payload) => {
+          const row = payload.new as { auth_user_id?: string | null } | undefined;
+          if (row?.auth_user_id) onChange();
+        })
+        .on("postgres_changes", { event: "UPDATE", schema: "public", table: "users" }, (payload) => {
+          const row = payload.new as { auth_user_id?: string | null; app_registered_at?: string | null } | undefined;
+          if (!row?.auth_user_id || !row.app_registered_at) return;
+          const regMs = Date.parse(row.app_registered_at);
+          if (Number.isFinite(regMs) && Date.now() - regMs < 120_000) onChange();
+        })
         .subscribe();
       cleanup = () => void supabase.removeChannel(channel);
     })();

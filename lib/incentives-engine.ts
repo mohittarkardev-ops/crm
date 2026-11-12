@@ -2,17 +2,21 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { dateIST, one, pagedRows, todayIST } from "@/lib/data/helpers";
 import {
+  DEFAULT_DAILY_MILESTONES,
   DEFAULT_MONTHLY_TARGETS,
   DEFAULT_SETTINGS,
   DEFAULT_SLABS_2W,
   DEFAULT_SLABS_4W,
   DEFAULT_SLABS_CW,
   calculateDayClaimRewards,
+  calculateMonthlyMilestoneReward,
+  calculateStretchGoalEarnings,
   computeProRatedTarget,
   deriveSettlementStatus,
   findActiveAssignment,
   isWorkingDate,
   monthBounds,
+  normalizeMonthlyMilestones,
   normalizeSlabs,
   normalizeVehicleCategory,
   resolveCustomerLocation,
@@ -23,7 +27,9 @@ import {
   type IncentiveRule,
   type IncentiveSettings,
   type IncentiveSlab,
+  type MonthlyMilestoneTier,
   type RuleScope,
+  type StretchRateMode,
   type VehicleCategory,
 } from "@/lib/incentives";
 import { canonicalStateName, normalizePincode } from "@/lib/states";
@@ -206,12 +212,27 @@ export async function loadRulesWithVersions(db: Db): Promise<{
   const versionById = new Map<string, IncentiveRule>();
   const latestVersionByRule = new Map<string, { id: string; slabs: IncentiveSlab[] }>();
 
+  const resolveSlabsForMethod = (
+    method: IncentiveRule["calculationMethod"],
+    slabs: IncentiveSlab[],
+    monthlyMilestones: ReturnType<typeof normalizeMonthlyMilestones>,
+    fallbackSlabs: IncentiveSlab[],
+  ) => {
+    if (slabs.length > 0) return slabs;
+    if (method === "milestone") return monthlyMilestones.length > 0 ? [] : DEFAULT_DAILY_MILESTONES;
+    if (method === "fixed" || method === "combined" || monthlyMilestones.length > 0) return [];
+    return fallbackSlabs;
+  };
+
   for (const v of versionsRes.data ?? []) {
     const ruleId = v.rule_id as string;
     const verId = v.id as string;
     const cat = v.vehicle_category ? normalizeVehicleCategory(String(v.vehicle_category)) : null;
     const slabs = normalizeSlabs(slabsByVersion.get(verId) ?? []);
+    const monthlyMilestones = normalizeMonthlyMilestones((v as Record<string, unknown>).monthly_milestones);
     const fallbackSlabs = cat === "4W" ? DEFAULT_SLABS_4W : cat === "CW" ? DEFAULT_SLABS_CW : DEFAULT_SLABS_2W;
+    const method = v.calculation_method as IncentiveRule["calculationMethod"];
+    const resolvedSlabs = resolveSlabsForMethod(method, slabs, monthlyMilestones, fallbackSlabs);
 
     const hydrated: IncentiveRule = {
       id: ruleId,
@@ -220,7 +241,7 @@ export async function loadRulesWithVersions(db: Db): Promise<{
       vehicleCategory: cat,
       stateName: (v.state_name as string | null) ?? null,
       isActive: true,
-      calculationMethod: v.calculation_method as IncentiveRule["calculationMethod"],
+      calculationMethod: method,
       fixedRate: Number(v.fixed_rate ?? 0),
       combinationMode: v.combination_mode as IncentiveRule["combinationMode"],
       monthlyTarget: Number(v.monthly_target ?? 100),
@@ -231,7 +252,8 @@ export async function loadRulesWithVersions(db: Db): Promise<{
       effectiveUntil: (v.effective_until as string | null) ?? null,
       currentVersion: Number(v.version_number ?? 1),
       currentVersionId: verId,
-      slabs: slabs.length > 0 ? slabs : fallbackSlabs,
+      slabs: resolvedSlabs,
+      monthlyMilestones,
     };
     versionById.set(verId, hydrated);
 
@@ -245,6 +267,9 @@ export async function loadRulesWithVersions(db: Db): Promise<{
     const cat = r.vehicle_category ? normalizeVehicleCategory(String(r.vehicle_category)) : null;
     const latest = latestVersionByRule.get(id);
     const fallbackSlabs = cat === "4W" ? DEFAULT_SLABS_4W : cat === "CW" ? DEFAULT_SLABS_CW : DEFAULT_SLABS_2W;
+    const method = r.calculation_method as IncentiveRule["calculationMethod"];
+    const monthlyMilestones = normalizeMonthlyMilestones((r as Record<string, unknown>).monthly_milestones);
+    const resolvedSlabs = resolveSlabsForMethod(method, latest?.slabs ?? [], monthlyMilestones, fallbackSlabs);
     return {
       id,
       ruleName: String(r.rule_name),
@@ -252,7 +277,7 @@ export async function loadRulesWithVersions(db: Db): Promise<{
       vehicleCategory: cat,
       stateName: (r.state_name as string | null) ?? null,
       isActive: Boolean(r.is_active),
-      calculationMethod: r.calculation_method as IncentiveRule["calculationMethod"],
+      calculationMethod: method,
       fixedRate: Number(r.fixed_rate ?? 0),
       combinationMode: r.combination_mode as IncentiveRule["combinationMode"],
       monthlyTarget: Number(r.monthly_target ?? 100),
@@ -263,7 +288,8 @@ export async function loadRulesWithVersions(db: Db): Promise<{
       effectiveUntil: (r.effective_until as string | null) ?? null,
       currentVersion: Number(r.current_version ?? 1),
       currentVersionId: latest?.id,
-      slabs: latest?.slabs.length ? latest.slabs : fallbackSlabs,
+      slabs: resolvedSlabs,
+      monthlyMilestones,
     };
   });
 
@@ -290,7 +316,7 @@ export async function reconcilePeriodIncentives(
 
   const preserveVersions = options.preserveSnapshotVersions !== false;
   const settings = await loadSettings(db);
-  const [{ rules, versionById }, holidaysRes, assignRes, staffRes, monthlyExistingRes, adjustmentsRes, existingLedgerRes] =
+  const [{ rules, versionById }, holidaysRes, assignRes, staffRes, monthlyExistingRes, adjustmentsRes, existingLedgerRes, existingSettlementsRes] =
     await Promise.all([
       loadRulesWithVersions(db),
       db
@@ -300,12 +326,13 @@ export async function reconcilePeriodIncentives(
         .lte("holiday_date", period.end_date),
       db
         .from("incentive_agent_assignments")
-        .select("id, staff_id, vehicle_category, assigned_state, effective_from, effective_until, status, notes")
+        .select("*")
         .order("effective_from", { ascending: false }),
       db.from("staff_users").select("id, full_name, employee_code"),
       db.from("agent_monthly_incentives").select("*").eq("period_id", period.id),
       db.from("incentive_adjustments").select("*").eq("period_id", period.id),
       db.from("agent_incentive_ledger").select("*").eq("period_id", period.id).neq("earning_status", "void"),
+      db.from("incentive_settlements").select("agent_id, status").eq("period_id", period.id),
     ]);
 
   if (holidaysRes.error) throw new Error(holidaysRes.error.message);
@@ -314,6 +341,13 @@ export async function reconcilePeriodIncentives(
   if (monthlyExistingRes.error) throw new Error(monthlyExistingRes.error.message);
   if (adjustmentsRes.error) throw new Error(adjustmentsRes.error.message);
   if (existingLedgerRes.error) throw new Error(existingLedgerRes.error.message);
+  if (existingSettlementsRes.error) throw new Error(existingSettlementsRes.error.message);
+
+  const finalizedAgentIds = new Set<string>(
+    (existingSettlementsRes.data ?? [])
+      .filter((s) => ["finalized", "partially_paid", "paid"].includes(String(s.status)))
+      .map((s) => String(s.agent_id)),
+  );
 
   const staffLookup = new Map<string, { full_name: string; employee_code: string | null }>();
   for (const st of staffRes.data ?? []) {
@@ -329,6 +363,7 @@ export async function reconcilePeriodIncentives(
   }));
 
   const assignments: AgentAssignmentRecord[] = (assignRes.data ?? []).map((row) => {
+    const r = row as Record<string, unknown>;
     const s = staffLookup.get(String(row.staff_id));
     return {
       id: row.id as string,
@@ -341,6 +376,11 @@ export async function reconcilePeriodIncentives(
       effectiveUntil: (row.effective_until as string | null) ?? null,
       status: row.status === "inactive" ? "inactive" : "active",
       notes: (row.notes as string | null) ?? null,
+      stretchTarget: r.stretch_target === null || r.stretch_target === undefined ? null : Number(r.stretch_target),
+      stretchSpecialRate: Number(r.stretch_special_rate ?? 0),
+      stretchRateMode: (r.stretch_rate_mode as StretchRateMode | undefined) ?? "lump_sum_bonus",
+      stretchLabel: (r.stretch_label as string | null | undefined) ?? null,
+      stretchMilestones: normalizeMonthlyMilestones(r.stretch_milestones),
     };
   });
 
@@ -827,7 +867,7 @@ export async function reconcilePeriodIncentives(
         a.claim.created_at.localeCompare(b.claim.created_at) || a.claim.id.localeCompare(b.claim.id),
     );
     const primaryItem = group[group.length - 1];
-    if (primaryItem.isLocked && primaryItem.lockedAmount > 0) {
+    if (group.every((x) => x.isLocked)) {
       for (const item of group) {
         calculatedResults.set(item.claim.id, {
           seq: item.lockedSequenceNo,
@@ -986,17 +1026,34 @@ export async function reconcilePeriodIncentives(
   }
 
   // Preserve manual `target_override` + sum `incentive_adjustments` per agent
-  const existingMonthlyMap = new Map<string, { targetOverride: number | null; reason: string | null }>();
+  const existingMonthlyMap = new Map<
+    string,
+    {
+      targetOverride: number | null;
+      reason: string | null;
+      stretchTarget: number | null;
+      stretchSpecialRate: number;
+      stretchRateMode: StretchRateMode;
+      stretchLabel: string | null;
+      stretchMilestones: MonthlyMilestoneTier[];
+    }
+  >();
   for (const m of monthlyExistingRes.data ?? []) {
+    const row = m as Record<string, unknown>;
     existingMonthlyMap.set(m.agent_id as string, {
       targetOverride: m.target_override === null ? null : Number(m.target_override),
       reason: (m.target_adjustment_reason as string | null) ?? null,
+      stretchTarget: row.stretch_target === null || row.stretch_target === undefined ? null : Number(row.stretch_target),
+      stretchSpecialRate: Number(row.stretch_special_rate ?? 0),
+      stretchRateMode: (row.stretch_rate_mode as StretchRateMode | undefined) ?? "lump_sum_bonus",
+      stretchLabel: (row.stretch_label as string | null | undefined) ?? null,
+      stretchMilestones: normalizeMonthlyMilestones(row.stretch_milestones),
     });
   }
 
   const adjTotalByAgent = new Map<string, number>();
   for (const adj of adjustmentsRes.data ?? []) {
-    if (adj.adjustment_type === "target_override") continue;
+    if (adj.adjustment_type === "target_override" || adj.adjustment_type === "stretch_config") continue;
     const aid = adj.agent_id as string;
     adjTotalByAgent.set(aid, (adjTotalByAgent.get(aid) ?? 0) + Number(adj.delta_amount ?? 0));
   }
@@ -1018,6 +1075,7 @@ export async function reconcilePeriodIncentives(
     const primaryState = activeAssign?.assignedState ?? null;
 
     let baseTarget = primaryCat ? DEFAULT_MONTHLY_TARGETS[primaryCat] : 0;
+    let activeMonthlyRule: IncentiveRule | null = null;
     if (primaryCat && primaryState) {
       const ruleHit = resolveMatchingRule(rules, {
         vehicleCategory: primaryCat,
@@ -1025,12 +1083,17 @@ export async function reconcilePeriodIncentives(
         submissionDate: refDate,
         settings,
       });
-      if (ruleHit) baseTarget = ruleHit.rule.monthlyTarget;
+      if (ruleHit) {
+        baseTarget = ruleHit.rule.monthlyTarget;
+        activeMonthlyRule = ruleHit.rule;
+      }
     }
 
     const override = existingMonthlyMap.get(agentId);
     let effectiveTarget = baseTarget;
-    if (override?.targetOverride !== null && override?.targetOverride !== undefined) {
+    if (settings.midMonthTargetPolicy === "full_target") {
+      effectiveTarget = baseTarget;
+    } else if (override?.targetOverride !== null && override?.targetOverride !== undefined) {
       effectiveTarget = override.targetOverride;
     } else if (settings.midMonthTargetPolicy === "prorated" && activeAssign) {
       effectiveTarget = computeProRatedTarget({
@@ -1046,14 +1109,17 @@ export async function reconcilePeriodIncentives(
     let eligibleClaimsCount = 0;
     let nonQualifyingCount = 0;
     let heldCount = 0;
-    let provisionalEarnings = 0;
+    let dailyProvisionalEarnings = 0;
+    const chronologicalEligibleItems: PreparedClaim[] = [];
 
     for (const item of agentItems) {
       if (item.eligibilityStatus === "eligible") {
         eligibleClaimsCount += 1;
-        provisionalEarnings += item.isLocked
+        chronologicalEligibleItems.push(item);
+        dailyProvisionalEarnings += item.isLocked
           ? item.lockedAmount
           : (calculatedResults.get(item.claim.id)?.amount ?? 0);
+        if (!activeMonthlyRule && item.rule) activeMonthlyRule = item.rule;
       } else if (item.eligibilityStatus === "held_review") {
         heldCount += 1;
       } else {
@@ -1061,11 +1127,71 @@ export async function reconcilePeriodIncentives(
       }
     }
 
+    // Order eligible claims strictly chronologically so Claims #1..baseTarget stay normal and #baseTarget+1..N
+    // convert to the agent's personalized Special Rate cleanly when the Stretch Target is reached.
+    chronologicalEligibleItems.sort(
+      (a, b) =>
+        a.submissionDate.localeCompare(b.submissionDate) ||
+        a.claim.created_at.localeCompare(b.claim.created_at) ||
+        a.claim.id.localeCompare(b.claim.id),
+    );
+    const chronologicalAmounts = chronologicalEligibleItems.map((item) =>
+      item.isLocked ? item.lockedAmount : (calculatedResults.get(item.claim.id)?.amount ?? 0),
+    );
+
+    const monthlyMilestone = calculateMonthlyMilestoneReward(
+      activeMonthlyRule?.monthlyMilestones ?? [],
+      eligibleClaimsCount,
+    );
+    const monthlyMilestoneBonus = monthlyMilestone.bonusAmount;
+
+    // Prefer active assignment stretch config if defined; preserve finalized snapshots
+    const assignStretchTiers = activeAssign?.stretchMilestones ?? [];
+    const assignHasStretch =
+      assignStretchTiers.length > 0 ||
+      (activeAssign?.stretchTarget !== null && activeAssign?.stretchTarget !== undefined);
+    const useAssignStretch = !finalizedAgentIds.has(agentId) && assignHasStretch;
+
+    const stretchMilestones: MonthlyMilestoneTier[] = useAssignStretch
+      ? assignStretchTiers.length > 0
+        ? assignStretchTiers
+        : activeAssign?.stretchTarget
+          ? [{ minClaims: activeAssign.stretchTarget, rewardAmount: Number(activeAssign.stretchSpecialRate ?? 0) }]
+          : []
+      : (override?.stretchMilestones ?? []).length > 0
+        ? override!.stretchMilestones
+        : override?.stretchTarget
+          ? [{ minClaims: override.stretchTarget, rewardAmount: Number(override.stretchSpecialRate ?? 0) }]
+          : [];
+    const stretchTarget = stretchMilestones[0]?.minClaims ?? (useAssignStretch ? (activeAssign?.stretchTarget ?? null) : (override?.stretchTarget ?? null));
+    const stretchSpecialRate =
+      stretchMilestones[0]?.rewardAmount ??
+      (useAssignStretch ? Number(activeAssign?.stretchSpecialRate ?? 0) : Number(override?.stretchSpecialRate ?? 0));
+    const stretchRateMode: StretchRateMode = useAssignStretch
+      ? (activeAssign!.stretchRateMode ?? "lump_sum_bonus")
+      : (override?.stretchRateMode ?? "lump_sum_bonus");
+    const stretchLabel = useAssignStretch ? (activeAssign!.stretchLabel ?? null) : (override?.stretchLabel ?? null);
+
+    const stretchEval = calculateStretchGoalEarnings({
+      eligibleClaimsCount,
+      baseTarget: effectiveTarget,
+      stretchTarget,
+      stretchSpecialRate,
+      stretchMilestones,
+      stretchRateMode,
+      chronologicalDailyClaimAmounts: chronologicalAmounts,
+    });
+    const stretchBonusAmount = stretchEval.stretchDeltaAmount;
+    const totalProvisionalEarnings = Math.max(
+      0,
+      dailyProvisionalEarnings + monthlyMilestoneBonus + stretchBonusAmount,
+    );
+
     const adjSum = adjTotalByAgent.get(agentId) ?? 0;
     const targetAchieved = effectiveTarget === 0 || eligibleClaimsCount >= effectiveTarget;
-    const grossWithAdj = Math.max(0, provisionalEarnings + adjSum);
+    const grossWithAdj = Math.max(0, totalProvisionalEarnings + adjSum);
     const eligiblePayable = targetAchieved ? grossWithAdj : 0;
-    const forfeitedAmount = targetAchieved ? 0 : Math.max(0, provisionalEarnings);
+    const forfeitedAmount = targetAchieved ? 0 : Math.max(0, totalProvisionalEarnings);
 
     return {
       period_id: period.id,
@@ -1080,17 +1206,86 @@ export async function reconcilePeriodIncentives(
       non_qualifying_claims_count: nonQualifyingCount,
       held_claims_count: heldCount,
       target_achieved: targetAchieved,
-      provisional_earnings: provisionalEarnings,
+      daily_provisional_earnings: dailyProvisionalEarnings,
+      monthly_milestone_bonus: monthlyMilestoneBonus,
+      stretch_target: stretchTarget,
+      stretch_special_rate: stretchSpecialRate,
+      stretch_rate_mode: stretchRateMode,
+      stretch_label: stretchLabel,
+      stretch_achieved: stretchEval.stretchAchieved,
+      stretch_bonus_amount: stretchBonusAmount,
+      provisional_earnings: totalProvisionalEarnings,
       adjustments_total: adjSum,
       forfeited_amount: forfeitedAmount,
       eligible_payable_amount: eligiblePayable,
     };
   });
 
-  if (monthlyRows.length > 0) {
-    const monthlyUpsert = await db
+  const editableMonthlyRows = monthlyRows
+    .filter((r) => !finalizedAgentIds.has(r.agent_id))
+    .map((r) => ({ ...r }));
+
+  // Inject `stretch_milestones` on rows cleanly
+  const rowsWithStretchMilestones = editableMonthlyRows.map((row) => {
+    const aId = row.agent_id;
+    const activeAssign =
+      assignments.find(
+        (a) =>
+          a.staffId === aId &&
+          a.status === "active" &&
+          a.effectiveFrom <= period.end_date &&
+          (a.effectiveUntil === null || a.effectiveUntil >= period.start_date),
+      ) ?? null;
+    const override = existingMonthlyMap.get(aId);
+    const assignTiers = activeAssign?.stretchMilestones ?? [];
+    const tiers =
+      assignTiers.length > 0
+        ? assignTiers
+        : activeAssign?.stretchTarget
+          ? [{ minClaims: activeAssign.stretchTarget, rewardAmount: Number(activeAssign.stretchSpecialRate ?? 0) }]
+          : (override?.stretchMilestones ?? []).length > 0
+            ? override!.stretchMilestones
+            : row.stretch_target
+              ? [{ minClaims: Number(row.stretch_target), rewardAmount: Number(row.stretch_special_rate ?? 0) }]
+              : [];
+    return {
+      ...row,
+      stretch_milestones: tiers,
+    };
+  });
+
+  if (rowsWithStretchMilestones.length > 0) {
+    let monthlyUpsert = await db
       .from("agent_monthly_incentives")
-      .upsert(monthlyRows, { onConflict: "period_id,agent_id" });
+      .upsert(rowsWithStretchMilestones, { onConflict: "period_id,agent_id" });
+    if (monthlyUpsert.error && monthlyUpsert.error.message.includes("stretch_milestones")) {
+      monthlyUpsert = await db
+        .from("agent_monthly_incentives")
+        .upsert(editableMonthlyRows, { onConflict: "period_id,agent_id" });
+    }
+    if (
+      monthlyUpsert.error &&
+      (monthlyUpsert.error.message.includes("daily_provisional_earnings") ||
+        monthlyUpsert.error.message.includes("stretch_target") ||
+        monthlyUpsert.error.message.includes("monthly_milestone_bonus"))
+    ) {
+      const legacyMonthlyRows = editableMonthlyRows.map(
+        ({
+          daily_provisional_earnings: _dpe,
+          monthly_milestone_bonus: _mmb,
+          stretch_target: _st,
+          stretch_special_rate: _ssr,
+          stretch_rate_mode: _srm,
+          stretch_label: _sl,
+          stretch_achieved: _sa,
+          stretch_bonus_amount: _sba,
+          ...rest
+        }) => rest,
+      );
+      monthlyUpsert = await db
+        .from("agent_monthly_incentives")
+        .upsert(legacyMonthlyRows, { onConflict: "period_id,agent_id" });
+    }
     if (monthlyUpsert.error) throw new Error(`Monthly summary upsert: ${monthlyUpsert.error.message}`);
   }
 

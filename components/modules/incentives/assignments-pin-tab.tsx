@@ -2,7 +2,7 @@
 
 import { useId, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Download, Globe, Plus, Search, UploadCloud } from "lucide-react";
+import { Download, Globe, Plus, Search, Trash2, UploadCloud } from "lucide-react";
 import { Button, buttonStyles } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Chip } from "@/components/ui/chip";
@@ -21,6 +21,7 @@ import {
   endAgentAssignment,
   importPincodeChunk,
   lookupPincodeAction,
+  saveAgentStretchConfigAction,
   savePincodeEntry,
   setAgentTargetOverride,
 } from "@/lib/actions/incentives";
@@ -33,7 +34,12 @@ import { cn } from "@/lib/cn";
 import type { IncentivesDashboardPayload } from "@/lib/data/incentives";
 import { todayIST } from "@/lib/dates";
 import { formatDate, formatNumber } from "@/lib/format";
-import { VEHICLE_CATEGORIES, type VehicleCategory } from "@/lib/incentives";
+import {
+  VEHICLE_CATEGORIES,
+  normalizeMonthlyMilestones,
+  type MonthlyMilestoneTier,
+  type VehicleCategory,
+} from "@/lib/incentives";
 import { STATE_OPTIONS } from "@/lib/states";
 import { useErrorNudge, useRowFlash, useSavedFlag } from "@/lib/use-transient-state";
 
@@ -41,6 +47,7 @@ export function AssignmentsPinTab({ data }: { data: IncentivesDashboardPayload }
   const router = useRouter();
   const assignFormId = useId();
   const targetFormId = useId();
+  const stretchFormId = useId();
   const pinInputRef = useRef<HTMLInputElement>(null);
 
   // Assignment drawer state
@@ -62,6 +69,18 @@ export function AssignmentsPinTab({ data }: { data: IncentivesDashboardPayload }
   const [tReason, setTReason] = useState("");
   const [targetBusy, setTargetBusy] = useState(false);
   const { error: targetErr, errorPulse: targetErrPulse, setError: setTargetErr } = useErrorNudge();
+
+  // Personalized Stretch Target & Special Milestones drawer state (visible only to that agent)
+  const [stretchOpen, setStretchOpen] = useState(false);
+  const [sAgentId, setSAgentId] = useState("");
+  const [sAgentName, setSAgentName] = useState("");
+  const [sAssignmentId, setSAssignmentId] = useState<string | null>(null);
+  const [sBaseTarget, setSBaseTarget] = useState<number>(60);
+  const [sMilestones, setSMilestones] = useState<{ minClaims: string; rewardAmount: string }[]>([]);
+  const [sLabel, setSLabel] = useState("");
+  const [sReason, setSReason] = useState("");
+  const [stretchBusy, setStretchBusy] = useState(false);
+  const { error: stretchErr, errorPulse: stretchErrPulse, setError: setStretchErr } = useErrorNudge();
 
   // PIN Directory state (`null` means derive live from server `sampleRows` so router.refresh() never leaves stale empty state)
   const [pinSearch, setPinSearch] = useState("");
@@ -136,6 +155,61 @@ export function AssignmentsPinTab({ data }: { data: IncentivesDashboardPayload }
       }
     } finally {
       setTargetBusy(false);
+    }
+  };
+
+  const handleSaveStretchGoal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setStretchBusy(true);
+    setStretchErr(null);
+    try {
+      const nonEmptyRows = sMilestones.filter(
+        (row) => row.minClaims.trim() !== "" || row.rewardAmount.trim() !== "",
+      );
+      for (const row of nonEmptyRows) {
+        const claimsNum = Math.floor(Number(row.minClaims));
+        const rewardNum = Number(row.rewardAmount);
+        if (!Number.isFinite(claimsNum) || claimsNum < 1) {
+          setStretchErr("Every step must have a positive Claims Reached number (at least 1).");
+          return;
+        }
+        if (!Number.isFinite(rewardNum) || rewardNum < 0) {
+          setStretchErr("Every step must have a valid reward amount (₹0 or above).");
+          return;
+        }
+      }
+
+      const cleanedMilestones: MonthlyMilestoneTier[] = normalizeMonthlyMilestones(
+        nonEmptyRows.map((row) => ({
+          minClaims: Number(row.minClaims),
+          rewardAmount: Number(row.rewardAmount),
+        })),
+      );
+
+      const res = await saveAgentStretchConfigAction({
+        periodKey: data.monthIso,
+        agentId: sAgentId,
+        assignmentId: sAssignmentId,
+        stretchMilestones: cleanedMilestones,
+        stretchRateMode: "lump_sum_bonus",
+        stretchLabel: sLabel.trim() || null,
+        reason: sReason.trim() || undefined,
+      });
+      if (res.ok) {
+        toast(
+          res.message ??
+            (cleanedMilestones.length > 0
+              ? "Saved agent personal special milestones."
+              : "Cleared personal special milestones."),
+        );
+        setStretchOpen(false);
+        setSReason("");
+        router.refresh();
+      } else {
+        setStretchErr(res.error ?? "Could not save agent personal milestones.");
+      }
+    } finally {
+      setStretchBusy(false);
     }
   };
 
@@ -417,18 +491,73 @@ export function AssignmentsPinTab({ data }: { data: IncentivesDashboardPayload }
                       </td>
                       <td className="py-2.5 pr-4 text-xs tabular-nums">
                         {m ? (
-                          <span>
-                            <b>{m.effectiveTarget}</b>
-                            {m.targetOverride !== null && (
-                              <span className="ml-1 text-[11px] text-warning">(Override)</span>
+                          <div className="space-y-0.5">
+                            <span>
+                              <b>{m.effectiveTarget}</b>
+                              {m.targetOverride !== null && (
+                                <span className="ml-1 text-[11px] text-warning">(Override)</span>
+                              )}
+                            </span>
+                            {(m.stretchMilestones.length > 0 || (m.stretchTarget && m.stretchTarget > 0)) && (
+                              <div className="text-[11px] text-accent-text">
+                                Special:{" "}
+                                <b>
+                                  {(m.stretchMilestones.length > 0
+                                    ? m.stretchMilestones
+                                    : [
+                                        {
+                                          minClaims: m.stretchTarget!,
+                                          rewardAmount: m.stretchSpecialRate,
+                                        },
+                                      ]
+                                  )
+                                    .map((t) =>
+                                      m.stretchRateMode === "lump_sum_bonus"
+                                        ? `${t.minClaims}→+₹${formatNumber(t.rewardAmount)}`
+                                        : `${t.minClaims}→₹${formatNumber(t.rewardAmount)}/claim`,
+                                    )
+                                    .join(" · ")}
+                                </b>
+                                {m.stretchAchieved && <span className="ml-1 text-positive font-semibold">✓</span>}
+                              </div>
                             )}
-                          </span>
+                          </div>
                         ) : (
                           "—"
                         )}
                       </td>
                       <td className="py-2.5 text-right">
-                        <div className="inline-flex items-center gap-1.5">
+                        <div className="inline-flex flex-wrap items-center justify-end gap-1.5">
+                          <Button
+                            variant="secondary"
+                            onClick={() => {
+                              setStretchErr(null);
+                              setSAgentId(a.staffId);
+                              setSAgentName(a.staffName);
+                              setSAssignmentId(a.id);
+                              setSBaseTarget(m ? m.effectiveTarget : 60);
+                              const existingTiers =
+                                m && m.stretchMilestones.length > 0
+                                  ? m.stretchMilestones
+                                  : m && m.stretchTarget && m.stretchTarget > 0
+                                    ? [{ minClaims: m.stretchTarget, rewardAmount: m.stretchSpecialRate }]
+                                    : [];
+                              setSMilestones(
+                                existingTiers.length > 0
+                                  ? existingTiers.map((t) => ({
+                                      minClaims: String(t.minClaims),
+                                      rewardAmount: String(t.rewardAmount),
+                                    }))
+                                  : [{ minClaims: "", rewardAmount: "" }],
+                              );
+                              setSLabel(m?.stretchLabel ?? "");
+                              setSReason("");
+                              setStretchOpen(true);
+                            }}
+                            className="h-8 px-2.5 text-xs"
+                          >
+                            Special Target
+                          </Button>
                           <Button
                             variant="secondary"
                             onClick={() => {
@@ -804,6 +933,181 @@ export function AssignmentsPinTab({ data }: { data: IncentivesDashboardPayload }
             </Button>
             <Button type="submit" form={targetFormId} loading={targetBusy}>
               Apply Target Override
+            </Button>
+          </DrawerFooter>
+        </form>
+      </Drawer>
+
+      {/* Personalized Target & Special Milestones Drawer */}
+      <Drawer
+        open={stretchOpen}
+        onClose={() => setStretchOpen(false)}
+        title={`Personal Special Milestones — ${sAgentName}`}
+      >
+        <form id={stretchFormId} onSubmit={handleSaveStretchGoal} className="space-y-4">
+          <div className="rounded-tile border border-accent/25 bg-accent-soft/40 p-3 text-xs text-ink">
+            <p className="font-semibold">
+              Common Base Target: <span className="tabular-nums">{sBaseTarget} claims</span>
+            </p>
+            <p className="mt-1 text-[11px] text-ink-muted">
+              Optional higher milestone steps shown only on <b>{sAgentName}&apos;s</b> dashboard.
+              Rewards hold flat between steps until the exact claim milestone is reached.
+            </p>
+          </div>
+
+          {/* Step Chart Builder */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-ink-muted">Milestone Chart (after Base Target)</span>
+              {sMilestones.some((row) => row.minClaims.trim() !== "" || row.rewardAmount.trim() !== "") && (
+                <button
+                  type="button"
+                  onClick={() => setSMilestones([])}
+                  className="text-[11px] text-ink-muted hover:text-negative transition-colors"
+                >
+                  Clear all steps
+                </button>
+              )}
+            </div>
+
+            {sMilestones.length === 0 ? (
+              <p className="text-[11.5px] text-ink-muted py-2">
+                No personal milestone steps set. Click Save to remove any existing special target, or add a step below.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                <div className="grid grid-cols-[1fr_1fr_auto] gap-2 text-[11px] font-medium text-ink-muted px-0.5">
+                  <span>Claims Reached</span>
+                  <span>Extra Bonus (₹)</span>
+                  <span className="w-8" />
+                </div>
+
+                {sMilestones.map((row, idx) => (
+                  <div key={idx} className="grid grid-cols-[1fr_1fr_auto] gap-2 items-center">
+                    <input
+                      type="number"
+                      min={1}
+                      max={50000}
+                      value={row.minClaims}
+                      onChange={(e) => {
+                        const next = [...sMilestones];
+                        next[idx] = { ...next[idx], minClaims: e.target.value };
+                        setSMilestones(next);
+                      }}
+                      placeholder="e.g. 80"
+                      className={cn(CONTROL, "h-10 tabular-nums")}
+                    />
+                    <input
+                      type="number"
+                      min={0}
+                      step="1"
+                      value={row.rewardAmount}
+                      onChange={(e) => {
+                        const next = [...sMilestones];
+                        next[idx] = { ...next[idx], rewardAmount: e.target.value };
+                        setSMilestones(next);
+                      }}
+                      placeholder="e.g. 1000"
+                      className={cn(CONTROL, "h-10 tabular-nums")}
+                    />
+                    <Button
+                      variant="ghost"
+                      onClick={() =>
+                        setSMilestones(sMilestones.filter((_, rIdx) => rIdx !== idx))
+                      }
+                      className="h-10 w-8 p-0 text-ink-muted hover:text-negative"
+                      aria-label="Remove milestone step"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <Button
+              variant="secondary"
+              onClick={() => {
+                const lastClaims =
+                  Number(sMilestones[sMilestones.length - 1]?.minClaims) || sBaseTarget;
+                const lastReward = Number(sMilestones[sMilestones.length - 1]?.rewardAmount) || 500;
+                setSMilestones([
+                  ...sMilestones,
+                  {
+                    minClaims: String(lastClaims + 10),
+                    rewardAmount: String(lastReward + 500),
+                  },
+                ]);
+              }}
+              className="h-8 px-3 text-xs"
+            >
+              <Plus className="size-3.5" /> Add Milestone Step
+            </Button>
+          </div>
+
+          {/* Live Hold-Flat Preview */}
+          {(() => {
+            const previewTiers = normalizeMonthlyMilestones(
+              sMilestones
+                .filter((r) => r.minClaims.trim() !== "")
+                .map((r) => ({ minClaims: Number(r.minClaims), rewardAmount: Number(r.rewardAmount) })),
+            );
+            return (
+              <div className="rounded-lg bg-surface-muted px-3 py-2.5 text-[11px] text-ink-muted leading-relaxed">
+                {previewTiers.length === 0 ? (
+                  <>No personal milestone chart active for this agent (common base target {sBaseTarget} applies).</>
+                ) : (
+                  <>
+                    Base provisional holds flat up to <b>{previewTiers[0].minClaims - 1} claims</b>.{" "}
+                    Steps:{" "}
+                    <b>
+                      {previewTiers
+                        .map((t) => `${t.minClaims} claims → +₹${formatNumber(t.rewardAmount)}`)
+                        .join(" · ")}
+                    </b>
+                    . Between steps, reward stays at the previous step until the next milestone is reached.
+                  </>
+                )}
+              </div>
+            );
+          })()}
+
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-ink-muted">Card Title (Optional)</span>
+            <input
+              type="text"
+              maxLength={80}
+              value={sLabel}
+              onChange={(e) => setSLabel(e.target.value)}
+              placeholder="e.g. Special Performance Milestones"
+              className={cn(CONTROL, "h-10")}
+            />
+          </label>
+
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-ink-muted">Note (Optional)</span>
+            <input
+              type="text"
+              maxLength={200}
+              value={sReason}
+              onChange={(e) => setSReason(e.target.value)}
+              placeholder="Reason or note"
+              className={cn(CONTROL, "h-10")}
+            />
+          </label>
+
+          {stretchErr && (
+            <p key={stretchErrPulse} role="alert" className="micro-shake rounded-tile bg-negative-soft p-3 text-xs text-negative">
+              {stretchErr}
+            </p>
+          )}
+
+          <DrawerFooter>
+            <Button variant="secondary" onClick={() => setStretchOpen(false)} disabled={stretchBusy}>
+              Cancel
+            </Button>
+            <Button type="submit" form={stretchFormId} loading={stretchBusy}>
+              Save Milestones
             </Button>
           </DrawerFooter>
         </form>

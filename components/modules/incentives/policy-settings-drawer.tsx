@@ -162,7 +162,7 @@ export function PolicySettingsDrawer({
                   type="button"
                   onClick={() => toggleDay(day.value)}
                   className={cn(
-                    "inline-flex h-8 items-center gap-1 rounded-control border px-2.5 text-xs font-medium transition-all duration-150 active:scale-[0.97]",
+                    "inline-flex h-9 items-center gap-1 rounded-control border px-2.5 text-xs font-medium transition-all duration-150 active:scale-[0.97]",
                     selected
                       ? "border-ink bg-ink text-white"
                       : "border-divider bg-surface-strong text-ink-muted hover:text-ink",
@@ -176,8 +176,8 @@ export function PolicySettingsDrawer({
         </div>
 
         <div className="space-y-3">
-          <div className="space-y-1">
-            <span className="text-xs font-medium text-ink-muted">Non-Working / Holiday Claim Handling</span>
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-ink-muted block">Non-Working / Holiday Claim Handling</span>
             <CustomSelect
               value={nonWorkingPolicy}
               onChange={(v) => setNonWorkingPolicy(v as NonWorkingDayPolicy)}
@@ -190,8 +190,8 @@ export function PolicySettingsDrawer({
             />
           </div>
 
-          <div className="space-y-1">
-            <span className="text-xs font-medium text-ink-muted">Mid-Month Target Adjustment Policy</span>
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-ink-muted block">Mid-Month Target Adjustment Policy</span>
             <CustomSelect
               value={midMonthPolicy}
               onChange={(v) => setMidMonthPolicy(v as MidMonthTargetPolicy)}
@@ -204,8 +204,8 @@ export function PolicySettingsDrawer({
             />
           </div>
 
-          <div className="space-y-1">
-            <span className="text-xs font-medium text-ink-muted">Post-Finalization Correction Policy</span>
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-ink-muted block">Post-Finalization Correction Policy</span>
             <CustomSelect
               value={postFinalPolicy}
               onChange={(v) => setPostFinalPolicy(v as PostFinalizationPolicy)}
@@ -217,8 +217,8 @@ export function PolicySettingsDrawer({
             />
           </div>
 
-          <div className="space-y-1">
-            <span className="text-xs font-medium text-ink-muted">Agent Dashboard Visibility Timing</span>
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-ink-muted block">Agent Dashboard Visibility Timing</span>
             <CustomSelect
               value={visibilityMode}
               onChange={(v) => setVisibilityMode(v as AgentVisibilityMode)}

@@ -51,6 +51,26 @@ export function AgentMyIncentivesView({ data }: { data: IncentivesDashboardPaylo
 
   const mySettlement = data.settlements[0] ?? null;
 
+  const fmtInr = (val: number) => `₹${Math.round(val).toLocaleString("en-IN")}`;
+  const stretchTiers =
+    me && me.stretchMilestones && me.stretchMilestones.length > 0
+      ? me.stretchMilestones
+      : me && me.stretchTarget && me.stretchTarget > 0
+        ? [{ minClaims: me.stretchTarget, rewardAmount: me.stretchSpecialRate }]
+        : [];
+  const nextStretchTier = me
+    ? (stretchTiers.find((t) => me.eligibleClaimsCount < t.minClaims) ?? null)
+    : null;
+  const matchedStretchTier = me
+    ? ([...stretchTiers].reverse().find((t) => me.eligibleClaimsCount >= t.minClaims) ?? null)
+    : null;
+  const highestStretchTarget = stretchTiers[stretchTiers.length - 1]?.minClaims ?? 0;
+  const stretchGoalTargetForBar = nextStretchTier?.minClaims ?? highestStretchTarget;
+  const stretchPct =
+    me && stretchGoalTargetForBar > 0
+      ? Math.min(100, Math.round((me.eligibleClaimsCount / stretchGoalTargetForBar) * 100))
+      : 0;
+
   return (
     <div className="space-y-4">
       {/* Top Assignment & Month Switcher Banner */}
@@ -120,23 +140,160 @@ export function AgentMyIncentivesView({ data }: { data: IncentivesDashboardPaylo
 
       {/* Target Qualification Progress Card */}
       {me && (
-        <Card index={5} className="p-4">
-          <div className="flex flex-wrap items-center justify-between gap-2 text-xs mb-2">
-            <span className="font-semibold text-ink">
-              Monthly Qualification Progress: {me.progressPct}% ({me.eligibleClaimsCount} / {me.effectiveTarget})
-            </span>
-            <Chip tone={me.targetAchieved ? "positive" : "warning"}>
-              {me.targetAchieved
-                ? "Target Achieved — Eligible for Settlement"
-                : `${me.remainingTarget} more matching claims needed`}
+        <Card index={5} className="p-4 space-y-3">
+          <div>
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs mb-2">
+              <span className="font-semibold text-ink">
+                Monthly Target Progress: {me.progressPct}% ({me.eligibleClaimsCount} / {me.effectiveTarget})
+              </span>
+              <Chip tone={me.targetAchieved ? "positive" : "warning"}>
+                {me.targetAchieved
+                  ? "Target Achieved — Eligible"
+                  : `${me.remainingTarget} more claims needed`}
+              </Chip>
+            </div>
+            <AnimatedProgressBar pct={me.progressPct} positive={me.targetAchieved} />
+            {me.nonQualifyingClaimsCount > 0 && (
+              <p className="mt-2 text-[11px] text-ink-muted">
+                Note: You also processed <b>{me.nonQualifyingClaimsCount}</b> claim(s) outside your assigned vehicle/state or still pending review.
+              </p>
+            )}
+          </div>
+
+          {/* Earnings Composition Breakdown */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-hairline text-xs">
+            <div className="rounded-lg bg-surface-2 px-3 py-2">
+              <div className="text-[11px] text-ink-muted">Daily Earnings</div>
+              <div className="font-semibold text-ink tabular-nums mt-0.5">{fmtInr(me.dailyProvisionalEarnings)}</div>
+            </div>
+            <div className="rounded-lg bg-surface-2 px-3 py-2">
+              <div className="text-[11px] text-ink-muted">Monthly Bonus</div>
+              <div className="font-semibold text-ink tabular-nums mt-0.5">{fmtInr(me.monthlyMilestoneBonus)}</div>
+            </div>
+            <div className="rounded-lg bg-surface-2 px-3 py-2">
+              <div className="text-[11px] text-ink-muted">Special Rate Bonus</div>
+              <div className="font-semibold text-ink tabular-nums mt-0.5">{fmtInr(me.stretchBonusAmount)}</div>
+            </div>
+            <div className="rounded-lg bg-accent-soft px-3 py-2">
+              <div className="text-[11px] text-accent-text">Total Estimated</div>
+              <div className="font-bold text-accent-text tabular-nums mt-0.5">{fmtInr(me.provisionalEarnings)}</div>
+            </div>
+          </div>
+
+          {/* Monthly Milestone Step Ladder */}
+          {me.activeMonthlyMilestones.length > 0 && (
+            <div className="pt-2 border-t border-hairline">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs mb-2">
+                <span className="font-semibold text-ink">Monthly Bonus Milestones</span>
+                {me.nextMonthlyMilestone ? (
+                  <span className="text-[11px] text-ink-muted">
+                    <b>{Math.max(0, me.nextMonthlyMilestone.minClaims - me.eligibleClaimsCount)}</b> more claim(s) for{" "}
+                    <b>{fmtInr(me.nextMonthlyMilestone.rewardAmount)}</b> at {me.nextMonthlyMilestone.minClaims} claims
+                  </span>
+                ) : (
+                  <Chip tone="positive">Top Milestone Reached</Chip>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {me.activeMonthlyMilestones.map((tier) => {
+                  const hit = me.eligibleClaimsCount >= tier.minClaims;
+                  return (
+                    <span
+                      key={`${tier.minClaims}-${tier.rewardAmount}`}
+                      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] tabular-nums border ${
+                        hit
+                          ? "bg-positive-soft text-positive border-positive/30 font-semibold"
+                          : "bg-surface-2 text-ink-muted border-hairline"
+                      }`}
+                    >
+                      <span>{tier.minClaims} claims</span>
+                      <span>→</span>
+                      <span>{fmtInr(tier.rewardAmount)}</span>
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </Card>
+      )}
+
+      {/* Personal Special Milestones Card */}
+      {me && stretchTiers.length > 0 && (
+        <Card index={6} className="p-4 border-accent/30 bg-accent-soft/30 space-y-3">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <span className="text-sm font-semibold text-ink">
+                {me.stretchLabel?.trim() || "Your Personal Special Milestones"}
+              </span>
+              <p className="text-xs text-ink-muted mt-1">
+                {me.stretchRateMode === "lump_sum_bonus" ? (
+                  <>
+                    Common base target is <b>{me.effectiveTarget} claims</b>. Reach any milestone step below to
+                    unlock its extra bonus (holds flat between steps):
+                  </>
+                ) : me.stretchRateMode === "replace_from_base" ? (
+                  <>
+                    Claims <b>1–{me.effectiveTarget}</b> earn your normal daily rate. Reaching a step below
+                    unlocks that special rate on claims from <b>{me.effectiveTarget + 1} onward</b>:
+                  </>
+                ) : me.stretchRateMode === "extra_per_claim_from_base" ? (
+                  <>
+                    Reaching a step below adds an extra per-claim reward on claims from{" "}
+                    <b>{me.effectiveTarget + 1} onward</b>:
+                  </>
+                ) : (
+                  <>Reaching a step below applies its special rate across all claims in the month:</>
+                )}
+              </p>
+            </div>
+            <Chip tone={me.stretchAchieved ? "positive" : "warning"}>
+              {me.stretchAchieved && nextStretchTier
+                ? `Unlocked (+${fmtInr(me.stretchBonusAmount)}) · ${me.stretchClaimsRemaining} more to ${nextStretchTier.minClaims}`
+                : me.stretchAchieved
+                  ? `Top Step Unlocked (+${fmtInr(me.stretchBonusAmount)})`
+                  : `${me.stretchClaimsRemaining} more claims to ${nextStretchTier?.minClaims ?? stretchTiers[0].minClaims}`}
             </Chip>
           </div>
-          <AnimatedProgressBar pct={me.progressPct} positive={me.targetAchieved} />
-          {me.nonQualifyingClaimsCount > 0 && (
-            <p className="mt-2 text-[11px] text-ink-muted">
-              Note: You also processed <b>{me.nonQualifyingClaimsCount}</b> claim(s) outside your assigned vehicle/state combination or pending review that do not contribute to this target.
-            </p>
-          )}
+
+          <div className="flex flex-wrap gap-1.5">
+            {stretchTiers.map((tier) => {
+              const hit = me.eligibleClaimsCount >= tier.minClaims;
+              const isMatched = matchedStretchTier?.minClaims === tier.minClaims;
+              return (
+                <span
+                  key={tier.minClaims}
+                  className={cn(
+                    "inline-flex items-center px-2.5 py-1 rounded-md border text-[11.5px] tabular-nums",
+                    isMatched
+                      ? "border-positive/60 bg-positive-soft text-positive font-semibold"
+                      : hit
+                        ? "border-positive/30 bg-positive-soft/50 text-ink"
+                        : "border-divider bg-surface-strong text-ink-muted",
+                  )}
+                >
+                  {tier.minClaims} claims →{" "}
+                  {me.stretchRateMode === "lump_sum_bonus"
+                    ? `+${fmtInr(tier.rewardAmount)}`
+                    : `${fmtInr(tier.rewardAmount)}/claim`}
+                  {hit ? " ✓" : ""}
+                </span>
+              );
+            })}
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between text-[11px] text-ink-muted mb-1.5 tabular-nums">
+              <span>
+                Progress to {nextStretchTier ? "next step" : "top step"}: <b>{me.eligibleClaimsCount}</b> /{" "}
+                <b>{stretchGoalTargetForBar}</b> claims ({stretchPct}%)
+              </span>
+              <span>
+                Base target: <b>{me.effectiveTarget}</b>
+              </span>
+            </div>
+            <AnimatedProgressBar pct={stretchPct} positive={me.stretchAchieved} />
+          </div>
         </Card>
       )}
 

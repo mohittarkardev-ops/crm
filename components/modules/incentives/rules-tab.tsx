@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CalendarOff, History, Pencil, Plus, Settings2, ShieldCheck } from "lucide-react";
+import { Calculator, CalendarOff, History, Pencil, Plus, Settings2, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Chip } from "@/components/ui/chip";
@@ -21,6 +21,7 @@ import {
 } from "@/lib/incentives";
 import { useRowFlash } from "@/lib/use-transient-state";
 import { HolidayDrawer } from "@/components/modules/incentives/holiday-drawer";
+import { PayoutSimulatorCard } from "@/components/modules/incentives/payout-simulator-card";
 import { PolicySettingsDrawer } from "@/components/modules/incentives/policy-settings-drawer";
 import { RuleEditorDrawer } from "@/components/modules/incentives/rule-editor-drawer";
 
@@ -32,7 +33,14 @@ export function RulesTab({ data }: { data: IncentivesDashboardPayload }) {
   const [holidaysOpen, setHolidaysOpen] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [showVersions, setShowVersions] = useState(false);
+  const [showSimulator, setShowSimulator] = useState(false);
+  const [simRuleId, setSimRuleId] = useState<string>(data.rules[0]?.id ?? "");
   const { triggerFlash, flashClassFor } = useRowFlash();
+
+  const openPreviewRule = (ruleId: string) => {
+    setSimRuleId(ruleId);
+    setShowSimulator(true);
+  };
 
   const openNewRule = (cat: VehicleCategory = "2W") => {
     setEditingRule(null);
@@ -72,40 +80,50 @@ export function RulesTab({ data }: { data: IncentivesDashboardPayload }) {
             </div>
             <div className="space-y-1 min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-[15px] font-semibold text-ink">Incentive Rule Builder &amp; Governance</h2>
+                <h2 className="text-[15px] font-semibold text-ink">Incentive Rules</h2>
                 <Chip tone={data.settings.enableLiveCalculations ? "positive" : "warning"}>
-                  {data.settings.enableLiveCalculations ? "Live Sync On" : "Manual Sync Only"}
+                  {data.settings.enableLiveCalculations ? "Live Sync On" : "Manual Sync"}
                 </Chip>
-                {data.settings.allowCategoryDefaultFallback && <Chip tone="info">Category Default Fallback On</Chip>}
-                {data.settings.allowGlobalFallback && <Chip tone="accent">Global Fallback On</Chip>}
               </div>
               <p className="text-xs text-ink-muted">
-                Resolution order: <b>Exact Vehicle + State</b>{" "}
-                {data.settings.allowCategoryDefaultFallback && "→ Category Default "}
-                {data.settings.allowGlobalFallback && "→ Global Fallback "}
-                → Missing Rule Review. Edits create new immutable versions without altering locked history.
+                Matches Vehicle + State first
+                {data.settings.allowCategoryDefaultFallback && ", then Vehicle Default"}
+                {data.settings.allowGlobalFallback && ", then All Vehicles & States"}.
               </p>
             </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            {data.rules.length > 0 && (
+              <Button
+                variant={showSimulator ? "primary" : "secondary"}
+                onClick={() => setShowSimulator((v) => !v)}
+                className="h-9 px-3 text-xs"
+              >
+                <Calculator size={14} /> {showSimulator ? "Hide Calculator" : "Calculator"}
+              </Button>
+            )}
             <Button variant="secondary" onClick={() => setHolidaysOpen(true)} className="h-9 px-3 text-xs">
               <CalendarOff size={14} /> Holidays ({data.holidays.length})
             </Button>
             <Button variant="secondary" onClick={() => setSettingsOpen(true)} className="h-9 px-3 text-xs">
-              <Settings2 size={14} /> Policy Controls
+              <Settings2 size={14} /> Settings
             </Button>
             <Button onClick={() => openNewRule("2W")} className="h-9 px-3.5 text-xs">
-              <Plus size={14} /> New State / Vehicle Rule
+              <Plus size={14} /> New Rule
             </Button>
           </div>
         </div>
       </Card>
 
-      {/* Active & Configured Rules Table */}
+      {showSimulator && data.rules.length > 0 && (
+        <PayoutSimulatorCard rules={data.rules} selectedRuleId={simRuleId} onSelectRuleId={setSimRuleId} />
+      )}
+
+      {/* Rules Table */}
       <Card index={1}>
         <CardHeader
-          title={`Configured Incentive Rules (${data.rules.length})`}
+          title={`Rules (${data.rules.length})`}
           action={
             <button
               type="button"
@@ -113,7 +131,7 @@ export function RulesTab({ data }: { data: IncentivesDashboardPayload }) {
               className="inline-flex items-center gap-1.5 text-xs font-medium text-ink-muted hover:text-ink"
             >
               <History size={14} />
-              {showVersions ? "Hide Version History" : `View Version History (${data.ruleVersions.length})`}
+              {showVersions ? "Hide History" : `History (${data.ruleVersions.length})`}
             </button>
           }
         />
@@ -121,11 +139,11 @@ export function RulesTab({ data }: { data: IncentivesDashboardPayload }) {
         {data.rules.length === 0 ? (
           <EmptyState
             illustration={<RuleArchitectCharacter />}
-            label="No incentive rules configured yet"
-            hint="Create a state-specific rule or vehicle category default to begin calculating provisional earnings."
+            label="No incentive rules yet"
+            hint="Create your first rule to start calculating claim earnings."
             action={
               <Button onClick={() => openNewRule("2W")} className="h-9 px-3.5 text-xs">
-                <Plus size={14} /> Create First Rule
+                <Plus size={14} /> Create Rule
               </Button>
             }
           />
@@ -135,10 +153,10 @@ export function RulesTab({ data }: { data: IncentivesDashboardPayload }) {
               <thead>
                 <tr className="border-b border-divider text-[10px] font-semibold uppercase tracking-wider text-ink-muted">
                   <th className="pb-2.5 pr-4">Rule</th>
-                  <th className="pb-2.5 pr-4">Scope &amp; Match</th>
-                  <th className="pb-2.5 pr-4">Method &amp; Slabs</th>
+                  <th className="pb-2.5 pr-4">Applies To</th>
+                  <th className="pb-2.5 pr-4">Method &amp; Rates</th>
                   <th className="pb-2.5 pr-4 text-right">Monthly Target</th>
-                  <th className="pb-2.5 pr-4">Effective</th>
+                  <th className="pb-2.5 pr-4">Dates</th>
                   <th className="pb-2.5 pr-4">Status</th>
                   <th className="pb-2.5 text-right">Actions</th>
                 </tr>
@@ -170,8 +188,23 @@ export function RulesTab({ data }: { data: IncentivesDashboardPayload }) {
                       <p className="text-[11px] text-ink-muted tabular-nums">
                         {r.calculationMethod === "fixed"
                           ? `${formatINR(r.fixedRate)}/claim`
-                          : r.slabs.map((s) => `${slabLabelText(s)}: ${formatINR(s.ratePerClaim)}`).join(" · ")}
+                          : r.calculationMethod === "milestone"
+                            ? r.slabs.map((s) => `${s.minClaims}→${formatINR(s.ratePerClaim || s.bonusAmount)}`).join(" · ")
+                            : r.calculationMethod === "combined"
+                              ? `${formatINR(r.fixedRate)}/claim${
+                                  r.slabs.length > 0
+                                    ? ` + ${r.slabs
+                                        .map((s) => `${s.minClaims}→${formatINR(s.bonusAmount || s.ratePerClaim)}`)
+                                        .join(" · ")}`
+                                    : ""
+                                }`
+                              : r.slabs.map((s) => `${slabLabelText(s)}: ${formatINR(s.ratePerClaim)}`).join(" · ")}
                       </p>
+                      {r.monthlyMilestones.length > 0 && (
+                        <p className="mt-0.5 text-[11px] font-medium text-positive tabular-nums">
+                          Monthly: {r.monthlyMilestones.map((m) => `${m.minClaims}→${formatINR(m.rewardAmount)}`).join(" · ")}
+                        </p>
+                      )}
                     </td>
                     <td className="py-2.5 pr-4 text-right font-semibold text-ink tabular-nums">
                       {r.monthlyTarget} claims
@@ -185,6 +218,13 @@ export function RulesTab({ data }: { data: IncentivesDashboardPayload }) {
                     </td>
                     <td className="py-2.5 text-right">
                       <div className="inline-flex items-center gap-1.5">
+                        <Button
+                          variant="ghost"
+                          onClick={() => openPreviewRule(r.id)}
+                          className="h-8 px-2.5 text-xs"
+                        >
+                          <Calculator size={13} /> Preview
+                        </Button>
                         <Button
                           variant="ghost"
                           loading={togglingId === r.id}

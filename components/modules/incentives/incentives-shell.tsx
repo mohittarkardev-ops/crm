@@ -132,6 +132,10 @@ export function IncentivesShell({ data }: { data: IncentivesDashboardPayload }) 
       "Non-Qualifying Claims",
       "Held Claims",
       "Target Achieved",
+      "Daily Earnings ₹",
+      "Monthly Milestone ₹",
+      "Stretch Target",
+      "Stretch Uplift ₹",
       "Provisional ₹",
       "Adjustments ₹",
       "Forfeited ₹",
@@ -150,6 +154,10 @@ export function IncentivesShell({ data }: { data: IncentivesDashboardPayload }) 
       m.nonQualifyingClaimsCount,
       m.heldClaimsCount,
       m.targetAchieved ? "Yes" : "No",
+      m.dailyProvisionalEarnings,
+      m.monthlyMilestoneBonus,
+      m.stretchTarget ?? "",
+      m.stretchBonusAmount,
       m.provisionalEarnings,
       m.adjustmentsTotal,
       m.forfeitedAmount,
@@ -554,9 +562,20 @@ function VehicleCategoryDashboard({
                           {r.eligibleClaimsCount}/{r.effectiveTarget}
                         </span>
                       </div>
+                      {r.stretchTarget && r.stretchTarget > 0 && (
+                        <p className="mt-0.5 text-[10px] tabular-nums text-accent-text">
+                          Special Goal: {r.eligibleClaimsCount}/{r.stretchTarget} {r.stretchAchieved ? "✓ Unlocked" : ""}
+                        </p>
+                      )}
                     </td>
                     <td className="py-2 pr-3 text-right font-semibold text-ink tabular-nums">
                       {formatINR(r.provisionalEarnings)}
+                      {(r.monthlyMilestoneBonus > 0 || r.stretchBonusAmount > 0) && (
+                        <span className="block text-[10px] font-normal text-ink-faint">
+                          {r.monthlyMilestoneBonus > 0 ? `+${formatINR(r.monthlyMilestoneBonus)} mo ` : ""}
+                          {r.stretchBonusAmount > 0 ? `+${formatINR(r.stretchBonusAmount)} stretch` : ""}
+                        </span>
+                      )}
                     </td>
                     <td className="py-2 pr-3 text-right font-bold text-ink tabular-nums">
                       {formatINR(r.finalizedPayable)}

@@ -65,12 +65,25 @@ export async function getActivityFeed(scope: FeedScope = {}): Promise<FeedItem[]
           .limit(10)
       : Promise.resolve(emptyRes),
     scope.clients !== false
-      ? db
-          .from("users")
-          .select("id, full_name, mobile_number, created_at")
-          .gte("created_at", since)
-          .order("created_at", { ascending: false })
-          .limit(5)
+      ? (async () => {
+          const primary = await db
+            .from("users")
+            .select("id, full_name, mobile_number, created_at, app_registered_at")
+            .not("auth_user_id", "is", null)
+            .gte("app_registered_at", since)
+            .order("app_registered_at", { ascending: false })
+            .limit(5);
+          if (primary.error && primary.error.message.includes("app_registered_at")) {
+            return db
+              .from("users")
+              .select("id, full_name, mobile_number, created_at")
+              .not("auth_user_id", "is", null)
+              .gte("created_at", since)
+              .order("created_at", { ascending: false })
+              .limit(5);
+          }
+          return primary;
+        })()
       : Promise.resolve(emptyRes),
   ]);
 
@@ -108,7 +121,13 @@ export async function getActivityFeed(scope: FeedScope = {}): Promise<FeedItem[]
       at: p.created_at,
       href: `/policies/${p.id}`,
     })),
-    ...rowsOf<{ id: string; full_name: string | null; mobile_number: string; created_at: string }>(
+    ...rowsOf<{
+      id: string;
+      full_name: string | null;
+      mobile_number: string;
+      created_at: string;
+      app_registered_at?: string | null;
+    }>(
       users,
       "User notifications",
     ).map((u) => ({
@@ -116,7 +135,7 @@ export async function getActivityFeed(scope: FeedScope = {}): Promise<FeedItem[]
       kind: "user" as const,
       title: "New user registered",
       detail: u.full_name ?? u.mobile_number,
-      at: u.created_at,
+      at: u.app_registered_at ?? u.created_at,
       href: "/clients",
     })),
   ];

@@ -3,8 +3,13 @@ import { canonicalStateName, normalizePincode } from "@/lib/states";
 
 export type VehicleCategory = "2W" | "4W" | "CW";
 export type RuleScope = "exact_state" | "category_default" | "global_fallback";
-export type CalculationMethod = "fixed" | "progressive_slab" | "final_slab" | "combined";
+export type CalculationMethod = "fixed" | "progressive_slab" | "final_slab" | "combined" | "milestone";
 export type CombinationMode = "fixed_plus_progressive" | "fixed_plus_final_slab" | "fixed_plus_slab_bonus";
+export type StretchRateMode =
+  | "replace_from_base"
+  | "extra_per_claim_from_base"
+  | "replace_all_claims"
+  | "lump_sum_bonus";
 export type NonWorkingDayPolicy = "hold_for_review" | "zero_credit" | "roll_to_next_working_day";
 export type MidMonthTargetPolicy = "full_target" | "prorated" | "admin_override";
 export type PostFinalizationPolicy = "next_period_adjustment" | "reopen_with_reason";
@@ -26,6 +31,11 @@ export type IncentiveSlab = {
   bonusAmount: number;
 };
 
+export type MonthlyMilestoneTier = {
+  minClaims: number;
+  rewardAmount: number;
+};
+
 export type IncentiveRule = {
   id: string;
   ruleName: string;
@@ -43,6 +53,7 @@ export type IncentiveRule = {
   currentVersion: number;
   currentVersionId?: string;
   slabs: IncentiveSlab[];
+  monthlyMilestones: MonthlyMilestoneTier[];
 };
 
 export type IncentiveSettings = {
@@ -73,6 +84,11 @@ export type AgentAssignmentRecord = {
   effectiveUntil: string | null;
   status: "active" | "inactive";
   notes: string | null;
+  stretchTarget?: number | null;
+  stretchSpecialRate?: number;
+  stretchRateMode?: StretchRateMode;
+  stretchLabel?: string | null;
+  stretchMilestones?: MonthlyMilestoneTier[];
   createdAt?: string;
 };
 
@@ -89,22 +105,30 @@ export const VEHICLE_CATEGORIES: { key: VehicleCategory; label: string; shortLab
 ];
 
 export const CALCULATION_METHOD_LABELS: Record<CalculationMethod, string> = {
-  fixed: "Method A — Fixed per claim",
-  progressive_slab: "Method B — Progressive daily slabs",
-  final_slab: "Method C — Final slab rate",
-  combined: "Method D — Combined (Fixed + Slab)",
+  fixed: "Fixed Rate",
+  progressive_slab: "Fixed + Steps (Legacy)",
+  final_slab: "Final Tier Rate (Legacy)",
+  combined: "Combined (Fixed + Milestone)",
+  milestone: "Milestone",
+};
+
+export const STRETCH_RATE_MODE_LABELS: Record<StretchRateMode, string> = {
+  lump_sum_bonus: "Milestone Step Payout (flat ₹ reward at each step)",
+  replace_from_base: "Special Rate per Claim on claims after base target",
+  extra_per_claim_from_base: "Extra Bonus per Claim on claims after base target",
+  replace_all_claims: "Special Rate per Claim across all claims in month",
 };
 
 export const COMBINATION_MODE_LABELS: Record<CombinationMode, string> = {
-  fixed_plus_progressive: "Fixed rate + Progressive slab rate",
-  fixed_plus_final_slab: "Fixed rate + Final slab rate",
-  fixed_plus_slab_bonus: "Fixed rate + Tier bonus reward",
+  fixed_plus_progressive: "Fixed rate + Step rate",
+  fixed_plus_final_slab: "Fixed rate + Final rate",
+  fixed_plus_slab_bonus: "Fixed rate + Milestone bonus",
 };
 
 export const RULE_SCOPE_LABELS: Record<RuleScope, string> = {
-  exact_state: "Exact Vehicle + State",
-  category_default: "Vehicle Category Default",
-  global_fallback: "Global Fallback",
+  exact_state: "Vehicle + State",
+  category_default: "Vehicle Default",
+  global_fallback: "All Vehicles & States",
 };
 
 export const SETTLEMENT_STATUS_LABELS: Record<SettlementStatus, string> = {
@@ -144,6 +168,20 @@ export const DEFAULT_SLABS_CW: IncentiveSlab[] = [
   { slabOrder: 1, minClaims: 1, maxClaims: 2, ratePerClaim: 15, bonusAmount: 0 },
   { slabOrder: 2, minClaims: 3, maxClaims: 5, ratePerClaim: 18, bonusAmount: 0 },
   { slabOrder: 3, minClaims: 6, maxClaims: null, ratePerClaim: 22, bonusAmount: 0 },
+];
+
+export const DEFAULT_DAILY_MILESTONES: IncentiveSlab[] = [
+  { slabOrder: 1, minClaims: 2, maxClaims: null, ratePerClaim: 30, bonusAmount: 0 },
+  { slabOrder: 2, minClaims: 4, maxClaims: null, ratePerClaim: 60, bonusAmount: 0 },
+  { slabOrder: 3, minClaims: 6, maxClaims: null, ratePerClaim: 80, bonusAmount: 0 },
+  { slabOrder: 4, minClaims: 8, maxClaims: null, ratePerClaim: 120, bonusAmount: 0 },
+  { slabOrder: 5, minClaims: 10, maxClaims: null, ratePerClaim: 150, bonusAmount: 0 },
+];
+
+export const PRESET_MONTHLY_MILESTONES: MonthlyMilestoneTier[] = [
+  { minClaims: 60, rewardAmount: 500 },
+  { minClaims: 80, rewardAmount: 1000 },
+  { minClaims: 100, rewardAmount: 1500 },
 ];
 
 export const DEFAULT_SETTINGS: IncentiveSettings = {
@@ -213,6 +251,24 @@ export function normalizeSlabs(raw: unknown): IncentiveSlab[] {
 
   items.sort((a, b) => a.minClaims - b.minClaims);
   return items.map((s, idx) => ({ ...s, slabOrder: idx + 1 }));
+}
+
+/** Normalizes, deduplicates, and sorts monthly milestone thresholds cleanly by `minClaims`. */
+export function normalizeMonthlyMilestones(raw: unknown): MonthlyMilestoneTier[] {
+  if (!Array.isArray(raw)) return [];
+  const byThreshold = new Map<number, number>();
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const obj = item as Record<string, unknown>;
+    const min = Math.floor(Number(obj.minClaims ?? obj.min_claims ?? obj.threshold ?? 0));
+    const reward = Number(obj.rewardAmount ?? obj.reward_amount ?? obj.amount ?? 0);
+    if (!Number.isFinite(min) || min < 1) continue;
+    if (!Number.isFinite(reward) || reward < 0) continue;
+    byThreshold.set(min, reward);
+  }
+  return Array.from(byThreshold.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([minClaims, rewardAmount]) => ({ minClaims, rewardAmount }));
 }
 
 export function slabLabelText(slab: IncentiveSlab | null): string {
@@ -409,15 +465,65 @@ export function calculateDayClaimRewards(
 
   const slabs = normalizeSlabs(rule.slabs);
   const findBracket = (count: number): IncentiveSlab | null => {
+    // Check bounded brackets first, then pick the highest open-ended milestone (maxClaims === null) reached.
     for (const s of slabs) {
-      if (count >= s.minClaims && (s.maxClaims === null || count <= s.maxClaims)) return s;
+      if (s.maxClaims !== null && count >= s.minClaims && count <= s.maxClaims) return s;
     }
+    const openEndedReached = slabs.filter((s) => s.maxClaims === null && count >= s.minClaims);
+    if (openEndedReached.length > 0) return openEndedReached[openEndedReached.length - 1];
     const reached = slabs.filter((s) => count >= s.minClaims);
     return reached.length > 0 ? reached[reached.length - 1] : null;
   };
 
   const items: ClaimDailyRewardItem[] = [];
   const fixedRate = Math.max(0, Number(rule.fixedRate) || 0);
+
+  if (rule.calculationMethod === "milestone") {
+    const thresholds = normalizeSlabs(rule.slabs);
+    const rewardAt = (count: number): { matched: IncentiveSlab | null; reward: number } => {
+      let matched: IncentiveSlab | null = null;
+      for (const t of thresholds) {
+        if (count >= t.minClaims) matched = t;
+      }
+      const reward = matched ? (matched.ratePerClaim > 0 ? matched.ratePerClaim : matched.bonusAmount) : 0;
+      return { matched, reward };
+    };
+
+    const nextThreshold = (count: number): IncentiveSlab | null => {
+      return thresholds.find((t) => t.minClaims > count) ?? null;
+    };
+
+    for (let k = 1; k <= dailyEligibleCount; k++) {
+      const prev = rewardAt(k - 1).reward;
+      const cur = rewardAt(k);
+      const delta = cur.reward - prev;
+      const nxt = nextThreshold(k);
+      const label = cur.matched
+        ? delta > 0
+          ? `Milestone ${cur.matched.minClaims}+ (₹${cur.reward})`
+          : `Held @ ${cur.matched.minClaims}+ (₹${cur.reward})`
+        : nxt
+          ? `Need ${nxt.minClaims} for ₹${nxt.ratePerClaim > 0 ? nxt.ratePerClaim : nxt.bonusAmount}`
+          : "Below milestone";
+
+      items.push({
+        sequenceNo: k,
+        slabLabel: label,
+        appliedRate: cur.reward,
+        amount: delta,
+      });
+    }
+
+    const finalState = rewardAt(dailyEligibleCount);
+    const dayTotal = items.reduce((sum, x) => sum + x.amount, 0);
+    const summaryLabel = finalState.matched
+      ? `Milestone ${finalState.matched.minClaims}+ (${dailyEligibleCount} claims) → ₹${dayTotal}`
+      : thresholds[0]
+        ? `${dailyEligibleCount} claims (< ${thresholds[0].minClaims} threshold) → ₹0`
+        : `${dailyEligibleCount} claims → ₹0`;
+
+    return { items, dayTotal, summaryLabel };
+  }
 
   if (rule.calculationMethod === "fixed") {
     for (let k = 1; k <= dailyEligibleCount; k++) {
@@ -490,22 +596,33 @@ export function calculateDayClaimRewards(
   }
 
   if (rule.combinationMode === "fixed_plus_slab_bonus") {
-    const highestBr = findBracket(dailyEligibleCount);
-    const tierBonus = highestBr ? highestBr.bonusAmount || highestBr.ratePerClaim : 0;
+    const bonusAt = (count: number): { matched: IncentiveSlab | null; reward: number } => {
+      const br = findBracket(count);
+      const reward = br ? (br.bonusAmount > 0 ? br.bonusAmount : br.ratePerClaim) : 0;
+      return { matched: br, reward };
+    };
     for (let k = 1; k <= dailyEligibleCount; k++) {
-      const isLast = k === dailyEligibleCount && tierBonus > 0;
-      const amt = fixedRate + (isLast ? tierBonus : 0);
+      const prev = bonusAt(k - 1).reward;
+      const cur = bonusAt(k);
+      const milestoneDelta = Math.max(0, cur.reward - prev);
+      const amt = fixedRate + milestoneDelta;
       items.push({
         sequenceNo: k,
-        slabLabel: isLast ? `Fixed + Bonus (${slabLabelText(highestBr)})` : "Fixed base",
+        slabLabel:
+          milestoneDelta > 0 && cur.matched
+            ? `₹${fixedRate} + Step ${cur.matched.minClaims} (+₹${milestoneDelta})`
+            : cur.matched
+              ? `₹${fixedRate} (held @ ${cur.matched.minClaims}+ step)`
+              : `₹${fixedRate} base`,
         appliedRate: fixedRate,
         amount: amt,
       });
     }
+    const finalBonus = bonusAt(dailyEligibleCount).reward;
     return {
       items,
       dayTotal: items.reduce((sum, x) => sum + x.amount, 0),
-      summaryLabel: `${dailyEligibleCount} × ₹${fixedRate} + ₹${tierBonus} bonus`,
+      summaryLabel: `${dailyEligibleCount} × ₹${fixedRate}${finalBonus > 0 ? ` + ₹${finalBonus} milestone` : ""}`,
     };
   }
 
@@ -526,6 +643,285 @@ export function calculateDayClaimRewards(
     dayTotal: items.reduce((sum, x) => sum + x.amount, 0),
     summaryLabel: `Combined progressive (${dailyEligibleCount} claims)`,
   };
+}
+
+/** Evaluates highest achieved Monthly Milestone bonus tier (e.g., 60 → ₹500, 80 → ₹1,000). */
+export function calculateMonthlyMilestoneReward(
+  milestones: MonthlyMilestoneTier[],
+  monthlyEligibleClaims: number,
+): {
+  matchedTier: MonthlyMilestoneTier | null;
+  bonusAmount: number;
+  nextTier: MonthlyMilestoneTier | null;
+  claimsToNext: number;
+} {
+  const tiers = normalizeMonthlyMilestones(milestones);
+  if (monthlyEligibleClaims <= 0 || tiers.length === 0) {
+    const first = tiers[0] ?? null;
+    return {
+      matchedTier: null,
+      bonusAmount: 0,
+      nextTier: first,
+      claimsToNext: first ? Math.max(0, first.minClaims - Math.max(0, monthlyEligibleClaims)) : 0,
+    };
+  }
+
+  let matched: MonthlyMilestoneTier | null = null;
+  for (const t of tiers) {
+    if (monthlyEligibleClaims >= t.minClaims) matched = t;
+  }
+  const next = tiers.find((t) => t.minClaims > monthlyEligibleClaims) ?? null;
+  return {
+    matchedTier: matched,
+    bonusAmount: matched ? matched.rewardAmount : 0,
+    nextTier: next,
+    claimsToNext: next ? next.minClaims - monthlyEligibleClaims : 0,
+  };
+}
+
+/**
+ * Evaluates personalized Agent Stretch / Special Milestone Ladder on top of Common Base Target.
+ * Supports multi-step milestone charts (`stretchMilestones`) where payouts/rates hold flat between
+ * thresholds (identical to Daily Milestones) as well as single-threshold overrides.
+ */
+export function calculateStretchGoalEarnings(args: {
+  eligibleClaimsCount: number;
+  baseTarget: number;
+  stretchTarget?: number | null;
+  stretchSpecialRate?: number;
+  stretchMilestones?: MonthlyMilestoneTier[] | null;
+  stretchRateMode: StretchRateMode;
+  chronologicalDailyClaimAmounts: number[];
+}): {
+  stretchConfigured: boolean;
+  stretchAchieved: boolean;
+  stretchTiers: MonthlyMilestoneTier[];
+  matchedStretchTier: MonthlyMilestoneTier | null;
+  nextStretchTier: MonthlyMilestoneTier | null;
+  baseClaimsCount: number;
+  overBaseClaimsCount: number;
+  normalUpToBaseAmount: number;
+  normalOverBaseAmount: number;
+  normalTotalAmount: number;
+  specialRateAmountOnOverBase: number;
+  stretchDeltaAmount: number;
+  totalWithStretch: number;
+  claimsRemainingForStretch: number;
+} {
+  const n = Math.max(0, Math.floor(args.eligibleClaimsCount));
+  const baseThreshold = Math.max(0, Math.floor(args.baseTarget));
+  const legacyTarget =
+    args.stretchTarget !== null && args.stretchTarget !== undefined && Number(args.stretchTarget) > 0
+      ? Math.floor(Number(args.stretchTarget))
+      : null;
+  const legacyRate = Math.max(0, Number(args.stretchSpecialRate ?? 0) || 0);
+  const explicitTiers = normalizeMonthlyMilestones(args.stretchMilestones ?? []);
+  const stretchTiers: MonthlyMilestoneTier[] =
+    explicitTiers.length > 0
+      ? explicitTiers
+      : legacyTarget
+        ? [{ minClaims: legacyTarget, rewardAmount: legacyRate }]
+        : [];
+  const amounts = args.chronologicalDailyClaimAmounts;
+
+  const baseClaimsCount = Math.min(n, baseThreshold);
+  const overBaseClaimsCount = Math.max(0, n - baseThreshold);
+
+  let normalUpToBaseAmount = 0;
+  let normalOverBaseAmount = 0;
+  for (let i = 0; i < n; i++) {
+    const amt = Number(amounts[i] ?? 0);
+    if (i < baseThreshold) normalUpToBaseAmount += amt;
+    else normalOverBaseAmount += amt;
+  }
+  const normalTotalAmount = normalUpToBaseAmount + normalOverBaseAmount;
+
+  if (stretchTiers.length === 0) {
+    return {
+      stretchConfigured: false,
+      stretchAchieved: false,
+      stretchTiers: [],
+      matchedStretchTier: null,
+      nextStretchTier: null,
+      baseClaimsCount,
+      overBaseClaimsCount,
+      normalUpToBaseAmount,
+      normalOverBaseAmount,
+      normalTotalAmount,
+      specialRateAmountOnOverBase: normalOverBaseAmount,
+      stretchDeltaAmount: 0,
+      totalWithStretch: normalTotalAmount,
+      claimsRemainingForStretch: 0,
+    };
+  }
+
+  let matchedStretchTier: MonthlyMilestoneTier | null = null;
+  for (const t of stretchTiers) {
+    if (n >= t.minClaims) matchedStretchTier = t;
+  }
+  const nextStretchTier = stretchTiers.find((t) => t.minClaims > n) ?? null;
+  const stretchAchieved = matchedStretchTier !== null;
+  const claimsRemainingForStretch = nextStretchTier ? Math.max(0, nextStretchTier.minClaims - n) : 0;
+
+  if (!matchedStretchTier) {
+    return {
+      stretchConfigured: true,
+      stretchAchieved: false,
+      stretchTiers,
+      matchedStretchTier: null,
+      nextStretchTier,
+      baseClaimsCount,
+      overBaseClaimsCount,
+      normalUpToBaseAmount,
+      normalOverBaseAmount,
+      normalTotalAmount,
+      specialRateAmountOnOverBase: normalOverBaseAmount,
+      stretchDeltaAmount: 0,
+      totalWithStretch: normalTotalAmount,
+      claimsRemainingForStretch,
+    };
+  }
+
+  const appliedRate = Math.max(0, Number(matchedStretchTier.rewardAmount) || 0);
+  let specialRateAmountOnOverBase = normalOverBaseAmount;
+  let stretchDeltaAmount = 0;
+  let totalWithStretch = normalTotalAmount;
+
+  if (args.stretchRateMode === "extra_per_claim_from_base") {
+    stretchDeltaAmount = overBaseClaimsCount * appliedRate;
+    specialRateAmountOnOverBase = normalOverBaseAmount + stretchDeltaAmount;
+    totalWithStretch = normalTotalAmount + stretchDeltaAmount;
+  } else if (args.stretchRateMode === "replace_all_claims") {
+    totalWithStretch = n * appliedRate;
+    stretchDeltaAmount = totalWithStretch - normalTotalAmount;
+    specialRateAmountOnOverBase = overBaseClaimsCount * appliedRate;
+  } else if (args.stretchRateMode === "lump_sum_bonus") {
+    stretchDeltaAmount = appliedRate;
+    specialRateAmountOnOverBase = normalOverBaseAmount + stretchDeltaAmount;
+    totalWithStretch = normalTotalAmount + stretchDeltaAmount;
+  } else {
+    // Default ("replace_from_base"): normal earnings up to Base Target, matched Special Rate on claims after Base Target
+    specialRateAmountOnOverBase = overBaseClaimsCount * appliedRate;
+    stretchDeltaAmount = specialRateAmountOnOverBase - normalOverBaseAmount;
+    totalWithStretch = normalUpToBaseAmount + specialRateAmountOnOverBase;
+  }
+
+  return {
+    stretchConfigured: true,
+    stretchAchieved: true,
+    stretchTiers,
+    matchedStretchTier,
+    nextStretchTier,
+    baseClaimsCount,
+    overBaseClaimsCount,
+    normalUpToBaseAmount,
+    normalOverBaseAmount,
+    normalTotalAmount,
+    specialRateAmountOnOverBase,
+    stretchDeltaAmount,
+    totalWithStretch: Math.max(0, totalWithStretch),
+    claimsRemainingForStretch,
+  };
+}
+
+/** Interactive Preview Simulator: distributes `monthlyClaims` across `workingDays` to preview exact payouts. */
+export function simulateRulePayout(args: {
+  rule: Pick<
+    IncentiveRule,
+    "calculationMethod" | "fixedRate" | "combinationMode" | "slabs" | "monthlyTarget" | "monthlyMilestones"
+  >;
+  workingDays: number;
+  monthlyClaims: number;
+  baseTargetOverride?: number | null;
+  stretchTarget?: number | null;
+  stretchSpecialRate?: number;
+  stretchMilestones?: MonthlyMilestoneTier[] | null;
+  stretchRateMode?: StretchRateMode;
+}): {
+  monthlyClaims: number;
+  workingDays: number;
+  effectiveTarget: number;
+  targetAchieved: boolean;
+  dailyBreakdownSummary: string;
+  dailyTotalEarnings: number;
+  monthlyMilestoneBonus: number;
+  matchedMonthlyMilestone: MonthlyMilestoneTier | null;
+  nextMonthlyMilestone: MonthlyMilestoneTier | null;
+  stretchSummary: ReturnType<typeof calculateStretchGoalEarnings>;
+  totalGrossEarned: number;
+  finalPayable: number;
+  forfeitedAmount: number;
+  avgPerClaim: number;
+} {
+  const days = Math.max(1, Math.min(31, Math.floor(args.workingDays)));
+  const totalClaims = Math.max(0, Math.min(10_000, Math.floor(args.monthlyClaims)));
+  const effectiveTarget =
+    args.baseTargetOverride !== null && args.baseTargetOverride !== undefined
+      ? Math.max(0, Math.floor(args.baseTargetOverride))
+      : Math.max(0, Math.floor(args.rule.monthlyTarget));
+
+  const perDayFloor = Math.floor(totalClaims / days);
+  const remainder = totalClaims % days;
+
+  const chronologicalAmounts: number[] = [];
+  let dailyTotalEarnings = 0;
+
+  const highDayCount = remainder > 0 ? perDayFloor + 1 : perDayFloor;
+  const highDayReward = calculateDayClaimRewards(args.rule, highDayCount);
+  const lowDayReward = calculateDayClaimRewards(args.rule, perDayFloor);
+
+  for (let d = 0; d < days; d++) {
+    const dayReward = d < remainder ? highDayReward : lowDayReward;
+    dailyTotalEarnings += dayReward.dayTotal;
+    for (const item of dayReward.items) {
+      chronologicalAmounts.push(item.amount);
+    }
+  }
+
+  const dailyBreakdownSummary =
+    totalClaims === 0
+      ? "0 claims simulated"
+      : remainder === 0
+        ? `${days} days × ${perDayFloor} claims/day (${formatINRInline(lowDayReward.dayTotal)}/day)`
+        : `${remainder} days × ${highDayCount} claims (${formatINRInline(highDayReward.dayTotal)}/day) + ${days - remainder} days × ${perDayFloor} claims (${formatINRInline(lowDayReward.dayTotal)}/day)`;
+
+  const monthlyMilestone = calculateMonthlyMilestoneReward(args.rule.monthlyMilestones, totalClaims);
+  const stretchSummary = calculateStretchGoalEarnings({
+    eligibleClaimsCount: totalClaims,
+    baseTarget: effectiveTarget,
+    stretchTarget: args.stretchTarget ?? null,
+    stretchSpecialRate: args.stretchSpecialRate ?? 0,
+    stretchMilestones: args.stretchMilestones ?? null,
+    stretchRateMode: args.stretchRateMode ?? "replace_from_base",
+    chronologicalDailyClaimAmounts: chronologicalAmounts,
+  });
+
+  const targetAchieved = effectiveTarget === 0 || totalClaims >= effectiveTarget;
+  const totalGrossEarned = Math.max(0, stretchSummary.totalWithStretch + monthlyMilestone.bonusAmount);
+  const finalPayable = targetAchieved ? totalGrossEarned : 0;
+  const forfeitedAmount = targetAchieved ? 0 : totalGrossEarned;
+  const avgPerClaim = totalClaims > 0 ? Math.round((finalPayable / totalClaims) * 100) / 100 : 0;
+
+  return {
+    monthlyClaims: totalClaims,
+    workingDays: days,
+    effectiveTarget,
+    targetAchieved,
+    dailyBreakdownSummary,
+    dailyTotalEarnings,
+    monthlyMilestoneBonus: monthlyMilestone.bonusAmount,
+    matchedMonthlyMilestone: monthlyMilestone.matchedTier,
+    nextMonthlyMilestone: monthlyMilestone.nextTier,
+    stretchSummary,
+    totalGrossEarned,
+    finalPayable,
+    forfeitedAmount,
+    avgPerClaim,
+  };
+}
+
+function formatINRInline(amount: number): string {
+  return `₹${amount.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 }
 
 export function computeProRatedTarget(args: {

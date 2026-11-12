@@ -2,14 +2,23 @@ import { createClient } from "@/lib/supabase/server";
 import type { StaffProfile } from "@/lib/auth";
 import { one, pagedRows, todayIST } from "@/lib/data/helpers";
 import {
+  DEFAULT_MONTHLY_TARGETS,
   DEFAULT_SETTINGS,
+  calculateMonthlyMilestoneReward,
+  calculateStretchGoalEarnings,
+  computeProRatedTarget,
+  findActiveAssignment,
   formatMonthTitle,
   monthBounds,
+  normalizeMonthlyMilestones,
   normalizeVehicleCategory,
+  resolveMatchingRule,
   type AgentAssignmentRecord,
   type HolidayItem,
   type IncentiveRule,
   type IncentiveSettings,
+  type MonthlyMilestoneTier,
+  type StretchRateMode,
   type VehicleCategory,
 } from "@/lib/incentives";
 import {
@@ -70,6 +79,19 @@ export type MonthlyAgentView = {
   remainingTarget: number;
   progressPct: number;
   targetAchieved: boolean;
+  dailyProvisionalEarnings: number;
+  monthlyMilestoneBonus: number;
+  stretchTarget: number | null;
+  stretchSpecialRate: number;
+  stretchRateMode: StretchRateMode;
+  stretchLabel: string | null;
+  stretchMilestones: MonthlyMilestoneTier[];
+  stretchAchieved: boolean;
+  stretchBonusAmount: number;
+  stretchClaimsRemaining: number;
+  overBaseClaimsCount: number;
+  activeMonthlyMilestones: MonthlyMilestoneTier[];
+  nextMonthlyMilestone: MonthlyMilestoneTier | null;
   provisionalEarnings: number;
   adjustmentsTotal: number;
   forfeitedAmount: number;
@@ -94,6 +116,8 @@ export type SettlementView = {
   monthlyTarget: number;
   eligibleClaims: number;
   provisionalAmount: number;
+  monthlyMilestoneBonus: number;
+  stretchBonusAmount: number;
   adjustmentAmount: number;
   eligibilityStatus: string;
   paymentStatus: string;
@@ -344,7 +368,7 @@ export async function getIncentivesDashboard(
       (() => {
         let q = db
           .from("incentive_agent_assignments")
-          .select("id, staff_id, vehicle_category, assigned_state, effective_from, effective_until, status, notes, created_at");
+          .select("*");
         if (!canManage) q = q.eq("staff_id", staff.id);
         return q.order("effective_from", { ascending: false });
       })(),
@@ -469,6 +493,7 @@ export async function getIncentivesDashboard(
     }));
 
     const assignments: AgentAssignmentRecord[] = (assignmentsRes.data ?? []).map((a) => {
+      const row = a as Record<string, unknown>;
       const s = staffMap.get(String(a.staff_id));
       return {
         id: a.id as string,
@@ -481,6 +506,12 @@ export async function getIncentivesDashboard(
         effectiveUntil: (a.effective_until as string | null) ?? null,
         status: a.status === "inactive" ? "inactive" : "active",
         notes: (a.notes as string | null) ?? null,
+        stretchTarget:
+          row.stretch_target === null || row.stretch_target === undefined ? null : Number(row.stretch_target),
+        stretchSpecialRate: Number(row.stretch_special_rate ?? 0),
+        stretchRateMode: (row.stretch_rate_mode as StretchRateMode | undefined) ?? "lump_sum_bonus",
+        stretchLabel: (row.stretch_label as string | null | undefined) ?? null,
+        stretchMilestones: normalizeMonthlyMilestones(row.stretch_milestones),
         createdAt: a.created_at as string,
       };
     });
@@ -494,6 +525,7 @@ export async function getIncentivesDashboard(
       }));
 
     const settlements: SettlementView[] = (settlementsRes.data ?? []).map((s) => {
+      const row = s as Record<string, unknown>;
       const st = staffMap.get(String(s.agent_id));
       return {
         id: s.id as string,
@@ -506,6 +538,8 @@ export async function getIncentivesDashboard(
         monthlyTarget: Number(s.monthly_target ?? 0),
         eligibleClaims: Number(s.eligible_claims ?? 0),
         provisionalAmount: Number(s.provisional_amount ?? 0),
+        monthlyMilestoneBonus: Number(row.monthly_milestone_bonus ?? 0),
+        stretchBonusAmount: Number(row.stretch_bonus_amount ?? 0),
         adjustmentAmount: Number(s.adjustment_amount ?? 0),
         eligibilityStatus: String(s.eligibility_status),
         paymentStatus: String(s.payment_status),
@@ -563,41 +597,175 @@ export async function getIncentivesDashboard(
     // Respect `agentVisibilityMode` for non-admin agents when configured as `after_daily_reconciliation`
     const hideUnreconciledToday = !canManage && settings.agentVisibilityMode === "after_daily_reconciliation";
     const ledger = hideUnreconciledToday
-      ? ledgerAll.filter((l) => l.submissionDate < todayIso || period.status !== "open")
+      ? ledgerAll.filter(
+          (l) => (l.submissionDate < todayIso && l.effectiveSlabDate < todayIso) || period.status !== "open",
+        )
       : ledgerAll;
 
     const exceptions = canManage ? ledgerAll.filter((l) => l.earningStatus === "held") : [];
 
+    const refDateForRules = todayIso >= period.start_date && todayIso <= period.end_date ? todayIso : period.end_date;
+
     const monthlyAgents: MonthlyAgentView[] = (monthlyRes.data ?? []).map((m) => {
+      const row = m as Record<string, unknown>;
       const agentId = String(m.agent_id);
       const st = staffMap.get(agentId);
       const sett = settlementByAgent.get(agentId);
       const effectiveTarget = Number(m.effective_target ?? 0);
-      const eligibleClaims = Number(m.eligible_claims_count ?? 0);
+
+      const assignNow = findActiveAssignment(assignments, agentId, refDateForRules);
+      const assignOrMonthlyCat = m.primary_vehicle_category
+        ? normalizeVehicleCategory(String(m.primary_vehicle_category))
+        : assignNow?.vehicleCategory ?? null;
+      const assignOrMonthlyState = (m.primary_state as string | null) ?? assignNow?.assignedState ?? null;
+
+      const matchedRule =
+        assignOrMonthlyCat && assignOrMonthlyState
+          ? resolveMatchingRule(rules, {
+              vehicleCategory: assignOrMonthlyCat,
+              resolvedState: assignOrMonthlyState,
+              submissionDate: refDateForRules,
+              settings,
+            })?.rule ?? null
+          : null;
+      const activeMonthlyMilestones = matchedRule?.monthlyMilestones ?? [];
+
+      const assignMilestones = assignNow?.stretchMilestones ?? [];
+      const rowMilestones = normalizeMonthlyMilestones(row.stretch_milestones);
+      const assignStretchTarget = assignNow?.stretchTarget ?? null;
+      const monthlyStretchTarget =
+        row.stretch_target === null || row.stretch_target === undefined ? null : Number(row.stretch_target);
+      const useAssign = period.status === "open" && (assignMilestones.length > 0 || assignStretchTarget !== null);
+
+      const stretchMilestones: MonthlyMilestoneTier[] = useAssign
+        ? assignMilestones.length > 0
+          ? assignMilestones
+          : assignStretchTarget
+            ? [{ minClaims: assignStretchTarget, rewardAmount: Number(assignNow?.stretchSpecialRate ?? 0) }]
+            : []
+        : rowMilestones.length > 0
+          ? rowMilestones
+          : monthlyStretchTarget
+            ? [{ minClaims: monthlyStretchTarget, rewardAmount: Number(row.stretch_special_rate ?? 0) }]
+            : [];
+
+      const stretchTarget = stretchMilestones[0]?.minClaims ?? (useAssign ? assignStretchTarget : monthlyStretchTarget);
+      const stretchSpecialRate =
+        stretchMilestones[0]?.rewardAmount ??
+        (useAssign ? Number(assignNow?.stretchSpecialRate ?? 0) : Number(row.stretch_special_rate ?? 0));
+      const stretchRateMode: StretchRateMode = useAssign
+        ? (assignNow?.stretchRateMode ?? "lump_sum_bonus")
+        : ((row.stretch_rate_mode as StretchRateMode | undefined) ?? "lump_sum_bonus");
+      const stretchLabel = useAssign
+        ? (assignNow?.stretchLabel ?? null)
+        : ((row.stretch_label as string | null | undefined) ?? null);
+
+      // When `after_daily_reconciliation` hides today's rows on an open period, compute agent's visible KPI metrics strictly from pre-today ledger rows so top cards stay 100% consistent with daily rows.
+      const maskTodayStats = hideUnreconciledToday && period.status === "open";
+      const visibleAgentLedger = maskTodayStats ? ledger.filter((l) => l.agentId === agentId) : [];
+      const visibleEligibleRows = maskTodayStats
+        ? visibleAgentLedger
+            .filter((l) => l.eligibilityStatus === "eligible")
+            .sort((a, b) => a.submissionDate.localeCompare(b.submissionDate) || a.claimId.localeCompare(b.claimId))
+        : [];
+      const visibleAmounts = visibleEligibleRows.map((x) => x.calculatedAmount);
+
+      const eligibleClaims = maskTodayStats
+        ? visibleEligibleRows.length
+        : Number(m.eligible_claims_count ?? 0);
+      const nonQualifyingClaimsCount = maskTodayStats
+        ? visibleAgentLedger.filter((l) => l.earningStatus === "ineligible").length
+        : Number(m.non_qualifying_claims_count ?? 0);
+      const heldClaimsCount = maskTodayStats
+        ? visibleAgentLedger.filter((l) => l.earningStatus === "held").length
+        : Number(m.held_claims_count ?? 0);
+
       const remainingTarget = Math.max(0, effectiveTarget - eligibleClaims);
       const progressPct =
         effectiveTarget === 0 ? 100 : Math.min(100, Math.round((eligibleClaims / effectiveTarget) * 100));
+      const targetAchieved = maskTodayStats
+        ? effectiveTarget === 0 || eligibleClaims >= effectiveTarget
+        : Boolean(m.target_achieved);
+
+      const mmEval = calculateMonthlyMilestoneReward(activeMonthlyMilestones, eligibleClaims);
+      const visibleStretchEval = maskTodayStats
+        ? calculateStretchGoalEarnings({
+            eligibleClaimsCount: eligibleClaims,
+            baseTarget: effectiveTarget,
+            stretchTarget,
+            stretchSpecialRate,
+            stretchMilestones,
+            stretchRateMode,
+            chronologicalDailyClaimAmounts: visibleAmounts,
+          })
+        : null;
+
+      const highestStretchHit = stretchMilestones.reduce<MonthlyMilestoneTier | null>(
+        (acc, t) => (eligibleClaims >= t.minClaims ? t : acc),
+        null,
+      );
+      const nextStretchTier = stretchMilestones.find((t) => t.minClaims > eligibleClaims) ?? null;
+      const stretchAchieved = maskTodayStats
+        ? Boolean(visibleStretchEval?.stretchAchieved)
+        : Boolean(row.stretch_achieved) || highestStretchHit !== null;
+      const stretchClaimsRemaining = nextStretchTier ? Math.max(0, nextStretchTier.minClaims - eligibleClaims) : 0;
+
+      const dailyProv = maskTodayStats
+        ? visibleAmounts.reduce((s, a) => s + a, 0)
+        : row.daily_provisional_earnings !== undefined && row.daily_provisional_earnings !== null
+          ? Number(row.daily_provisional_earnings)
+          : Number(m.provisional_earnings ?? 0);
+      const monthlyMilestoneBonus = maskTodayStats
+        ? mmEval.bonusAmount
+        : Number(row.monthly_milestone_bonus ?? mmEval.bonusAmount ?? 0);
+      const stretchBonusAmount = maskTodayStats
+        ? (visibleStretchEval?.stretchDeltaAmount ?? 0)
+        : Number(row.stretch_bonus_amount ?? 0);
+      const provisionalTotal = maskTodayStats
+        ? Math.max(0, (visibleStretchEval?.totalWithStretch ?? dailyProv) + monthlyMilestoneBonus)
+        : Number(m.provisional_earnings ?? 0);
+      const adjustmentsTotal = Number(m.adjustments_total ?? 0);
+      const grossPlusAdj = Math.max(0, provisionalTotal + adjustmentsTotal);
+      const forfeitedAmount = maskTodayStats
+        ? (targetAchieved ? 0 : grossPlusAdj)
+        : Number(m.forfeited_amount ?? 0);
+      const eligiblePayableAmount = maskTodayStats
+        ? (targetAchieved ? grossPlusAdj : 0)
+        : Number(m.eligible_payable_amount ?? 0);
 
       return {
         staffId: agentId,
         staffName: st?.full_name ?? staff.full_name,
         employeeCode: st?.employee_code ?? null,
-        vehicleCategory: m.primary_vehicle_category ? normalizeVehicleCategory(String(m.primary_vehicle_category)) : null,
-        assignedState: (m.primary_state as string | null) ?? null,
+        vehicleCategory: assignOrMonthlyCat,
+        assignedState: assignOrMonthlyState,
         baseTarget: Number(m.base_monthly_target ?? 0),
         targetOverride: m.target_override === null ? null : Number(m.target_override),
         effectiveTarget,
         targetAdjustmentReason: (m.target_adjustment_reason as string | null) ?? null,
         eligibleClaimsCount: eligibleClaims,
-        nonQualifyingClaimsCount: Number(m.non_qualifying_claims_count ?? 0),
-        heldClaimsCount: Number(m.held_claims_count ?? 0),
+        nonQualifyingClaimsCount,
+        heldClaimsCount,
         remainingTarget,
         progressPct,
-        targetAchieved: Boolean(m.target_achieved),
-        provisionalEarnings: Number(m.provisional_earnings ?? 0),
-        adjustmentsTotal: Number(m.adjustments_total ?? 0),
-        forfeitedAmount: Number(m.forfeited_amount ?? 0),
-        eligiblePayableAmount: Number(m.eligible_payable_amount ?? 0),
+        targetAchieved,
+        dailyProvisionalEarnings: dailyProv,
+        monthlyMilestoneBonus,
+        stretchTarget,
+        stretchSpecialRate,
+        stretchRateMode,
+        stretchLabel,
+        stretchMilestones,
+        stretchAchieved,
+        stretchBonusAmount,
+        stretchClaimsRemaining,
+        overBaseClaimsCount: Math.max(0, eligibleClaims - effectiveTarget),
+        activeMonthlyMilestones,
+        nextMonthlyMilestone: mmEval.nextTier,
+        provisionalEarnings: provisionalTotal,
+        adjustmentsTotal,
+        forfeitedAmount,
+        eligiblePayableAmount,
         settlementId: sett?.id ?? null,
         settlementStatus: sett?.status ?? null,
         eligibilityStatus: sett?.eligibilityStatus ?? null,
@@ -607,6 +775,81 @@ export async function getIncentivesDashboard(
         outstandingAmount: sett?.outstandingAmount ?? 0,
       };
     });
+
+    // Ensure non-admin agents see their live Base Target + Personalized Stretch Goal even before first claim of the month
+    if (!canManage && monthlyAgents.length === 0) {
+      const myAssign = findActiveAssignment(assignments, staff.id, refDateForRules) ?? assignments[0] ?? null;
+      if (myAssign) {
+        const ruleHit = resolveMatchingRule(rules, {
+          vehicleCategory: myAssign.vehicleCategory,
+          resolvedState: myAssign.assignedState,
+          submissionDate: refDateForRules,
+          settings,
+        })?.rule ?? null;
+        const baseTarget = ruleHit?.monthlyTarget ?? DEFAULT_MONTHLY_TARGETS[myAssign.vehicleCategory];
+        const effectiveTargetDay1 =
+          settings.midMonthTargetPolicy === "prorated"
+            ? computeProRatedTarget({
+                baseTarget,
+                periodStart: period.start_date,
+                periodEnd: period.end_date,
+                activeFrom: myAssign.effectiveFrom,
+                activeUntil: myAssign.effectiveUntil,
+              })
+            : baseTarget;
+        const activeMilestones = ruleHit?.monthlyMilestones ?? [];
+        const mmEval = calculateMonthlyMilestoneReward(activeMilestones, 0);
+        const sMilestones =
+          (myAssign.stretchMilestones ?? []).length > 0
+            ? myAssign.stretchMilestones!
+            : myAssign.stretchTarget
+              ? [{ minClaims: myAssign.stretchTarget, rewardAmount: Number(myAssign.stretchSpecialRate ?? 0) }]
+              : [];
+        const sTarget = sMilestones[0]?.minClaims ?? myAssign.stretchTarget ?? null;
+
+        monthlyAgents.push({
+          staffId: staff.id,
+          staffName: staff.full_name,
+          employeeCode: myAssign.employeeCode,
+          vehicleCategory: myAssign.vehicleCategory,
+          assignedState: myAssign.assignedState,
+          baseTarget,
+          targetOverride: null,
+          effectiveTarget: effectiveTargetDay1,
+          targetAdjustmentReason: null,
+          eligibleClaimsCount: 0,
+          nonQualifyingClaimsCount: 0,
+          heldClaimsCount: 0,
+          remainingTarget: effectiveTargetDay1,
+          progressPct: effectiveTargetDay1 === 0 ? 100 : 0,
+          targetAchieved: effectiveTargetDay1 === 0,
+          dailyProvisionalEarnings: 0,
+          monthlyMilestoneBonus: 0,
+          stretchTarget: sTarget,
+          stretchSpecialRate: sMilestones[0]?.rewardAmount ?? Number(myAssign.stretchSpecialRate ?? 0),
+          stretchRateMode: myAssign.stretchRateMode ?? "lump_sum_bonus",
+          stretchLabel: myAssign.stretchLabel ?? null,
+          stretchMilestones: sMilestones,
+          stretchAchieved: false,
+          stretchBonusAmount: 0,
+          stretchClaimsRemaining: sTarget ?? 0,
+          overBaseClaimsCount: 0,
+          activeMonthlyMilestones: activeMilestones,
+          nextMonthlyMilestone: mmEval.nextTier,
+          provisionalEarnings: 0,
+          adjustmentsTotal: 0,
+          forfeitedAmount: 0,
+          eligiblePayableAmount: 0,
+          settlementId: null,
+          settlementStatus: null,
+          eligibilityStatus: null,
+          paymentStatus: null,
+          finalizedPayable: 0,
+          paidAmount: 0,
+          outstandingAmount: 0,
+        });
+      }
+    }
 
     monthlyAgents.sort(
       (a, b) => b.provisionalEarnings - a.provisionalEarnings || b.eligibleClaimsCount - a.eligibleClaimsCount,
