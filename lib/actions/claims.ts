@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type { ActionState } from "@/lib/module-types";
 import {
@@ -12,12 +13,15 @@ import {
   formValues,
   normalizeMobile,
   parseDate,
+  readInsurerInput,
+  resolveInsurer,
   text,
   type Db,
 } from "@/lib/actions/shared";
-import { dateIST, todayIST } from "@/lib/data/helpers";
+import { dateIST, one, todayIST } from "@/lib/data/helpers";
 import { syncIncentivesForDateSafe } from "@/lib/incentives-engine";
 import { canonicalStateName, normalizePincode } from "@/lib/states";
+import { validateIndianVehicleNumber } from "@/lib/vehicle-validation";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const PAYMENT_MODES = ["Online", "NEFT", "Cheque", "GPay(UPI)", "Cash"]; // claims_payment_mode_check
@@ -27,7 +31,9 @@ const TYPE_FOR_GROUP: Record<string, string> = { "2W": "bike", "4W": "car", CW: 
 
 function parseClaimForm(formData: FormData, forcedAgentId?: string) {
   const agentId = forcedAgentId ?? text(formData, "agent");
-  const reg = text(formData, "vehicleRegNo").toUpperCase().replace(/\s+/g, "");
+  const regRaw = text(formData, "vehicleRegNo");
+  const validation = validateIndianVehicleNumber(regRaw);
+  const reg = validation.normalizedNumber;
   const paymentDate = parseDate(text(formData, "paymentDate"));
   const mode = text(formData, "paymentMode");
   const amountRaw = text(formData, "amount").replace(/,/g, "");
@@ -35,15 +41,21 @@ function parseClaimForm(formData: FormData, forcedAgentId?: string) {
   const customerName = text(formData, "customerName");
   const mobileRaw = text(formData, "customerMobile");
   const group = text(formData, "vehicleGroup");
-  const saodRaw = text(formData, "saodDueDate");
+  const dueDateRaw = text(formData, "dueDate") || text(formData, "saodDueDate");
+  const policyNumber = text(formData, "policyNumber");
+  const insurerRaw = text(formData, "insurer");
+  const vehicleMake = text(formData, "vehicleMake");
+  const vehicleModel = text(formData, "vehicleModel");
+  const idvRaw = text(formData, "idv").replace(/,/g, "");
   const pinRaw = text(formData, "customerPincode");
   const stateRaw = text(formData, "customerState");
   const docType = text(formData, "documentType") || "Policy copy";
   const fileCheck = checkFile(formData.get("document"));
 
   const fieldErrors: Record<string, string> = {};
+  const insurerName = insurerRaw ? readInsurerInput(formData, fieldErrors) : "";
   if (!UUID.test(agentId)) fieldErrors.agent = "Choose the agent.";
-  if (!/^[A-Z0-9-]{4,15}$/.test(reg)) fieldErrors.vehicleRegNo = "Enter a valid registration number.";
+  if (validation.status === "INVALID") fieldErrors.vehicleRegNo = validation.message;
   if (!paymentDate || paymentDate > todayIST()) {
     fieldErrors.paymentDate = "Enter the payment date (not in the future).";
   }
@@ -56,14 +68,24 @@ function parseClaimForm(formData: FormData, forcedAgentId?: string) {
       fieldErrors.amount = "Enter a valid amount.";
     }
   }
+  let idv: number | null = null;
+  if (idvRaw) {
+    idv = Number(idvRaw);
+    if (!Number.isFinite(idv) || idv < 0 || idv > 1_000_000_000) {
+      fieldErrors.idv = "Enter a valid IDV amount.";
+    }
+  }
   if (remarks.length > 500) fieldErrors.remarks = "Use 500 characters or fewer.";
 
   const mobile = mobileRaw ? normalizeMobile(mobileRaw) : null;
   if (mobileRaw && !mobile) fieldErrors.customerMobile = "Enter a valid 10-digit Indian mobile number.";
-  const saod = saodRaw ? parseDate(saodRaw) : null;
-  if (saodRaw && !saod) fieldErrors.saodDueDate = "Enter a valid date.";
+  const dueDate = dueDateRaw ? parseDate(dueDateRaw) : null;
+  if (dueDateRaw && !dueDate) fieldErrors.dueDate = "Enter a valid date.";
   if (group && !VEHICLE_GROUPS.includes(group)) fieldErrors.vehicleGroup = "Choose 2W, 4W or CW.";
   if (customerName.length > 120) fieldErrors.customerName = "Name is too long.";
+  if (policyNumber.length > 80) fieldErrors.policyNumber = "Policy number is too long.";
+  if (vehicleMake.length > 80) fieldErrors.vehicleMake = "Make is too long.";
+  if (vehicleModel.length > 80) fieldErrors.vehicleModel = "Model is too long.";
   const pincode = pinRaw ? normalizePincode(pinRaw) : null;
   if (pinRaw && !pincode) fieldErrors.customerPincode = "Enter a valid 6-digit PIN code.";
   const customerState = stateRaw ? canonicalStateName(stateRaw) : null;
@@ -81,7 +103,12 @@ function parseClaimForm(formData: FormData, forcedAgentId?: string) {
       customerName,
       mobile,
       group,
-      saod,
+      dueDate,
+      policyNumber: policyNumber || null,
+      insurerName: insurerName || null,
+      vehicleMake: vehicleMake || null,
+      vehicleModel: vehicleModel || null,
+      idv,
       pincode,
       customerState,
       docType: docType.slice(0, 60),
@@ -219,7 +246,7 @@ export async function createClaim(_previous: ActionState, formData: FormData): P
     if (parsed.customerName.length < 2) missing.customerName = "Needed for a new vehicle.";
     if (!parsed.mobile) missing.customerMobile = "Needed for a new vehicle.";
     if (!parsed.group) missing.vehicleGroup = "Needed for a new vehicle.";
-    if (!parsed.saod) missing.saodDueDate = "Needed for a new vehicle.";
+    if (!parsed.dueDate) missing.dueDate = "Needed for a new vehicle.";
     if (Object.keys(missing).length > 0) {
       return fail("This vehicle is not in Policies yet. Add the customer details below so a policy can be created.", {
         fieldErrors: missing,
@@ -239,26 +266,34 @@ export async function createClaim(_previous: ActionState, formData: FormData): P
     remarks: parsed.remarks || null,
     customer_name: parsed.customerName || null,
     customer_mobile: parsed.mobile,
-    saod_due_date: parsed.saod,
+    saod_due_date: null,
     vehicle_category: parsed.group || null,
   };
 
-  let inserted = await db
-    .from("claims")
-    .insert({
-      ...baseInsert,
-      customer_pincode: parsed.pincode,
-      customer_state: parsed.customerState,
-    })
-    .select("id")
-    .single();
-  if (inserted.error && inserted.error.message.includes("customer_pincode")) {
-    inserted = await db.from("claims").insert(baseInsert).select("id").single();
+  const extInsert = {
+    ...baseInsert,
+    due_date: parsed.dueDate,
+    policy_number: parsed.policyNumber,
+    insurer_name: parsed.insurerName,
+    vehicle_make: parsed.vehicleMake,
+    vehicle_model: parsed.vehicleModel,
+    idv: parsed.idv,
+    customer_pincode: parsed.pincode,
+    customer_state: parsed.customerState,
+  };
+
+  let inserted = await db.from("claims").insert(extInsert).select("id").single();
+  if (inserted.error && /customer_pincode|policy_number|insurer_name|vehicle_make|vehicle_model|idv|due_date/i.test(inserted.error.message)) {
+    inserted = await db
+      .from("claims")
+      .insert({ ...baseInsert, saod_due_date: parsed.dueDate })
+      .select("id")
+      .single();
   }
   if (inserted.error && inserted.error.code === "23514" && parsed.group === "CW") {
     inserted = await db
       .from("claims")
-      .insert({ ...baseInsert, vehicle_category: "CV" })
+      .insert({ ...extInsert, vehicle_category: "CV" })
       .select("id")
       .single();
   }
@@ -283,11 +318,17 @@ export async function createClaim(_previous: ActionState, formData: FormData): P
       docType: parsed.docType,
     });
     if (docErr) {
+      revalidatePath("/claims");
+      revalidatePath("/", "layout");
       return done(`Claim CLM-${claimId.slice(0, 8).toUpperCase()} added, but document could not be uploaded (${docErr}).`);
     }
+    revalidatePath("/claims");
+    revalidatePath("/", "layout");
     return done(`Claim CLM-${claimId.slice(0, 8).toUpperCase()} and document added for ${parsed.reg}.`);
   }
 
+  revalidatePath("/claims");
+  revalidatePath("/", "layout");
   return done(`Claim CLM-${claimId.slice(0, 8).toUpperCase()} added for ${parsed.reg}.`);
 }
 
@@ -358,7 +399,7 @@ export async function updateClaim(id: string, _previous: ActionState, formData: 
     if (parsed.customerName.length < 2) missing.customerName = "Needed for a new vehicle.";
     if (!parsed.mobile) missing.customerMobile = "Needed for a new vehicle.";
     if (!parsed.group) missing.vehicleGroup = "Needed for a new vehicle.";
-    if (!parsed.saod) missing.saodDueDate = "Needed for a new vehicle.";
+    if (!parsed.dueDate) missing.dueDate = "Needed for a new vehicle.";
     if (Object.keys(missing).length > 0) {
       return fail("This vehicle is not in Policies yet. Fill in the customer details below.", {
         fieldErrors: missing,
@@ -378,7 +419,7 @@ export async function updateClaim(id: string, _previous: ActionState, formData: 
     remarks: parsed.remarks || null,
     customer_name: parsed.customerName || null,
     customer_mobile: parsed.mobile,
-    saod_due_date: parsed.saod,
+    saod_due_date: null,
     vehicle_category: parsed.group || null,
   };
 
@@ -386,16 +427,22 @@ export async function updateClaim(id: string, _previous: ActionState, formData: 
     .from("claims")
     .update({
       ...baseUpdate,
+      due_date: parsed.dueDate,
+      policy_number: parsed.policyNumber,
+      insurer_name: parsed.insurerName,
+      vehicle_make: parsed.vehicleMake,
+      vehicle_model: parsed.vehicleModel,
+      idv: parsed.idv,
       customer_pincode: parsed.pincode,
       customer_state: parsed.customerState,
     })
     .eq("id", id)
     .eq("status", "pending")
     .select("id, created_at");
-  if (updated.error && updated.error.message.includes("customer_pincode")) {
+  if (updated.error && /customer_pincode|policy_number|insurer_name|vehicle_make|vehicle_model|idv|due_date/i.test(updated.error.message)) {
     updated = await db
       .from("claims")
-      .update(baseUpdate)
+      .update({ ...baseUpdate, saod_due_date: parsed.dueDate })
       .eq("id", id)
       .eq("status", "pending")
       .select("id, created_at");
@@ -425,10 +472,18 @@ export async function updateClaim(id: string, _previous: ActionState, formData: 
       docType: parsed.docType,
       previousPath: existingDocPath,
     });
-    if (docErr) return done(`Claim updated, but document could not be uploaded (${docErr}).`);
+    if (docErr) {
+      revalidatePath("/claims");
+      revalidatePath("/", "layout");
+      return done(`Claim updated, but document could not be uploaded (${docErr}).`);
+    }
+    revalidatePath("/claims");
+    revalidatePath("/", "layout");
     return done(`Claim and policy document updated for ${parsed.reg}.`);
   }
 
+  revalidatePath("/claims");
+  revalidatePath("/", "layout");
   return done(`Claim updated for ${parsed.reg}.`);
 }
 
@@ -452,7 +507,15 @@ export async function approveClaim(id: string): Promise<ActionState> {
     customer_name: string | null;
     customer_mobile: string | null;
     saod_due_date: string | null;
+    due_date?: string | null;
     vehicle_category: string | null;
+    vehicle_make?: string | null;
+    vehicle_model?: string | null;
+    idv?: number | null;
+    policy_number?: string | null;
+    insurer_name?: string | null;
+    payment_amount?: number | null;
+    payment_date?: string | null;
     created_at: string;
     document_path?: string | null;
     document_type?: string | null;
@@ -463,16 +526,22 @@ export async function approveClaim(id: string): Promise<ActionState> {
   const foundExt = await db
     .from("claims")
     .select(
-      "id, status, policy_id, vehicle_reg_no, customer_name, customer_mobile, saod_due_date, vehicle_category, created_at, document_path, document_type, customer_pincode",
+      "id, status, policy_id, vehicle_reg_no, customer_name, customer_mobile, saod_due_date, due_date, vehicle_category, vehicle_make, vehicle_model, idv, policy_number, insurer_name, payment_amount, payment_date, created_at, document_path, document_type, customer_pincode",
     )
     .eq("id", id)
     .maybeSingle();
 
   if (foundExt.error) {
-    if (foundExt.error.message.includes("document_path") || foundExt.error.message.includes("customer_pincode")) {
+    if (
+      foundExt.error.message.includes("document_path") ||
+      foundExt.error.message.includes("customer_pincode") ||
+      /policy_number|insurer_name|vehicle_make|vehicle_model|idv|due_date/i.test(foundExt.error.message)
+    ) {
       const fb = await db
         .from("claims")
-        .select("id, status, policy_id, vehicle_reg_no, customer_name, customer_mobile, saod_due_date, vehicle_category, created_at")
+        .select(
+          "id, status, policy_id, vehicle_reg_no, customer_name, customer_mobile, saod_due_date, vehicle_category, payment_amount, payment_date, created_at",
+        )
         .eq("id", id)
         .maybeSingle();
       if (fb.error) return fail(dbMessage(fb.error));
@@ -487,22 +556,34 @@ export async function approveClaim(id: string): Promise<ActionState> {
   if (!claim) return fail("That claim could not be found.");
   if (claim.status !== "pending") return fail("This claim was already reviewed.");
 
+  const claimRef = `CLM-${claim.id.slice(0, 8).toUpperCase()}`;
   let policyId = claim.policy_id ?? null;
   let createdPolicyId: string | null = null;
+  let createdRenewalId: string | null = null;
   let policyUserId: string | null = null;
+  let priorPolicySnapshot: Record<string, unknown> | null = null;
 
   if (!policyId) {
     const name = (claim.customer_name ?? "").trim();
     const mobile = claim.customer_mobile ? normalizeMobile(claim.customer_mobile) : null;
-    const saod = claim.saod_due_date ?? null;
+    const dueDate = claim.due_date ?? claim.saod_due_date ?? null;
     const group = claim.vehicle_category ?? null;
-    if (!name || !mobile || !saod || !group || !TYPE_FOR_GROUP[group]) {
-      return fail("This vehicle is not in Policies and the claim lacks the customer name, mobile, vehicle group or own-damage due date.");
+    if (!name || !mobile || !dueDate || !group || !TYPE_FOR_GROUP[group]) {
+      return fail(
+        "This vehicle is not in Policies and the claim lacks the customer name, contact, vehicle type or due date.",
+      );
     }
 
     const type = await db.from("policy_types").select("id").eq("code", TYPE_FOR_GROUP[group]).limit(1).maybeSingle();
     if (type.error) return fail(dbMessage(type.error));
     if (!type.data) return fail("The policy type for this vehicle group is missing.");
+
+    let resolvedInsurer: { id: string; name: string } | null = null;
+    if (claim.insurer_name?.trim()) {
+      const res = await resolveInsurer(db, claim.insurer_name.trim());
+      if ("error" in res) return fail(res.error);
+      resolvedInsurer = res;
+    }
 
     const existingUser = await db.from("users").select("id").eq("mobile_number", mobile).maybeSingle();
     if (existingUser.error) return fail(dbMessage(existingUser.error));
@@ -518,17 +599,27 @@ export async function approveClaim(id: string): Promise<ActionState> {
     }
     policyUserId = userId;
 
+    const policyNumber = claim.policy_number?.trim() || `PENDING-${claim.vehicle_reg_no}`;
+    const startDate = claim.payment_date && claim.payment_date <= dueDate ? claim.payment_date : null;
+
     const policyPayload = {
       user_id: userId,
       type_id: type.data.id,
-      policy_number: null,
-      due_date: saod,
-      saod_due_date: saod,
+      insurer_id: resolvedInsurer?.id ?? null,
+      insurer_name: resolvedInsurer?.name ?? claim.insurer_name?.trim() ?? null,
+      policy_number: policyNumber,
+      start_date: startDate,
+      due_date: dueDate,
+      saod_due_date: null,
+      premium_amount: claim.payment_amount ?? null,
       owner_name: name,
       holder_name: name,
       holder_mobile: mobile,
       vehicle_reg_no: claim.vehicle_reg_no,
       vehicle_category: group,
+      vehicle_make: claim.vehicle_make?.trim() || null,
+      vehicle_model: claim.vehicle_model?.trim() || null,
+      idv: claim.idv ?? null,
       pin: claim.customer_pincode ?? null,
       source: "advisor_added",
       verification_status: "verified",
@@ -544,9 +635,142 @@ export async function approveClaim(id: string): Promise<ActionState> {
     if (policy.error) return fail(dbMessage(policy.error));
     policyId = policy.data.id as string;
     createdPolicyId = policyId;
-  } else if (claim.document_path) {
-    const existingPolicy = await db.from("policies").select("user_id").eq("id", policyId).maybeSingle();
-    policyUserId = (existingPolicy.data?.user_id as string | undefined) ?? null;
+
+    const initialRenewal = await db
+      .from("renewals")
+      .insert({
+        policy_id: policyId,
+        status: "renewed",
+        renewal_date: claim.payment_date || todayIST(),
+        previous_due_date: null,
+        new_due_date: dueDate,
+        previous_policy_number: null,
+        new_policy_number: policyNumber,
+        previous_insurer_name: null,
+        new_insurer_name: resolvedInsurer?.name ?? claim.insurer_name?.trim() ?? null,
+        premium_amount: claim.payment_amount ?? null,
+        claim_id: claim.id,
+        notes: `Initial policy created from claim ${claimRef}`,
+      })
+      .select("id")
+      .single();
+    if (!initialRenewal.error && initialRenewal.data?.id) {
+      createdRenewalId = initialRenewal.data.id as string;
+    }
+  } else {
+    const existingPolicy = await db
+      .from("policies")
+      .select(
+        "id, user_id, policy_number, due_date, saod_due_date, start_date, insurer_id, insurer_name, premium_amount, insurers(name)",
+      )
+      .eq("id", policyId)
+      .maybeSingle();
+    if (existingPolicy.error) return fail(dbMessage(existingPolicy.error));
+    if (!existingPolicy.data) return fail("The linked policy could not be found.");
+
+    const existing = existingPolicy.data as {
+      id: string;
+      user_id: string | null;
+      policy_number: string;
+      due_date: string;
+      saod_due_date: string | null;
+      start_date: string | null;
+      insurer_id: string | null;
+      insurer_name: string | null;
+      premium_amount: number | string | null;
+      insurers: { name: string } | { name: string }[] | null;
+    };
+    policyUserId = existing.user_id ?? null;
+
+    const prevInsurerName = one(existing.insurers)?.name ?? existing.insurer_name ?? null;
+    const prevDueDate = existing.due_date ?? existing.saod_due_date ?? null;
+    const prevPolicyNumber = existing.policy_number ?? null;
+
+    const newPolicyNumber = claim.policy_number?.trim() || null;
+    const newDueDate = claim.due_date ?? claim.saod_due_date ?? null;
+    const newInsurerRaw = claim.insurer_name?.trim() || null;
+    const newAmount = claim.payment_amount ?? null;
+
+    let resolvedInsurer: { id: string; name: string } | null = null;
+    if (newInsurerRaw) {
+      const res = await resolveInsurer(db, newInsurerRaw);
+      if ("error" in res) return fail(res.error);
+      resolvedInsurer = res;
+    }
+
+    const policyUpdate: Record<string, unknown> = { verification_status: "verified" };
+    if (newPolicyNumber) policyUpdate.policy_number = newPolicyNumber;
+    if (newDueDate) {
+      policyUpdate.due_date = newDueDate;
+      policyUpdate.saod_due_date = null;
+      if (claim.payment_date && claim.payment_date <= newDueDate) {
+        policyUpdate.start_date = claim.payment_date;
+      } else if (existing.start_date && existing.start_date > newDueDate) {
+        policyUpdate.start_date = null;
+      }
+    }
+    if (resolvedInsurer) {
+      policyUpdate.insurer_id = resolvedInsurer.id;
+      policyUpdate.insurer_name = resolvedInsurer.name;
+    }
+    if (newAmount !== null && newAmount !== undefined) {
+      policyUpdate.premium_amount = newAmount;
+    }
+    if (claim.idv !== null && claim.idv !== undefined && Number(claim.idv) > 0) {
+      policyUpdate.idv = Number(claim.idv);
+    }
+    if (claim.vehicle_category) {
+      policyUpdate.vehicle_category = claim.vehicle_category;
+    }
+    if (claim.vehicle_make) {
+      policyUpdate.vehicle_make = claim.vehicle_make;
+    }
+    if (claim.vehicle_model) {
+      policyUpdate.vehicle_model = claim.vehicle_model;
+    }
+
+    priorPolicySnapshot = {
+      policy_number: existing.policy_number,
+      due_date: existing.due_date,
+      saod_due_date: existing.saod_due_date,
+      start_date: existing.start_date,
+      insurer_id: existing.insurer_id,
+      insurer_name: existing.insurer_name,
+      premium_amount: existing.premium_amount,
+    };
+
+    const polUpd = await db.from("policies").update(policyUpdate).eq("id", policyId);
+    if (polUpd.error) return fail(dbMessage(polUpd.error));
+
+    // Preserve the prior due date, policy no., and insurer as an annual renewal timeline entry.
+    const renewalInsert = await db
+      .from("renewals")
+      .insert({
+        policy_id: policyId,
+        status: "renewed",
+        renewal_date: claim.payment_date || todayIST(),
+        previous_due_date: prevDueDate,
+        new_due_date: newDueDate ?? prevDueDate,
+        previous_policy_number: prevPolicyNumber,
+        new_policy_number: newPolicyNumber ?? prevPolicyNumber,
+        previous_insurer_name: prevInsurerName,
+        new_insurer_name: resolvedInsurer?.name ?? prevInsurerName,
+        premium_amount: newAmount ?? (existing.premium_amount !== null ? Number(existing.premium_amount) : null),
+        claim_id: claim.id,
+        notes: `Renewed via claim ${claimRef}`,
+      })
+      .select("id")
+      .single();
+
+    if (renewalInsert.error) {
+      if (/previous_due_date|new_due_date|claim_id/i.test(renewalInsert.error.message)) {
+        await db.from("policies").update(priorPolicySnapshot).eq("id", policyId);
+        return fail("Run migration 0022_claim_policy_fields_and_history.sql in Supabase before approving renewal claims.");
+      }
+      await db.from("policies").update(priorPolicySnapshot).eq("id", policyId);
+      return fail(dbMessage(renewalInsert.error));
+    }
+    createdRenewalId = renewalInsert.data.id as string;
   }
 
   const updated = await db
@@ -556,12 +780,20 @@ export async function approveClaim(id: string): Promise<ActionState> {
     .eq("status", "pending")
     .select("id");
   if (updated.error || (updated.data ?? []).length === 0) {
+    if (createdRenewalId) await db.from("renewals").delete().eq("id", createdRenewalId);
     if (createdPolicyId) await db.from("policies").delete().eq("id", createdPolicyId);
+    else if (priorPolicySnapshot && policyId) await db.from("policies").update(priorPolicySnapshot).eq("id", policyId);
     return fail(updated.error ? dbMessage(updated.error) : "This claim was already reviewed.");
   }
 
   await audit(db, staff.id, "claim.approve", "claim", id);
   await syncIncentivesForDateSafe(dateIST(claim.created_at), { id: staff.id, name: staff.full_name });
+  if (policyId) {
+    revalidatePath("/policies");
+    revalidatePath(`/policies/${policyId}`);
+  }
+  revalidatePath("/claims");
+  revalidatePath("/", "layout");
 
   let docNote = "";
   if (claim.document_path && policyId && policyUserId) {
@@ -582,7 +814,7 @@ export async function approveClaim(id: string): Promise<ActionState> {
 
   const base = createdPolicyId
     ? "Claim approved and a policy was added for this vehicle."
-    : "Claim approved.";
+    : "Claim approved, policy updated, and previous due date saved to Renewal History.";
   return done(`${base}${docNote}`);
 }
 
@@ -608,6 +840,8 @@ export async function rejectClaim(id: string): Promise<ActionState> {
     id: staff.id,
     name: staff.full_name,
   });
+  revalidatePath("/claims");
+  revalidatePath("/", "layout");
   return done("Claim rejected.");
 }
 
@@ -646,5 +880,7 @@ export async function deleteClaim(id: string): Promise<ActionState> {
   }
 
   await audit(db, staff.id, "claim.delete", "claim", id);
+  revalidatePath("/claims");
+  revalidatePath("/", "layout");
   return done("Rejected claim deleted.");
 }

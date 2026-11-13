@@ -98,8 +98,36 @@ export type PolicyDetail = {
   vehicle: { label: string; value: string }[];
   client: ClientInfo | null;
   documents: DocumentItem[];
-  renewals: { id: string; status: string | null; renewalDate: string | null; createdOn: string | null }[];
+  renewals: {
+    id: string;
+    status: string | null;
+    renewalDate: string | null;
+    previousDueDate: string | null;
+    newDueDate: string | null;
+    previousPolicyNumber: string | null;
+    newPolicyNumber: string | null;
+    previousInsurerName: string | null;
+    newInsurerName: string | null;
+    premiumAmount: number | null;
+    notes: string | null;
+    createdOn: string | null;
+  }[];
   quotes: { id: string; status: string; createdOn: string | null }[];
+};
+
+type RenewalRecord = {
+  id: string;
+  status: string | null;
+  renewal_date: string | null;
+  previous_due_date?: string | null;
+  new_due_date?: string | null;
+  previous_policy_number?: string | null;
+  new_policy_number?: string | null;
+  previous_insurer_name?: string | null;
+  new_insurer_name?: string | null;
+  premium_amount?: number | string | null;
+  notes?: string | null;
+  created_at: string;
 };
 
 export async function getPolicyDetail(id: string): Promise<PolicyDetail> {
@@ -107,14 +135,29 @@ export async function getPolicyDetail(id: string): Promise<PolicyDetail> {
   const db = await createClient();
   const today = todayIST();
 
-  const { data, error } = await db
+  const EXT_RENEWALS =
+    "id, status, renewal_date, previous_due_date, new_due_date, previous_policy_number, new_policy_number, previous_insurer_name, new_insurer_name, premium_amount, notes, created_at";
+  const BASE_RENEWALS = "id, status, renewal_date, created_at";
+
+  let res = await db
     .from("policies")
     .select(
-      `*, users(${USER_FIELDS}), insurers(name, logo_url), policy_types(code), policy_documents(${DOC_FIELDS}), renewals(id, status, renewal_date, created_at), quote_requests(id, status, created_at)`,
+      `*, users(${USER_FIELDS}), insurers(name, logo_url), policy_types(code), policy_documents(${DOC_FIELDS}), renewals(${EXT_RENEWALS}), quote_requests(id, status, created_at)`,
     )
     .eq("id", id)
     .maybeSingle();
 
+  if (res.error && /previous_due_date|new_due_date|previous_policy_number/i.test(res.error.message)) {
+    res = await db
+      .from("policies")
+      .select(
+        `*, users(${USER_FIELDS}), insurers(name, logo_url), policy_types(code), policy_documents(${DOC_FIELDS}), renewals(${BASE_RENEWALS}), quote_requests(id, status, created_at)`,
+      )
+      .eq("id", id)
+      .maybeSingle();
+  }
+
+  const { data, error } = res;
   if (error) throw new Error(`Policy: ${error.message}`);
   if (!data) notFound();
 
@@ -127,7 +170,7 @@ export async function getPolicyDetail(id: string): Promise<PolicyDetail> {
     insurers: Named<{ name: string; logo_url: string | null }>;
     policy_types: Named<{ code: string | null }>;
     policy_documents: DocumentRecord[] | null;
-    renewals: { id: string; status: string | null; renewal_date: string | null; created_at: string }[] | null;
+    renewals: RenewalRecord[] | null;
     quote_requests: { id: string; status: string; created_at: string }[] | null;
   };
   const text = (key: string) => (p[key] === null || p[key] === undefined || p[key] === "" ? null : String(p[key]));
@@ -207,7 +250,21 @@ export async function getPolicyDetail(id: string): Promise<PolicyDetail> {
     documents: toDocuments(p.policy_documents),
     renewals: [...(p.renewals ?? [])]
       .sort((a, b) => b.created_at.localeCompare(a.created_at))
-      .map((r) => ({ id: r.id, status: r.status, renewalDate: r.renewal_date, createdOn: dateIST(r.created_at) })),
+      .map((r) => ({
+        id: r.id,
+        status: r.status,
+        renewalDate: r.renewal_date,
+        previousDueDate: r.previous_due_date ?? null,
+        newDueDate: r.new_due_date ?? null,
+        previousPolicyNumber: r.previous_policy_number ?? null,
+        newPolicyNumber: r.new_policy_number ?? null,
+        previousInsurerName: r.previous_insurer_name ?? null,
+        newInsurerName: r.new_insurer_name ?? null,
+        premiumAmount:
+          r.premium_amount !== null && r.premium_amount !== undefined ? Number(r.premium_amount) : null,
+        notes: r.notes ?? null,
+        createdOn: dateIST(r.created_at),
+      })),
     quotes: [...(p.quote_requests ?? [])]
       .sort((a, b) => b.created_at.localeCompare(a.created_at))
       .map((q) => ({ id: q.id, status: q.status, createdOn: dateIST(q.created_at) })),

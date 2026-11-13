@@ -1,11 +1,12 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState } from "react";
-import { FileText, Trash2, Upload } from "lucide-react";
+import { Eye, FileText, Trash2, Upload } from "lucide-react";
 import { Button, buttonStyles } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { CustomSelect } from "@/components/ui/custom-select";
+import { DocumentViewerModal } from "@/components/ui/document-viewer-modal";
 import { EmptyState } from "@/components/ui/empty-state";
 import { CONTROL } from "@/components/ui/field";
 import { rejectLargeFile } from "@/components/ui/file-guard";
@@ -37,6 +38,7 @@ export function QuoteDocumentsCard({
 }) {
   const [state, formAction, pending] = useActionState(uploadQuoteDocument, { ok: false } as ActionState);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [activeDoc, setActiveDoc] = useState<{ url: string; title: string; docType?: string | null } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const dragDepthRef = useRef(0);
   const formRef = useRef<HTMLFormElement>(null);
@@ -72,7 +74,8 @@ export function QuoteDocumentsCard({
   }
 
   return (
-    <Card index={index}>
+    <>
+      <Card index={index}>
       <CardHeader
         title="Quote documents for customer"
         action={<span className="text-xs font-medium text-ink-faint">{documents.length} shared</span>}
@@ -101,14 +104,14 @@ export function QuoteDocumentsCard({
               </div>
               <div className="flex items-center gap-2">
                 {d.href ? (
-                  <a
-                    href={d.href}
-                    target="_blank"
-                    rel="noreferrer"
-                    className={buttonStyles("secondary", "h-8 px-3 text-xs")}
+                  <button
+                    type="button"
+                    onClick={() => setActiveDoc({ url: d.href!, title: d.name, docType: d.type })}
+                    className={buttonStyles("secondary", "h-8 px-3 text-xs gap-1.5")}
                   >
+                    <Eye size={14} strokeWidth={1.75} aria-hidden="true" />
                     Open
-                  </a>
+                  </button>
                 ) : (
                   <span className="text-xs text-ink-faint">Unavailable</span>
                 )}
@@ -206,5 +209,14 @@ export function QuoteDocumentsCard({
         </form>
       )}
     </Card>
+
+    <DocumentViewerModal
+      open={Boolean(activeDoc)}
+      onClose={() => setActiveDoc(null)}
+      title={activeDoc?.title ?? "Quote Document"}
+      url={activeDoc?.url ?? null}
+      docType={activeDoc?.docType}
+    />
+  </>
   );
 }

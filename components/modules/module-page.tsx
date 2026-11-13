@@ -34,6 +34,7 @@ import {
   type DateRangeValue,
 } from "@/components/ui/date-range-filter";
 import { Drawer, DrawerFooter } from "@/components/ui/drawer";
+import { DocumentViewerModal } from "@/components/ui/document-viewer-modal";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FieldGrid } from "@/components/ui/field";
 import { PendingBar } from "@/components/ui/pending-bar";
@@ -80,7 +81,11 @@ function initials(name: string) {
     .toUpperCase();
 }
 
-function renderCell(column: Column, row: Row) {
+function renderCell(
+  column: Column,
+  row: Row,
+  onOpenDocument?: (doc: { url: string; title: string; docType?: string | null }) => void,
+) {
   const value = row[column.key];
   if (value === null || value === undefined || value === "") return <span className="text-ink-faint">—</span>;
 
@@ -109,6 +114,23 @@ function renderCell(column: Column, row: Row) {
     case "image": {
       const url = String(value);
       if (!/^https?:\/\//i.test(url)) return <span className="text-ink-faint">—</span>;
+      if (onOpenDocument) {
+        return (
+          <button
+            type="button"
+            onClick={() => onOpenDocument({ url, title: "Placement Banner", docType: "Image" })}
+            title="Open banner in document viewer"
+            className="group inline-block cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-control"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={url}
+              alt="Placement banner"
+              className="h-8 w-14 rounded-control border border-divider bg-surface-muted object-cover transition-transform group-hover:scale-105 shadow-2xs"
+            />
+          </button>
+        );
+      }
       return (
         <a
           href={url}
@@ -138,6 +160,21 @@ function renderCell(column: Column, row: Row) {
       const rawHref = row[`${column.key}Href`];
       const href = typeof rawHref === "string" && rawHref ? rawHref : null;
       if (!href) return <span className="text-sm text-ink-muted">{text}</span>;
+
+      if (onOpenDocument) {
+        const title = `${row.vehicle ?? row.policyNumber ?? row.refCode ?? "Document"} · ${text}`;
+        return (
+          <button
+            type="button"
+            onClick={() => onOpenDocument({ url: href, title, docType: text })}
+            className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-semibold text-ink underline-offset-2 hover:underline hover:text-accent-strong transition-colors cursor-pointer"
+          >
+            <FileText size={13} strokeWidth={1.75} className="shrink-0 text-ink-muted" aria-hidden="true" />
+            {text}
+          </button>
+        );
+      }
+
       return (
         <a
           href={href}
@@ -496,6 +533,7 @@ export function ModulePage({
   const [flashedRow, setFlashedRow] = useState<{ id: string; tone: "positive" | "accent" } | null>(null);
   const [exportSaved, setExportSaved] = useState(false);
   const [dateRange, setDateRange] = useState<DateRangeValue>(DEFAULT_DATE_RANGE);
+  const [viewerDoc, setViewerDoc] = useState<{ url: string; title: string; docType?: string | null } | null>(null);
   const flashTimer = useRef<number | null>(null);
   const exportTimer = useRef<number | null>(null);
 
@@ -715,7 +753,7 @@ export function ModulePage({
                       key={column.key}
                       className={cn("pr-4 text-sm text-ink", column.align === "right" && "text-right")}
                     >
-                      {renderCell(column, row)}
+                      {renderCell(column, row, setViewerDoc)}
                     </td>
                   ))}
                   {hasLastCell && (
@@ -883,6 +921,14 @@ export function ModulePage({
           )}
         </Drawer>
       )}
+
+      <DocumentViewerModal
+        open={Boolean(viewerDoc)}
+        onClose={() => setViewerDoc(null)}
+        title={viewerDoc?.title ?? "Document"}
+        url={viewerDoc?.url ?? null}
+        docType={viewerDoc?.docType}
+      />
     </>
   );
 }

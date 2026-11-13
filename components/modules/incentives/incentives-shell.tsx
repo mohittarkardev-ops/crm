@@ -71,7 +71,13 @@ const ADMIN_TABS: { key: AdminNavTab; label: string }[] = [
   { key: "settlements", label: "Settlement & Payouts" },
 ];
 
-export function IncentivesShell({ data }: { data: IncentivesDashboardPayload }) {
+export function IncentivesShell({
+  data,
+  initialSelectedDay = null,
+}: {
+  data: IncentivesDashboardPayload;
+  initialSelectedDay?: string | null;
+}) {
   const [tab, setTab] = useState<AdminNavTab>("overview");
   const [stateFilter, setStateFilter] = useState("__all__");
   const [syncing, setSyncing] = useState(false);
@@ -96,7 +102,7 @@ export function IncentivesShell({ data }: { data: IncentivesDashboardPayload }) 
             <span>The Admin must execute migration <b>0015_full_incentive_engine.sql</b> in Supabase to activate incentive tracking.</span>
           </p>
         )}
-        <AgentMyIncentivesView data={data} />
+        <AgentMyIncentivesView data={data} initialSelectedDay={initialSelectedDay} />
       </div>
     );
   }

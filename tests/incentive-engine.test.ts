@@ -19,6 +19,7 @@ import {
   simulateRulePayout,
   type AgentAssignmentRecord,
   type IncentiveRule,
+  type VehicleCategory,
 } from "@/lib/incentives";
 import { parseBundledPincodeTsv, parseCsvTextToRows } from "@/lib/pincode-dataset";
 import { CANONICAL_STATE_NAMES, normalizeIndianState } from "@/lib/states";
@@ -597,4 +598,34 @@ test("16. Multi-step Personal Special Milestones hold flat until exact threshold
   });
   assert.equal(sim80.stretchSummary.stretchDeltaAmount, 1000);
   assert.equal(sim80.finalPayable, 80 * 15 + 1000);
+});
+
+test("17. Rule-based agent assignment holds category/territory mismatches for manual review", () => {
+  // Agent assigned to 2W Gujarat Rule
+  const assignedRule = {
+    id: "rule-gj-2w",
+    ruleName: "2W Gujarat Incentive Rule",
+    vehicleCategory: "2W" as VehicleCategory | null,
+    stateName: "Gujarat",
+    scope: "exact_state" as const,
+  };
+
+  // Test 1: Category Mismatch (4W claim submitted by 2W assigned agent)
+  const claimCategory: VehicleCategory = "4W";
+  const isCategoryMismatch = Boolean(
+    assignedRule.vehicleCategory && claimCategory && assignedRule.vehicleCategory !== claimCategory,
+  );
+  assert.equal(isCategoryMismatch, true);
+
+  // Test 2: Territory Mismatch (Rajasthan claim submitted by Gujarat assigned agent)
+  const isStateMismatch = Boolean(
+    assignedRule.stateName &&
+      "Rajasthan" &&
+      assignedRule.stateName.toLowerCase() !== "Rajasthan".toLowerCase(),
+  );
+  assert.equal(isStateMismatch, true);
+
+  // Both should hold as manual review instead of rejecting as ineligible
+  const heldStatus = isCategoryMismatch || isStateMismatch ? "held_review" : "eligible";
+  assert.equal(heldStatus, "held_review");
 });

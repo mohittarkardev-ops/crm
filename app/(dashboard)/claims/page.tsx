@@ -4,8 +4,10 @@ import { ModuleEmptyCharacter } from "@/components/ui/characters";
 import { MiniStat, StatRow } from "@/components/ui/mini-stat";
 import { approveClaim, createClaim, deleteClaim, rejectClaim, updateClaim } from "@/lib/actions/claims";
 import { getAgentOptions, getClaims } from "@/lib/data/claims";
+import { getInsurers } from "@/lib/data/lookups";
 import type { FieldDef, Option } from "@/lib/module-types";
 import { DOCUMENT_TYPE_OPTIONS } from "@/lib/options";
+import { insurerFields } from "@/lib/policy-fields";
 import { can } from "@/lib/rbac/permissions";
 import { requirePermission } from "@/lib/rbac/server";
 import { STATE_OPTIONS } from "@/lib/states";
@@ -39,10 +41,15 @@ export default async function ClaimsPage() {
   const canCreate = can(staff, "claims.create");
   const canReview = can(staff, "claims.approve");
 
-  const [{ rows, agentFilterOptions, migrationMissingDocs, totalCount, stats }, editAgents] = await Promise.all([
+  const [{ rows, agentFilterOptions, migrationMissingDocs, totalCount, stats }, editAgents, insurers] = await Promise.all([
     getClaims(),
     canReview ? getAgentOptions(staff.id, true) : Promise.resolve([]),
+    getInsurers(),
   ]);
+
+  const optionalInsurerFields = insurerFields(insurers).map((f) =>
+    f.name === "insurer" ? { ...f, required: false } : f,
+  );
 
   const buildFields = (agentList: Option[], includeAgentSelect: boolean): FieldDef[] => [
     ...(includeAgentSelect
@@ -52,6 +59,9 @@ export default async function ClaimsPage() {
     { name: "paymentDate", label: "Payment date", type: "date", required: true, maxToday: true },
     { name: "paymentMode", label: "Paid by", type: "select", options: MODE_OPTIONS, required: true },
     { name: "amount", label: "Amount (₹)", type: "number" },
+    { name: "policyNumber", label: "Policy / New policy no." },
+    ...optionalInsurerFields,
+    { name: "dueDate", label: "Due / New due date", type: "date" },
     {
       name: "customerPincode",
       label: "Customer PIN code",
@@ -69,10 +79,12 @@ export default async function ClaimsPage() {
     },
     { name: "documentType", label: "Document type", type: "select", options: DOCUMENT_TYPE_OPTIONS },
     // Only needed when the vehicle is not already in Policies.
-    { name: "customerName", label: "Customer name", hint: "Only if the vehicle is not in Policies yet." },
+    { name: "customerName", label: "Customer / Owner name", hint: "Only if the vehicle is not in Policies yet." },
     { name: "customerMobile", label: "Customer mobile", type: "tel" },
     { name: "vehicleGroup", label: "Vehicle group", type: "select", options: GROUP_OPTIONS },
-    { name: "saodDueDate", label: "Own-damage (SAOD) due date", type: "date" },
+    { name: "vehicleMake", label: "Make" },
+    { name: "vehicleModel", label: "Model" },
+    { name: "idv", label: "IDV (₹)", type: "number" },
   ];
 
   const createAgents = canCreate && isAdmin ? await getAgentOptions(staff.id, true) : [];
@@ -114,6 +126,9 @@ export default async function ClaimsPage() {
         columns={[
           { key: "refCode", label: "Ref" },
           { key: "vehicle", label: "Vehicle" },
+          { key: "policyNumber", label: "Policy no." },
+          { key: "insurer", label: "Insurer" },
+          { key: "dueDate", label: "Due date", type: "date" },
           { key: "agentName", label: "Agent" },
           { key: "paymentDate", label: "Paid on", type: "date" },
           { key: "mode", label: "Paid by" },

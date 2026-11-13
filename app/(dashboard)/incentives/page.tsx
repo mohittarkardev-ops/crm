@@ -5,11 +5,12 @@ import { can } from "@/lib/rbac/permissions";
 import { requirePermission } from "@/lib/rbac/server";
 
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+const DAY_RE = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 
 export default async function IncentivesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ month?: string }>;
+  searchParams: Promise<{ month?: string; day?: string }>;
 }) {
   const staff = await requirePermission("incentives.view");
   const canManage = can(staff, "incentives.manage");
@@ -17,9 +18,16 @@ export default async function IncentivesPage({
   const params = await searchParams;
   const currentMonth = todayIST().slice(0, 7);
   const requested = typeof params.month === "string" ? params.month.trim() : "";
-  const monthIso = MONTH_RE.test(requested) ? requested : currentMonth;
+  const requestedDay = typeof params.day === "string" ? params.day.trim() : "";
+  const validDay = DAY_RE.test(requestedDay) ? requestedDay : null;
+  const monthIso = MONTH_RE.test(requested)
+    ? requested
+    : validDay
+      ? validDay.slice(0, 7)
+      : currentMonth;
+  const initialSelectedDay = validDay && validDay.slice(0, 7) === monthIso ? validDay : null;
 
   const payload = await getIncentivesDashboard(monthIso, staff, canManage);
 
-  return <IncentivesShell data={payload} />;
+  return <IncentivesShell data={payload} initialSelectedDay={initialSelectedDay} />;
 }

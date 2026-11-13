@@ -78,6 +78,8 @@ export type AgentAssignmentRecord = {
   staffId: string;
   staffName: string;
   employeeCode: string | null;
+  ruleId?: string | null;
+  ruleName?: string | null;
   vehicleCategory: VehicleCategory;
   assignedState: string;
   effectiveFrom: string;

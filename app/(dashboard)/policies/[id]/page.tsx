@@ -158,12 +158,37 @@ export default async function PolicyDetailPage({ params }: { params: Promise<{ i
             ) : (
               <ul className="divide-y divide-divider">
                 {p.renewals.map((r) => (
-                  <li key={r.id} className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
-                    <div>
-                      <p className="text-sm text-ink">
-                        {r.renewalDate ? `Renewal ${formatDate(r.renewalDate)}` : "Renewal"}
+                  <li key={r.id} className="flex items-start justify-between gap-3 py-3 first:pt-0 last:pb-0">
+                    <div className="space-y-0.5 min-w-0">
+                      <p className="text-sm font-medium text-ink tabular-nums">
+                        {r.previousDueDate && r.newDueDate
+                          ? `Due ${formatDate(r.previousDueDate)} → ${formatDate(r.newDueDate)}`
+                          : r.newDueDate
+                            ? `Due ${formatDate(r.newDueDate)}`
+                            : r.renewalDate
+                              ? `Renewal ${formatDate(r.renewalDate)}`
+                              : "Renewal"}
                       </p>
-                      <p className="text-xs text-ink-muted">{r.createdOn ? `Logged ${formatDate(r.createdOn)}` : ""}</p>
+                      {(r.newPolicyNumber || r.newInsurerName || r.premiumAmount !== null) && (
+                        <p className="text-xs text-ink-muted tabular-nums">
+                          {[
+                            r.newPolicyNumber ? `Policy ${r.newPolicyNumber}` : null,
+                            r.newInsurerName,
+                            r.premiumAmount !== null ? formatINR(r.premiumAmount) : null,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </p>
+                      )}
+                      <p className="text-[11px] text-ink-faint">
+                        {[
+                          r.renewalDate ? `Paid ${formatDate(r.renewalDate)}` : null,
+                          r.createdOn ? `Logged ${formatDate(r.createdOn)}` : null,
+                          r.notes,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </p>
                     </div>
                     {r.status && <ValueChip value={r.status} />}
                   </li>

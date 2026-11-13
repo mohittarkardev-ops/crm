@@ -53,13 +53,25 @@ export function AssignmentsPinTab({ data }: { data: IncentivesDashboardPayload }
   // Assignment drawer state
   const [assignOpen, setAssignOpen] = useState(false);
   const [aStaffId, setAStaffId] = useState(data.staffOptions[0]?.value ?? "");
-  const [aVehicle, setAVehicle] = useState<VehicleCategory>("2W");
-  const [aState, setAState] = useState("Gujarat");
+  const [aRuleId, setARuleId] = useState(data.rules[0]?.id ?? "");
   const [aFrom, setAFrom] = useState(todayIST());
   const [aUntil, setAUntil] = useState("");
   const [aNotes, setANotes] = useState("");
   const [assignBusy, setAssignBusy] = useState(false);
   const { error: assignErr, errorPulse: assignErrPulse, setError: setAssignErr } = useErrorNudge();
+
+  const ruleSelectOptions = useMemo(() => {
+    return data.rules.map((r) => {
+      const scopeBadge = r.vehicleCategory
+        ? `${r.vehicleCategory} · ${r.stateName ?? (r.scope === "exact_state" ? "Exact State" : "All States")}`
+        : "All Categories · All India";
+      const targetLabel = r.monthlyTarget > 0 ? `Target: ${r.monthlyTarget} claims` : "No Target";
+      return {
+        value: r.id,
+        label: `${r.ruleName} (${scopeBadge} · ${targetLabel})`,
+      };
+    });
+  }, [data.rules]);
 
   // Mid-month target override drawer state
   const [targetOpen, setTargetOpen] = useState(false);
@@ -86,6 +98,7 @@ export function AssignmentsPinTab({ data }: { data: IncentivesDashboardPayload }
   const [pinSearch, setPinSearch] = useState("");
   const [pinSearchResults, setPinSearchResults] = useState<typeof data.pincodeSummary.sampleRows | null>(null);
   const [pinSearchBusy, setPinSearchBusy] = useState(false);
+  const [showSamplePins, setShowSamplePins] = useState(false);
   const [importingPins, setImportingPins] = useState(false);
   const [importProgress, setImportProgress] = useState<string | null>(null);
   const [importPct, setImportPct] = useState<number | null>(null);
@@ -110,13 +123,16 @@ export function AssignmentsPinTab({ data }: { data: IncentivesDashboardPayload }
 
   const handleCreateAssignment = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!aRuleId && data.rules.length > 0) {
+      setAssignErr("Please select an incentive rule from Rule Builder.");
+      return;
+    }
     setAssignBusy(true);
     setAssignErr(null);
     try {
       const res = await assignAgentIncentive({
         staffId: aStaffId,
-        vehicleCategory: aVehicle,
-        assignedState: aState,
+        ruleId: aRuleId || null,
         effectiveFrom: aFrom,
         effectiveUntil: aUntil || null,
         notes: aNotes,
@@ -126,6 +142,7 @@ export function AssignmentsPinTab({ data }: { data: IncentivesDashboardPayload }
         setAssignOpen(false);
         setANotes("");
         setAUntil("");
+        router.refresh();
       } else {
         setAssignErr(res.error ?? "Could not save assignment.");
       }
@@ -433,7 +450,7 @@ export function AssignmentsPinTab({ data }: { data: IncentivesDashboardPayload }
       {/* Card 1: Active Agent Assignments & Target Overrides */}
       <Card index={0}>
         <CardHeader
-          title="Agent Assignments (One Active Vehicle & State at a Time)"
+          title="Agent Incentive Rule Assignments"
           action={
             <Button
               onClick={() => {
@@ -442,7 +459,7 @@ export function AssignmentsPinTab({ data }: { data: IncentivesDashboardPayload }
               }}
               className="h-9 px-3.5 text-xs"
             >
-              <Plus size={14} /> Assign / Reassign Agent
+              <Plus size={14} /> Assign / Reassign Rule
             </Button>
           }
         />
@@ -451,7 +468,7 @@ export function AssignmentsPinTab({ data }: { data: IncentivesDashboardPayload }
           <EmptyState
             illustration={<PinLocatorCharacter state="idle" />}
             label="No agent assignments yet"
-            hint="Assign each CSE to one vehicle category (2W, 4W, or CW) and one state with effective dates."
+            hint="Assign each CSE to an active incentive rule from Rule Builder with effective dates."
           />
         ) : (
           <div className="overflow-x-auto">
@@ -459,8 +476,8 @@ export function AssignmentsPinTab({ data }: { data: IncentivesDashboardPayload }
               <thead>
                 <tr className="border-b border-divider text-[10px] font-semibold uppercase tracking-wider text-ink-muted">
                   <th className="pb-2.5 pr-4">Agent</th>
-                  <th className="pb-2.5 pr-4">Vehicle</th>
-                  <th className="pb-2.5 pr-4">Assigned State</th>
+                  <th className="pb-2.5 pr-4">Assigned Incentive Rule</th>
+                  <th className="pb-2.5 pr-4">Vehicle & Territory</th>
                   <th className="pb-2.5 pr-4">Effective Window</th>
                   <th className="pb-2.5 pr-4">Status</th>
                   <th className="pb-2.5 pr-4">Monthly Target ({data.monthIso})</th>
@@ -478,9 +495,16 @@ export function AssignmentsPinTab({ data }: { data: IncentivesDashboardPayload }
                         {a.employeeCode && <p className="text-[11px] text-ink-faint">{a.employeeCode}</p>}
                       </td>
                       <td className="py-2.5 pr-4">
-                        <Chip tone="neutral">{a.vehicleCategory}</Chip>
+                        <span className="font-semibold text-ink">
+                          {a.ruleName ?? `${a.vehicleCategory} Incentive Rule`}
+                        </span>
                       </td>
-                      <td className="py-2.5 pr-4 font-medium text-ink">{a.assignedState}</td>
+                      <td className="py-2.5 pr-4">
+                        <div className="flex items-center gap-1.5">
+                          <Chip tone="neutral">{a.vehicleCategory}</Chip>
+                          <span className="font-medium text-ink">{a.assignedState}</span>
+                        </div>
+                      </td>
                       <td className="py-2.5 pr-4 text-[11px] text-ink-muted tabular-nums">
                         {formatDate(a.effectiveFrom)} → {a.effectiveUntil ? formatDate(a.effectiveUntil) : "Active"}
                       </td>
@@ -780,53 +804,129 @@ export function AssignmentsPinTab({ data }: { data: IncentivesDashboardPayload }
           </span>
         </div>
 
-        {displayedPinRows.length === 0 ? (
-          <EmptyState
-            illustration={<PinLocatorCharacter state="idle" />}
-            label="No PIN directory rows match"
-            hint="Click Auto-Sync 36-State PINs above or upload an India Post CSV / XLSX file."
-          />
+        {/* Search Results if user searched a PIN */}
+        {pinSearchResults !== null ? (
+          pinSearchResults.length === 0 ? (
+            <div className="rounded-tile border border-divider/70 bg-surface-muted/30 p-4 text-center">
+              <p className="text-xs font-medium text-ink">No PIN records match &ldquo;{pinSearch}&rdquo;</p>
+              <p className="mt-1 text-[11px] text-ink-muted">Verify the 6-digit number or click Auto-Sync / Import CSV.</p>
+              <Button variant="ghost" onClick={() => { setPinSearch(""); setPinSearchResults(null); }} className="mt-2 h-7 px-2.5 text-xs">
+                Clear Search
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-ink">
+                  Search Results for &ldquo;{pinSearch}&rdquo; ({pinSearchResults.length} found)
+                </span>
+                <Button variant="ghost" onClick={() => { setPinSearch(""); setPinSearchResults(null); }} className="h-7 px-2 text-xs">
+                  Clear
+                </Button>
+              </div>
+              <div className="overflow-x-auto rounded-tile border border-divider">
+                <table className="w-full border-collapse text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-divider bg-surface-muted/50 text-[10px] font-semibold uppercase tracking-wider text-ink-muted">
+                      <th className="py-2 px-3">PIN Code</th>
+                      <th className="py-2 px-3">State</th>
+                      <th className="py-2 px-3">District</th>
+                      <th className="py-2 px-3">Post Office</th>
+                      <th className="py-2 px-3 text-right">Updated</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-divider/60">
+                    {pinSearchResults.map((row) => (
+                      <tr key={row.id} className="h-9 transition-colors hover:bg-accent-soft/25">
+                        <td className="py-1.5 px-3 font-bold text-ink tabular-nums">{row.pincode}</td>
+                        <td className="py-1.5 px-3">
+                          <Chip tone="neutral">{row.stateCode}</Chip>{" "}
+                          <span className="ml-1 font-medium text-ink">{row.stateName}</span>
+                        </td>
+                        <td className="py-1.5 px-3 text-ink-muted">{row.districtName ?? "—"}</td>
+                        <td className="py-1.5 px-3 text-ink-muted">
+                          {row.officeName ?? "—"}
+                          {row.officeType && <span className="ml-1 text-[10px] text-ink-faint">({row.officeType})</span>}
+                        </td>
+                        <td className="py-1.5 px-3 text-right text-[11px] text-ink-faint tabular-nums">
+                          {formatDate(row.sourceUpdatedAt)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-left text-xs">
-              <thead>
-                <tr className="border-b border-divider text-[10px] font-semibold uppercase tracking-wider text-ink-muted">
-                  <th className="pb-2 pr-4">PIN Code</th>
-                  <th className="pb-2 pr-4">State</th>
-                  <th className="pb-2 pr-4">District</th>
-                  <th className="pb-2 pr-4">Post Office</th>
-                  <th className="pb-2 text-right">Updated</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-divider/60">
-                {displayedPinRows.slice(0, 30).map((row) => (
-                  <tr key={row.id} className="h-10 transition-colors hover:bg-accent-soft/25">
-                    <td className="py-2 pr-4 font-bold text-ink tabular-nums">{row.pincode}</td>
-                    <td className="py-2 pr-4">
-                      <Chip tone="neutral">{row.stateCode}</Chip>{" "}
-                      <span className="ml-1 font-medium text-ink">{row.stateName}</span>
-                    </td>
-                    <td className="py-2 pr-4 text-ink-muted">{row.districtName ?? "—"}</td>
-                    <td className="py-2 pr-4 text-ink-muted">
-                      {row.officeName ?? "—"}
-                      {row.officeType && <span className="ml-1 text-[10px] text-ink-faint">({row.officeType})</span>}
-                    </td>
-                    <td className="py-2 text-right text-[11px] text-ink-faint tabular-nums">
-                      {formatDate(row.sourceUpdatedAt)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          /* Minimized State: Clean summary card with optional preview toggle instead of a massive 30-row table */
+          <div className="rounded-tile border border-divider/60 bg-surface-muted/20 p-3.5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="flex size-7 items-center justify-center rounded-full bg-positive/10 text-positive text-xs font-bold">
+                  ✓
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-ink">
+                    Directory Synchronized & Ready ({formatNumber(data.pincodeSummary.totalRows)} active PINs)
+                  </p>
+                  <p className="text-[11px] text-ink-muted">
+                    Postal coverage across 36 States & UTs. Territory is resolved automatically without manual intervention.
+                  </p>
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                onClick={() => setShowSamplePins((v) => !v)}
+                className="h-8 px-3 text-xs text-ink-muted hover:text-ink"
+              >
+                {showSamplePins ? "Hide PIN Preview" : "View Sample Rows (30)"}
+              </Button>
+            </div>
+
+            {showSamplePins && displayedPinRows.length > 0 && (
+              <div className="mt-3.5 overflow-x-auto rounded-tile border border-divider/70">
+                <table className="w-full border-collapse text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-divider bg-surface-muted/50 text-[10px] font-semibold uppercase tracking-wider text-ink-muted">
+                      <th className="py-2 px-3">PIN Code</th>
+                      <th className="py-2 px-3">State</th>
+                      <th className="py-2 px-3">District</th>
+                      <th className="py-2 px-3">Post Office</th>
+                      <th className="py-2 px-3 text-right">Updated</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-divider/60">
+                    {displayedPinRows.slice(0, 30).map((row) => (
+                      <tr key={row.id} className="h-9 transition-colors hover:bg-accent-soft/25">
+                        <td className="py-1.5 px-3 font-bold text-ink tabular-nums">{row.pincode}</td>
+                        <td className="py-1.5 px-3">
+                          <Chip tone="neutral">{row.stateCode}</Chip>{" "}
+                          <span className="ml-1 font-medium text-ink">{row.stateName}</span>
+                        </td>
+                        <td className="py-1.5 px-3 text-ink-muted">{row.districtName ?? "—"}</td>
+                        <td className="py-1.5 px-3 text-ink-muted">
+                          {row.officeName ?? "—"}
+                          {row.officeType && <span className="ml-1 text-[10px] text-ink-faint">({row.officeType})</span>}
+                        </td>
+                        <td className="py-1.5 px-3 text-right text-[11px] text-ink-faint tabular-nums">
+                          {formatDate(row.sourceUpdatedAt)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
       </Card>
 
       {/* Assign / Reassign Agent Drawer */}
-      <Drawer open={assignOpen} onClose={() => setAssignOpen(false)} title="Assign Agent Vehicle & State">
+      <Drawer open={assignOpen} onClose={() => setAssignOpen(false)} title="Assign Incentive Rule to Agent">
         <form id={assignFormId} onSubmit={handleCreateAssignment} className="space-y-4">
           <p className="text-xs text-ink-muted">
-            Reassigning an agent automatically closes any prior open assignment on the day before the new effective date while preserving all history.
+            Assign an incentive rule created in Rule Builder directly to a CSE / Agent. Reassigning automatically closes any prior open assignment on the day before the new effective date while preserving all history.
           </p>
 
           <div className="space-y-1">
@@ -834,19 +934,21 @@ export function AssignmentsPinTab({ data }: { data: IncentivesDashboardPayload }
             <CustomSelect value={aStaffId} onChange={setAStaffId} options={data.staffOptions} searchable />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <span className="text-xs font-medium text-ink-muted">Vehicle Category</span>
+          <div className="space-y-1">
+            <span className="text-xs font-medium text-ink-muted">Incentive Rule (From Rule Builder)</span>
+            {ruleSelectOptions.length === 0 ? (
+              <p className="rounded-tile border border-warning/30 bg-warning/5 p-2.5 text-xs text-warning">
+                No incentive rules found. Please create rules in the <b>Rule Builder</b> tab first.
+              </p>
+            ) : (
               <CustomSelect
-                value={aVehicle}
-                onChange={(v) => setAVehicle(v as VehicleCategory)}
-                options={VEHICLE_CATEGORIES.map((v) => ({ value: v.key, label: v.label }))}
+                value={aRuleId}
+                onChange={setARuleId}
+                options={ruleSelectOptions}
+                searchable
+                placeholder="Select Rule…"
               />
-            </div>
-            <div className="space-y-1">
-              <span className="text-xs font-medium text-ink-muted">Assigned State</span>
-              <CustomSelect value={aState} onChange={setAState} options={STATE_OPTIONS} searchable />
-            </div>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-3">

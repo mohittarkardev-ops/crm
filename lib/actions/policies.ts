@@ -15,7 +15,8 @@ import {
   formValues,
   normalizeMobile,
   parseDate,
-
+  readInsurerInput,
+  resolveInsurer,
   storeDocument,
   text,
   type Db,
@@ -80,30 +81,6 @@ function readExtras(formData: FormData, category: string) {
     pin_2: clip("pin2", 20),
   });
   return { errors, data };
-}
-
-async function resolveInsurer(db: Db, name: string): Promise<{ id: string; name: string } | { error: string }> {
-  const list = await db.from("insurers").select("id, name");
-  if (list.error) return { error: dbMessage(list.error) };
-  const hit = (list.data ?? []).find((i) => String(i.name).trim().toLowerCase() === name.toLowerCase());
-  if (hit) return { id: hit.id as string, name: hit.name as string };
-  const created = await db.from("insurers").insert({ name }).select("id, name").single();
-  if (created.error) return { error: dbMessage(created.error) };
-  return { id: created.data.id as string, name: created.data.name as string };
-}
-
-function readInsurerInput(formData: FormData, fieldErrors: Record<string, string>): string {
-  const selected = text(formData, "insurer");
-  const isOther = selected === "__other__";
-  const name = isOther ? text(formData, "insurerCustom") : selected;
-  if (isOther) {
-    if (name.length < 2 || name.length > 120) {
-      fieldErrors.insurerCustom = "Enter the new insurer's name (2–120 characters).";
-    }
-  } else if (name.length < 2 || name.length > 120) {
-    fieldErrors.insurer = "Choose an insurer.";
-  }
-  return name;
 }
 
 async function resolveType(db: Db, code: string): Promise<{ id: string } | { error: string }> {

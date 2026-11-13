@@ -495,11 +495,30 @@ export async function getIncentivesDashboard(
     const assignments: AgentAssignmentRecord[] = (assignmentsRes.data ?? []).map((a) => {
       const row = a as Record<string, unknown>;
       const s = staffMap.get(String(a.staff_id));
+
+      let resolvedRuleId = (row.rule_id as string | null) ?? null;
+      let resolvedRuleName: string | null = null;
+      if (!resolvedRuleId && typeof a.notes === "string") {
+        const match = a.notes.match(/\[Rule:([a-f0-9\-]+)(?::([^\]]+))?\]/i);
+        if (match) {
+          resolvedRuleId = match[1];
+          resolvedRuleName = match[2]?.trim() ?? null;
+        }
+      }
+      if (resolvedRuleId) {
+        const matchedRuleObj = rules.find((r) => r.id === resolvedRuleId);
+        if (matchedRuleObj) {
+          resolvedRuleName = matchedRuleObj.ruleName;
+        }
+      }
+
       return {
         id: a.id as string,
         staffId: a.staff_id as string,
         staffName: s?.full_name ?? staff.full_name,
         employeeCode: s?.employee_code ?? null,
+        ruleId: resolvedRuleId,
+        ruleName: resolvedRuleName,
         vehicleCategory: normalizeVehicleCategory(String(a.vehicle_category)) ?? "2W",
         assignedState: canonicalStateName(String(a.assigned_state)),
         effectiveFrom: String(a.effective_from),
@@ -619,15 +638,17 @@ export async function getIncentivesDashboard(
         : assignNow?.vehicleCategory ?? null;
       const assignOrMonthlyState = (m.primary_state as string | null) ?? assignNow?.assignedState ?? null;
 
+      const directRuleHit = assignNow?.ruleId ? rules.find((r) => r.id === assignNow.ruleId && r.isActive) : null;
       const matchedRule =
-        assignOrMonthlyCat && assignOrMonthlyState
+        directRuleHit ??
+        (assignOrMonthlyCat && assignOrMonthlyState
           ? resolveMatchingRule(rules, {
               vehicleCategory: assignOrMonthlyCat,
               resolvedState: assignOrMonthlyState,
               submissionDate: refDateForRules,
               settings,
             })?.rule ?? null
-          : null;
+          : null);
       const activeMonthlyMilestones = matchedRule?.monthlyMilestones ?? [];
 
       const assignMilestones = assignNow?.stretchMilestones ?? [];
@@ -780,12 +801,16 @@ export async function getIncentivesDashboard(
     if (!canManage && monthlyAgents.length === 0) {
       const myAssign = findActiveAssignment(assignments, staff.id, refDateForRules) ?? assignments[0] ?? null;
       if (myAssign) {
-        const ruleHit = resolveMatchingRule(rules, {
-          vehicleCategory: myAssign.vehicleCategory,
-          resolvedState: myAssign.assignedState,
-          submissionDate: refDateForRules,
-          settings,
-        })?.rule ?? null;
+        const directRuleHit = myAssign.ruleId ? rules.find((r) => r.id === myAssign.ruleId && r.isActive) : null;
+        const ruleHit =
+          directRuleHit ??
+          resolveMatchingRule(rules, {
+            vehicleCategory: myAssign.vehicleCategory,
+            resolvedState: myAssign.assignedState,
+            submissionDate: refDateForRules,
+            settings,
+          })?.rule ??
+          null;
         const baseTarget = ruleHit?.monthlyTarget ?? DEFAULT_MONTHLY_TARGETS[myAssign.vehicleCategory];
         const effectiveTargetDay1 =
           settings.midMonthTargetPolicy === "prorated"

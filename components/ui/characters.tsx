@@ -663,6 +663,31 @@ export function GoalFlagMini() {
   );
 }
 
+/** 6b. StatCard Claims Desk: shield scout holding a verified claim checklist stamp badge. */
+export function ClaimTrophyMini() {
+  return (
+    <svg viewBox="0 0 44 44" className="size-10 shrink-0 select-none" aria-hidden="true">
+      <circle cx="22" cy="23" r="17" fill="var(--accent-soft)" />
+      <ShieldBase />
+      <g className="scout-blink">
+        <circle cx="17.5" cy="20.5" r="1.7" fill="var(--text)" />
+        <circle cx="26.5" cy="20.5" r="1.7" fill="var(--text)" />
+      </g>
+      <path d="M19 25 Q22 27.5 25 25" fill="none" stroke="var(--text)" strokeWidth="1.5" strokeLinecap="round" />
+      {/* Verified claim checklist badge */}
+      <circle cx="34" cy="30" r="6" fill="var(--accent)" stroke="var(--text)" strokeWidth="1.6" />
+      <path
+        d="M31.5 30 L33.2 31.8 L36.5 28.2"
+        fill="none"
+        stroke="var(--text)"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 /** 7. Donut Chart Center Mascot: friendly smiling emblem in Policies by Category. */
 export function DonutCenterCharacter() {
   return (

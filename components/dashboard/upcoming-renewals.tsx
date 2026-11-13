@@ -1,101 +1,78 @@
 import Link from "next/link";
-import { ArrowUpRight, CalendarClock, Hash } from "lucide-react";
-import { Card, CardHeader, Tile } from "@/components/ui/card";
-import { CalendarCourierBadge, RelaxedEmptyCharacter } from "@/components/ui/characters";
-import { EmptyState } from "@/components/ui/empty-state";
-import { Chip, StatusChip } from "@/components/ui/chip";
-import { buttonStyles } from "@/components/ui/button";
-import { formatDate } from "@/lib/format";
+import { ArrowUpRight, CalendarClock } from "lucide-react";
+import { Card } from "@/components/ui/card";
+import { CalendarCourierBadge } from "@/components/ui/characters";
+import { CountUp } from "@/components/ui/count-up";
+import { cn } from "@/lib/cn";
 import type { UpcomingRenewal } from "@/lib/data/types";
 
-function initials(name: string) {
-  return name
-    .split(" ")
-    .map((part) => part[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-}
-
-/** "Upcoming Renewals" list (design.md 4.9). */
+/**
+ * "Upcoming Renewals" compact count card with clickable link to `/renewals` tab.
+ * Replaces the heavy 3-column table with an instant count and direct navigation.
+ */
 export function UpcomingRenewals({
-  index,
+  index = 3,
   items,
-  canViewPolicies = true,
+  count,
   canViewRenewals = true,
 }: {
   index?: number;
-  items: UpcomingRenewal[];
+  items?: UpcomingRenewal[];
+  count?: number;
   canViewPolicies?: boolean;
   canViewRenewals?: boolean;
 }) {
-  if (items.length === 0) {
-    return (
-      <Card index={index}>
-        <CardHeader title="Upcoming Renewals" />
-        <EmptyState
-          label="No upcoming renewals in the next 60 days"
-          icon={CalendarClock}
-          illustration={<RelaxedEmptyCharacter />}
-        />
-      </Card>
-    );
-  }
+  const total = count ?? items?.length ?? 0;
 
   return (
-    <Card index={index}>
-      <CardHeader
-        title="Upcoming Renewals"
-        action={
-          <div className="flex items-center gap-2">
-            <CalendarCourierBadge />
+    <Card
+      index={index}
+      className="group relative flex flex-col justify-between transition-all duration-150 hover:border-divider"
+    >
+      <div>
+        <div className="flex items-start justify-between gap-2 border-l-[3px] border-accent pl-3">
+          <div className="min-w-0">
+            <p className="text-[28px] font-bold leading-9 text-ink tabular-nums">
+              <CountUp value={total} />
+            </p>
+            <h2 className="mt-0.5 text-[10px] font-semibold uppercase tracking-wider text-ink-muted">
+              Upcoming Renewals
+            </h2>
+            <p className="mt-0.5 text-[11px] text-ink-faint">
+              Due in next 60 days
+            </p>
+          </div>
+
+          <div className="flex flex-col items-end gap-1.5 shrink-0">
             {canViewRenewals && (
-              <Link href="/renewals" className={buttonStyles("ghost", "h-8 px-3 text-xs")}>
-                View all
-                <ArrowUpRight size={14} strokeWidth={1.75} aria-hidden="true" />
+              <Link
+                href="/renewals"
+                className="inline-flex items-center gap-0.5 rounded-[4px] px-1.5 py-0.5 text-[11px] font-semibold text-ink hover:text-accent-strong transition-colors"
+                aria-label="View upcoming renewals"
+              >
+                <span>View</span>
+                <ArrowUpRight size={13} strokeWidth={2} />
               </Link>
             )}
+            <CalendarCourierBadge />
           </div>
-        }
-      />
+        </div>
 
-      <div className="grid gap-3 lg:grid-cols-3">
-        {items.map((item) => (
-          <Tile key={item.id} className="space-y-3">
-            <div className="flex items-center gap-3">
-              <span className="grid size-10 shrink-0 place-items-center rounded-full bg-surface-strong text-xs font-semibold text-ink">
-                {initials(item.client)}
-              </span>
-              <div className="min-w-0">
-                {canViewPolicies ? (
-                  <Link href={`/policies/${item.id}`} className="block truncate text-sm font-semibold text-ink hover:underline">
-                    {item.client}
-                  </Link>
-                ) : (
-                  <p className="truncate text-sm font-semibold text-ink">{item.client}</p>
-                )}
-                <p className="truncate text-xs text-ink-muted">
-                  {item.policy} · {item.insurer}
-                </p>
-              </div>
-              <div className="ml-auto shrink-0">
-                <StatusChip status={item.status} />
-              </div>
-            </div>
-
-            <div className="space-y-1.5 text-xs text-ink-muted">
-              <p className="flex items-center gap-2">
-                <CalendarClock size={14} strokeWidth={1.75} aria-hidden="true" />
-                Expires {formatDate(item.expiry)}
-                <Chip className="ml-auto">{item.daysLeft} days left</Chip>
-              </p>
-              <p className="flex items-center gap-2">
-                <Hash size={14} strokeWidth={1.75} aria-hidden="true" />
-                <span className="tabular-nums">{item.policyNumber}</span>
-              </p>
-            </div>
-          </Tile>
-        ))}
+        {/* Quick status row */}
+        <div className="mt-4 flex items-center justify-between gap-2 border-t border-divider/60 pt-3">
+          <span className="text-[11px] font-medium text-ink-muted">
+            {total > 0 ? `${total} policy on watch` : "All caught up"}
+          </span>
+          {canViewRenewals && (
+            <Link
+              href="/renewals"
+              className="inline-flex items-center gap-1 text-xs font-semibold text-ink hover:text-accent-strong transition-colors"
+            >
+              <span>Renewals table</span>
+              <ArrowUpRight size={13} strokeWidth={2} />
+            </Link>
+          )}
+        </div>
       </div>
     </Card>
   );

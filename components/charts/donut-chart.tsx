@@ -7,12 +7,20 @@ import { ChartTooltip } from "@/components/charts/chart-tooltip";
 type Slice = { name: string; value: number; color: string };
 
 /** Thick ring with rounded ends and gaps, plus a centre badge (design.md 4.4). */
-export function DonutChart({ data, center }: { data: Slice[]; center?: ReactNode }) {
+export function DonutChart({
+  data,
+  center,
+  unit = "%",
+}: {
+  data: Slice[];
+  center?: ReactNode;
+  unit?: string;
+}) {
   return (
     <div className="relative h-full w-full">
       <ResponsiveContainer width="100%" height="100%">
         <PieChart>
-          <Tooltip content={<ChartTooltip unit="%" />} />
+          <Tooltip content={<ChartTooltip unit={unit} />} />
           <Pie
             data={data}
             dataKey="value"

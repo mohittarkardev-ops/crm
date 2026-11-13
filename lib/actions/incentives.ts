@@ -390,26 +390,50 @@ export async function toggleIncentiveRule(ruleId: string, isActive: boolean) {
 }
 
 /* ------------------------------------------------------------------ */
-/* 3. Agent Assignments (Historical Integrity: One Vehicle + State)    */
+/* 3. Agent Assignments (Direct Rule Assignment & Historical Record) */
 /* ------------------------------------------------------------------ */
 export type AssignAgentInput = {
   staffId: string;
-  vehicleCategory: VehicleCategory;
-  assignedState: string;
+  ruleId?: string | null;
+  vehicleCategory?: VehicleCategory;
+  assignedState?: string;
   effectiveFrom: string;
   effectiveUntil: string | null;
   notes?: string;
 };
 
 export async function assignAgentIncentive(input: AssignAgentInput) {
-  const auth = await authorize("incentives.manage", "Only admins can manage agent vehicle & state assignments.");
+  const auth = await authorize("incentives.manage", "Only admins can manage agent incentive assignments.");
   if (!auth.staff) return auth.error;
   const staff = auth.staff;
 
   if (!UUID.test(input.staffId)) return fail("Choose an agent.");
-  if (!CATEGORIES.includes(input.vehicleCategory)) return fail("Choose 2W, 4W or CW.");
-  const stateName = canonicalStateName(input.assignedState);
-  if (!stateName) return fail("Choose the assigned state or union territory.");
+
+  const db = await createClient();
+
+  // Resolve assigned rule if provided
+  let ruleId = input.ruleId?.trim() || null;
+  let ruleName: string | null = null;
+  let cat: VehicleCategory = input.vehicleCategory ?? "2W";
+  let stateName = input.assignedState ? canonicalStateName(input.assignedState) : "Gujarat";
+
+  if (ruleId) {
+    const ruleRes = await db
+      .from("incentive_rules")
+      .select("id, rule_name, vehicle_category, state_name, scope")
+      .eq("id", ruleId)
+      .maybeSingle();
+
+    if (ruleRes.data) {
+      const r = ruleRes.data;
+      ruleName = r.rule_name;
+      if (r.vehicle_category) cat = r.vehicle_category as VehicleCategory;
+      if (r.state_name) stateName = r.state_name;
+    }
+  } else {
+    if (!CATEGORIES.includes(cat)) return fail("Choose 2W, 4W or CW.");
+    if (!stateName) return fail("Choose the assigned state or union territory.");
+  }
 
   const effectiveFrom = parseDate(String(input.effectiveFrom ?? "").trim());
   if (!effectiveFrom) return fail("Choose a valid effective start date.");
@@ -420,9 +444,7 @@ export async function assignAgentIncentive(input: AssignAgentInput) {
     return fail("End date cannot be earlier than start date.");
   }
 
-  const db = await createClient();
-
-  // Enforce 1 active vehicle + 1 active state per date while preserving assignment history!
+  // Enforce 1 active assignment per date while preserving history
   const existingRes = await db
     .from("incentive_agent_assignments")
     .select("*")
@@ -439,7 +461,6 @@ export async function assignAgentIncentive(input: AssignAgentInput) {
     if (!overlaps) continue;
 
     if (rowFrom < effectiveFrom) {
-      // Automatically close out prior assignment cleanly on day before the new assignment takes effect.
       const prevEnd = addDays(effectiveFrom, -1);
       const closePrev = await db
         .from("incentive_agent_assignments")
@@ -453,20 +474,30 @@ export async function assignAgentIncentive(input: AssignAgentInput) {
     }
   }
 
-  const ins = await db
-    .from("incentive_agent_assignments")
-    .insert({
-      staff_id: input.staffId,
-      vehicle_category: input.vehicleCategory,
-      assigned_state: stateName,
-      effective_from: effectiveFrom,
-      effective_until: effectiveUntil,
-      status: "active",
-      notes: input.notes?.trim() || null,
-      created_by: staff.id,
-    })
-    .select("id")
-    .single();
+  const ruleTag = ruleId ? `[Rule:${ruleId}${ruleName ? `:${ruleName}` : ""}]` : "";
+  const rawNotes = input.notes?.trim() || "";
+  const combinedNotes = ruleTag ? (rawNotes ? `${ruleTag} ${rawNotes}` : ruleTag) : (rawNotes || null);
+
+  const baseInsert: Record<string, unknown> = {
+    staff_id: input.staffId,
+    vehicle_category: cat,
+    assigned_state: stateName,
+    effective_from: effectiveFrom,
+    effective_until: effectiveUntil,
+    status: "active",
+    notes: combinedNotes,
+    created_by: staff.id,
+  };
+
+  // Attempt insert with rule_id if available; fallback gracefully if migration 0023 not yet applied
+  let ins = ruleId
+    ? await db.from("incentive_agent_assignments").insert({ ...baseInsert, rule_id: ruleId }).select("id").single()
+    : await db.from("incentive_agent_assignments").insert(baseInsert).select("id").single();
+
+  if (ins.error && ins.error.message.includes("rule_id")) {
+    ins = await db.from("incentive_agent_assignments").insert(baseInsert).select("id").single();
+  }
+
   if (ins.error) return fail(dbMessage(ins.error));
 
   await recordIncentiveAudit(db, {
@@ -478,7 +509,9 @@ export async function assignAgentIncentive(input: AssignAgentInput) {
     agentId: input.staffId,
     reason: input.notes?.trim() || null,
     afterData: {
-      vehicleCategory: input.vehicleCategory,
+      ruleId,
+      ruleName,
+      vehicleCategory: cat,
       assignedState: stateName,
       effectiveFrom,
       effectiveUntil,
@@ -492,7 +525,11 @@ export async function assignAgentIncentive(input: AssignAgentInput) {
   }).catch(() => {});
 
   revalidatePath("/incentives");
-  return done(`Assigned agent to ${input.vehicleCategory} · ${stateName} from ${effectiveFrom}.`);
+  return done(
+    ruleName
+      ? `Assigned agent to rule "${ruleName}" (${cat} · ${stateName}) from ${effectiveFrom}.`
+      : `Assigned agent to ${cat} · ${stateName} from ${effectiveFrom}.`,
+  );
 }
 
 export async function endAgentAssignment(assignmentId: string, endDateRaw: string) {
@@ -1123,7 +1160,7 @@ export async function addManualAdjustmentAction(input: {
 
   let adjType: "earning_override" | "post_finalization_correction" = "earning_override";
   let originalVal = "₹0";
-  let updatedVal = `₹${delta}`;
+  let updatedVal = `₹${Math.max(0, delta)}`;
 
   if (input.settlementId && UUID.test(input.settlementId)) {
     const sRes = await db.from("incentive_settlements").select("*").eq("id", input.settlementId).maybeSingle();
@@ -1150,6 +1187,19 @@ export async function addManualAdjustmentAction(input: {
         .update({ adjustment_amount: nextAdj, finalized_payable: nextPayable })
         .eq("id", input.settlementId);
       await syncSettlementBalances(db, input.settlementId);
+    }
+  } else {
+    const mRes = await db
+      .from("agent_monthly_incentives")
+      .select("provisional_earnings")
+      .eq("period_id", period.id)
+      .eq("agent_id", input.agentId)
+      .maybeSingle();
+    if (!mRes.error && mRes.data) {
+      const prevTotal = Number(mRes.data.provisional_earnings ?? 0);
+      const nextTotal = Math.max(0, prevTotal + delta);
+      originalVal = `Payable ₹${prevTotal}`;
+      updatedVal = `Payable ₹${nextTotal}`;
     }
   }
 

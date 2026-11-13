@@ -443,3 +443,134 @@ export function AgentMilestoneCharacter({
     </svg>
   );
 }
+
+/* -------------------------------------------------------------------------- */
+/* 7. Special Target Motivator (Staff Stretch / Reward Progress Mascot)       */
+/* -------------------------------------------------------------------------- */
+
+export function SpecialStretchMascotCharacter({
+  progressPct,
+  stretchAchieved,
+  className,
+}: {
+  progressPct: number;
+  stretchAchieved: boolean;
+  className?: string;
+}) {
+  const clamped = Math.max(0, Math.min(100, Math.round(progressPct)));
+  const sprinting = !stretchAchieved && clamped >= 75;
+
+  return (
+    <svg
+      viewBox="0 0 138 96"
+      className={cn(
+        "group/crew h-20 w-28 shrink-0 select-none overflow-visible transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] hover:scale-[1.04]",
+        className,
+      )}
+      aria-hidden="true"
+    >
+      {/* Ground shadow & soft halo */}
+      <ellipse cx="68" cy="87" rx="48" ry="4.5" fill="var(--surface-muted)" />
+      <circle
+        cx="58"
+        cy="47"
+        r="31"
+        fill={stretchAchieved ? "var(--positive-soft)" : "var(--accent-soft)"}
+        opacity="0.88"
+      />
+
+      {/* Sparkle stars when champion or sprinting close to target */}
+      {(stretchAchieved || sprinting) && (
+        <g className="scout-stamp-pop">
+          <path
+            d="M17 24 L19 29 L24 31 L19 33 L17 38 L15 33 L10 31 L15 29 Z"
+            fill={stretchAchieved ? "var(--positive)" : "var(--accent)"}
+            stroke="var(--text)"
+            strokeWidth="1.2"
+          />
+          <circle cx="122" cy="21" r="2.8" fill="var(--accent)" />
+        </g>
+      )}
+
+      {/* Energetic Hero Character Body */}
+      <PipBody
+        cx={43}
+        cy={49}
+        eyes={stretchAchieved || sprinting ? "happy" : "focused"}
+        mouth="smile"
+        crown={stretchAchieved}
+      />
+
+      {/* Determined Headband when climbing / sprinting */}
+      {!stretchAchieved && (
+        <g>
+          <path
+            d="M23 35.5 Q43 32 63 35.5"
+            fill="none"
+            stroke={sprinting ? "var(--positive)" : "var(--accent-strong)"}
+            strokeWidth="3.6"
+            strokeLinecap="round"
+          />
+          <path
+            d="M23 36 L14 39 L19 43 Z"
+            fill={sprinting ? "var(--positive)" : "var(--accent)"}
+            stroke="var(--text)"
+            strokeWidth="1.4"
+            strokeLinejoin="round"
+          />
+        </g>
+      )}
+
+      {/* Right-side Reward Prop: Champion Trophy / Rocket Finish / Lightning Ascent */}
+      {stretchAchieved ? (
+        <g className="scout-float">
+          {/* Champion Gold Trophy */}
+          <path
+            d="M84 31 H112 V43 C112 52 105 58 98 58 C91 58 84 52 84 43 Z"
+            fill="var(--accent)"
+            stroke="var(--text)"
+            strokeWidth="2.1"
+            strokeLinejoin="round"
+          />
+          <path d="M84 35 C77 35 76 44 84 46" fill="none" stroke="var(--text)" strokeWidth="2" strokeLinecap="round" />
+          <path d="M112 35 C119 35 120 44 112 46" fill="none" stroke="var(--text)" strokeWidth="2" strokeLinecap="round" />
+          <line x1="98" y1="58" x2="98" y2="68" stroke="var(--text)" strokeWidth="2.6" />
+          <rect x="88" y="68" width="20" height="6" rx="2" fill="var(--surface-strong)" stroke="var(--text)" strokeWidth="1.9" />
+          <path d="M98 37 L100 42 L105 42.5 L101 46 L102 51 L98 48.2 L94 51 L95 46 L91 42.5 L96 42 Z" fill="var(--surface-strong)" />
+        </g>
+      ) : sprinting ? (
+        <g className="scout-float">
+          {/* Turbo Rocket Booster pushing past the final stretch */}
+          <path
+            d="M100 22 C110 30 112 45 107 58 H93 C88 45 90 30 100 22 Z"
+            fill="var(--surface-strong)"
+            stroke="var(--text)"
+            strokeWidth="2.1"
+            strokeLinejoin="round"
+          />
+          <path d="M94 31 H106" stroke="var(--accent)" strokeWidth="3.2" strokeLinecap="round" />
+          <circle cx="100" cy="41" r="4.5" fill="var(--positive-soft)" stroke="var(--text)" strokeWidth="1.7" />
+          <path d="M93 52 L85 59 L93 58 Z" fill="var(--accent)" stroke="var(--text)" strokeWidth="1.6" strokeLinejoin="round" />
+          <path d="M107 52 L115 59 L107 58 Z" fill="var(--accent)" stroke="var(--text)" strokeWidth="1.6" strokeLinejoin="round" />
+          <path d="M95 59 L100 72 L105 59 Z" fill="var(--accent)" stroke="var(--text)" strokeWidth="1.5" strokeLinejoin="round" />
+        </g>
+      ) : (
+        <g className="scout-float">
+          {/* Lightning Ascent Shield & Progress Badge */}
+          <rect x="78" y="28" width="44" height="44" rx="11" fill="var(--surface-strong)" stroke="var(--text)" strokeWidth="2.1" />
+          <path
+            d="M102 33 L91 49 H99 L96 63 L109 45 H101 Z"
+            fill="var(--accent)"
+            stroke="var(--text)"
+            strokeWidth="1.8"
+            strokeLinejoin="round"
+          />
+          <rect x="85" y="69" width="30" height="12" rx="6" fill="var(--text)" />
+          <text x="100" y="77.5" textAnchor="middle" fontSize="8" fontWeight="700" fill="var(--surface-strong)">
+            {clamped}%
+          </text>
+        </g>
+      )}
+    </svg>
+  );
+}

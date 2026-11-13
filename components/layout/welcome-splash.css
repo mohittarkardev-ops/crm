@@ -1,0 +1,322 @@
+/*
+ * Welcome splash (components/layout/welcome-splash.tsx).
+ * Only design tokens are used (no hard-coded colours). The scene below is the one decorated surface in the CRM,
+ * so soft radial washes are allowed here. Every animation is covered by the global prefers-reduced-motion rule.
+ */
+
+/* Registered so the exit hole can be animated smoothly. Browsers without @property simply reveal at the end. */
+@property --sp-r {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+/* ---- Scene ---- */
+.sp-sky {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.sp-sky-morning {
+  background:
+    radial-gradient(60% 55% at 16% 10%, var(--accent-soft), transparent 70%),
+    radial-gradient(50% 45% at 88% 92%, var(--surface-muted), transparent 70%);
+}
+
+.sp-sky-midday {
+  background:
+    radial-gradient(55% 50% at 50% 38%, var(--accent-soft), transparent 72%),
+    radial-gradient(45% 40% at 8% 92%, var(--surface-muted), transparent 70%),
+    radial-gradient(45% 40% at 94% 8%, var(--surface-muted), transparent 70%);
+}
+
+.sp-sky-evening {
+  background:
+    radial-gradient(65% 55% at 82% 8%, var(--surface-muted), transparent 70%),
+    radial-gradient(55% 50% at 14% 96%, var(--accent-soft), transparent 70%),
+    color-mix(in srgb, var(--text) 4%, transparent);
+}
+
+.sp-sun {
+  position: absolute;
+  top: -90px;
+  right: -60px;
+  width: 280px;
+  height: 280px;
+  border-radius: 9999px;
+  background: var(--accent-soft);
+  filter: blur(36px);
+  opacity: 0.8;
+  will-change: opacity;
+  animation: sp-pulse 5s ease-in-out infinite;
+}
+
+/* Opacity only: animating the size of a blurred layer makes frames stutter. */
+@keyframes sp-pulse {
+  0%,
+  100% {
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 0.95;
+  }
+}
+
+.sp-float {
+  position: absolute;
+  bottom: -40px;
+  opacity: 0;
+  will-change: transform, opacity;
+  animation: sp-drift 10s ease-in-out infinite;
+}
+
+@keyframes sp-drift {
+  0% {
+    transform: translateY(0) rotate(-6deg);
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.55;
+  }
+  85% {
+    opacity: 0.4;
+  }
+  100% {
+    transform: translateY(-105vh) rotate(8deg);
+    opacity: 0;
+  }
+}
+
+.sp-twinkle {
+  position: absolute;
+  opacity: 0;
+  animation: sp-twinkle 3.2s ease-in-out infinite;
+}
+
+@keyframes sp-twinkle {
+  0%,
+  100% {
+    opacity: 0.1;
+    transform: scale(0.7);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.15);
+  }
+}
+
+/* ---- Crest that draws itself ---- */
+.sp-crest {
+  position: absolute;
+  transform-origin: center center;
+}
+
+.sp-crest-body {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  fill-opacity: 0;
+  animation:
+    sp-draw 620ms cubic-bezier(0.65, 0, 0.35, 1) 60ms forwards,
+    sp-fill 280ms ease-out 460ms forwards;
+}
+
+.sp-crest-arc {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: sp-draw 300ms ease-out 500ms forwards;
+}
+
+/* The crest yields smoothly into the doorway as the portal cross-fades in at the same centre point. */
+.sp-crest-out {
+  animation: sp-crest-out 280ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes sp-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes sp-fill {
+  to {
+    fill-opacity: 1;
+  }
+}
+
+@keyframes sp-crest-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.84) translateY(4px);
+  }
+}
+
+/* ---- Pip's doorway cross-fades in seamlessly, then the door swings open right away ---- */
+.sp-pip-in {
+  animation: sp-pip-in 440ms cubic-bezier(0.22, 1, 0.36, 1) 120ms both;
+  transform-origin: 50% 55%;
+  will-change: transform, opacity;
+}
+
+@keyframes sp-pip-in {
+  from {
+    opacity: 0;
+    transform: scale(0.9) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/*
+ * Override the generic mascot delays from globals.css (which pause 520ms + hold 18% closed)
+ * so the door opens smoothly as soon as the doorway settles and Pip steps straight out.
+ */
+.sp-pip-in .splash-door-leaf {
+  animation: sp-door-open 760ms cubic-bezier(0.22, 1, 0.36, 1) 240ms both;
+  transform-box: fill-box;
+  transform-origin: left center;
+  will-change: transform;
+}
+
+@keyframes sp-door-open {
+  from {
+    transform: scaleX(1) skewY(0deg);
+  }
+  to {
+    transform: scaleX(0.24) skewY(-10deg);
+  }
+}
+
+.sp-pip-in .splash-pip-step {
+  animation: sp-pip-appear 540ms cubic-bezier(0.22, 1, 0.36, 1) 440ms both;
+  will-change: transform, opacity;
+}
+
+.sp-pip-in .splash-salute-arm {
+  animation-duration: 950ms;
+  animation-delay: 780ms;
+}
+
+@keyframes sp-pip-appear {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---- Text ---- */
+.sp-fade-up {
+  animation: sp-fade-up 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes sp-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.sp-mask {
+  display: inline-block;
+  overflow: hidden;
+  padding-bottom: 0.12em;
+}
+
+.sp-word {
+  display: inline-block;
+  animation: sp-word 620ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes sp-word {
+  from {
+    transform: translateY(110%);
+  }
+  to {
+    transform: none;
+  }
+}
+
+.sp-underline {
+  display: block;
+  height: 3px;
+  width: 64px;
+  border-radius: 9999px;
+  background: var(--accent);
+  transform-origin: left center;
+  animation: sp-underline 560ms cubic-bezier(0.65, 0, 0.35, 1) both;
+}
+
+@keyframes sp-underline {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* ---- Bottom: status text and the auto-continue hairline ---- */
+.sp-countdown {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--text);
+  opacity: 0.55;
+  transform-origin: left center;
+  animation: sp-countdown linear both;
+}
+
+@keyframes sp-countdown {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* ---- Exit: a circle opens from Pip's doorway and reveals the CRM ---- */
+.sp-root.sp-exit {
+  -webkit-mask-image: radial-gradient(
+    circle at var(--sp-x, 50%) var(--sp-y, 50%),
+    transparent var(--sp-r),
+    var(--text) calc(var(--sp-r) + 2px)
+  );
+  mask-image: radial-gradient(
+    circle at var(--sp-x, 50%) var(--sp-y, 50%),
+    transparent var(--sp-r),
+    var(--text) calc(var(--sp-r) + 2px)
+  );
+  animation: sp-reveal 850ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes sp-reveal {
+  from {
+    --sp-r: 0px;
+  }
+  to {
+    --sp-r: 150vmax;
+  }
+}
+
+.sp-root.sp-exit .sp-content,
+.sp-root.sp-exit .sp-bottom {
+  opacity: 0;
+  transition: opacity 260ms ease-out;
+}

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { TrendingDown, TrendingUp, type LucideIcon } from "lucide-react";
+import Link from "next/link";
+import { ArrowUpRight, TrendingDown, TrendingUp, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Card } from "@/components/ui/card";
 import { CountUp } from "@/components/ui/count-up";
@@ -18,7 +19,7 @@ function Trend({ direction, value, label }: { direction: "up" | "down"; value: s
   );
 }
 
-/** Dashboard stat card: coloured left bar, bold number, UPPERCASE label (design.md section 4). */
+/** Dashboard stat card: coloured left bar, bold number, UPPERCASE label, optional clickable link (design.md section 4). */
 export function StatCard({
   title,
   icon: Icon,
@@ -28,6 +29,9 @@ export function StatCard({
   trend,
   visual,
   index = 0,
+  href,
+  actionLabel = "View clients",
+  subtitle = "Registered client accounts",
 }: {
   title: string;
   icon: LucideIcon;
@@ -37,25 +41,58 @@ export function StatCard({
   trend?: { direction: "up" | "down"; value: string; label?: string };
   visual?: ReactNode;
   index?: number;
+  href?: string;
+  actionLabel?: string;
+  subtitle?: string;
 }) {
   return (
-    <Card index={index}>
-      <div
-        className={cn(
-          "flex items-start justify-between gap-3 border-l-[3px] pl-3",
-          index % 2 === 0 ? "border-accent" : "border-ink-faint",
-        )}
-      >
-        <div className="min-w-0">
-          <p className="text-[28px] font-bold leading-9 text-ink">
-            <CountUp value={value} kind={kind} prefix={prefix} />
-          </p>
-          <h2 className="mt-0.5 text-[10px] font-semibold uppercase tracking-wider text-ink-muted">{title}</h2>
-          {trend && <Trend direction={trend.direction} value={trend.value} label={trend.label ?? "this month"} />}
+    <Card
+      index={index}
+      className={cn(
+        "group relative flex flex-col justify-between transition-all duration-150 hover:border-divider",
+      )}
+    >
+      <div>
+        <div className="flex items-start justify-between gap-2 border-l-[3px] border-accent pl-3">
+          <div className="min-w-0">
+            <p className="text-[28px] font-bold leading-9 text-ink tabular-nums">
+              <CountUp value={value} kind={kind} prefix={prefix} />
+            </p>
+            <h2 className="mt-0.5 text-[10px] font-semibold uppercase tracking-wider text-ink-muted">
+              {title}
+            </h2>
+            <p className="mt-0.5 text-[11px] text-ink-faint">{subtitle}</p>
+          </div>
+
+          <div className="flex flex-col items-end gap-1.5 shrink-0">
+            {href && (
+              <Link
+                href={href}
+                className="inline-flex items-center gap-0.5 rounded-[4px] px-1.5 py-0.5 text-[11px] font-semibold text-ink hover:text-accent-strong transition-colors"
+                aria-label={`View ${title}`}
+              >
+                <span>View</span>
+                <ArrowUpRight size={13} strokeWidth={2} />
+              </Link>
+            )}
+            {visual}
+          </div>
         </div>
-        <div className="flex flex-col items-end gap-2">
-          <Icon size={16} strokeWidth={1.75} className="mt-1 text-ink-faint" aria-hidden="true" />
-          {visual}
+
+        {/* Quick status row */}
+        <div className="mt-4 flex items-center justify-between gap-2 border-t border-divider/60 pt-3">
+          <span className="text-[11px] font-medium text-ink-muted">
+            {trend ? `${trend.value} ${trend.label}` : "Active CRM portfolio"}
+          </span>
+          {href && (
+            <Link
+              href={href}
+              className="inline-flex items-center gap-1 text-xs font-semibold text-ink hover:text-accent-strong transition-colors"
+            >
+              <span>{actionLabel}</span>
+              <ArrowUpRight size={13} strokeWidth={2} />
+            </Link>
+          )}
         </div>
       </div>
     </Card>

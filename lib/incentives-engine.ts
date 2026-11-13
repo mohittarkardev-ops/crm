@@ -365,11 +365,28 @@ export async function reconcilePeriodIncentives(
   const assignments: AgentAssignmentRecord[] = (assignRes.data ?? []).map((row) => {
     const r = row as Record<string, unknown>;
     const s = staffLookup.get(String(row.staff_id));
+
+    let rId = (r.rule_id as string | null) ?? null;
+    let rName: string | null = null;
+    if (!rId && typeof row.notes === "string") {
+      const match = row.notes.match(/\[Rule:([a-f0-9\-]+)(?::([^\]]+))?\]/i);
+      if (match) {
+        rId = match[1];
+        rName = match[2]?.trim() ?? null;
+      }
+    }
+    if (rId) {
+      const rObj = rules.find((rule) => rule.id === rId);
+      if (rObj) rName = rObj.ruleName;
+    }
+
     return {
       id: row.id as string,
       staffId: row.staff_id as string,
       staffName: s?.full_name ?? "Agent",
       employeeCode: s?.employee_code ?? null,
+      ruleId: rId,
+      ruleName: rName,
       vehicleCategory: normalizeVehicleCategory(String(row.vehicle_category)) ?? "2W",
       assignedState: canonicalStateName(String(row.assigned_state)),
       effectiveFrom: String(row.effective_from),
@@ -563,9 +580,9 @@ export async function reconcilePeriodIncentives(
         manualState,
         resolvedState,
         locationStatus,
-        resolutionNote: `No active vehicle/state assignment on ${submissionDate}. ${resolutionNote}`,
-        eligibilityStatus: "ineligible_assignment",
-        earningStatus: "ineligible",
+        resolutionNote: `No active incentive rule assignment on ${submissionDate}. Held as Unassigned / Manual Review. ${resolutionNote}`,
+        eligibilityStatus: "held_review",
+        earningStatus: "held",
         exceptionReason: "no_active_assignment",
         rule: null,
         ruleVersionId: null,
@@ -641,37 +658,20 @@ export async function reconcilePeriodIncentives(
       continue;
     }
 
-    // 4. Strictly match BOTH Assigned Vehicle Category AND Assigned State
-    if (claimCategory !== assignment.vehicleCategory) {
-      preparedList.push({
-        claim,
-        submissionDate,
-        effectiveSlabDate: submissionDate,
-        agentId,
-        assignment,
-        claimCategory,
-        pincode,
-        manualState,
-        resolvedState,
-        locationStatus,
-        resolutionNote: `Vehicle category ${claimCategory ?? "unknown"} does not match assignment (${assignment.vehicleCategory}).`,
-        eligibilityStatus: "ineligible_mismatch",
-        earningStatus: "ineligible",
-        exceptionReason: "vehicle_mismatch",
-        rule: null,
-        ruleVersionId: null,
-        resolvedBy: existing ? ((existing.resolved_by as string | null) ?? null) : null,
-        resolvedAt: existing ? ((existing.resolved_at as string | null) ?? null) : null,
-        isLocked: false,
-        lockedSequenceNo: 0,
-        lockedSlabLabel: null,
-        lockedRate: 0,
-        lockedAmount: 0,
-      });
-      continue;
-    }
+    // 4. Match against Assigned Rule scope (Vehicle Category and Territory)
+    // Directly assigned rules take precedence over legacy flat assignment fields
+    const assignedRule = assignment.ruleId ? rules.find((r) => r.id === assignment.ruleId && r.isActive) : undefined;
+    const requiredCategory = assignedRule?.vehicleCategory ?? assignment.vehicleCategory;
+    const requiredState = (assignedRule && assignedRule.scope === "exact_state" ? assignedRule.stateName : null) ?? (assignedRule ? null : assignment.assignedState);
 
-    if (resolvedState.toLowerCase() !== assignment.assignedState.toLowerCase()) {
+    const isCategoryMismatch = Boolean(requiredCategory && claimCategory && requiredCategory !== claimCategory);
+    const isStateMismatch = Boolean(requiredState && resolvedState && requiredState.toLowerCase() !== resolvedState.toLowerCase());
+
+    if (isCategoryMismatch || isStateMismatch) {
+      const mismatchReason = isCategoryMismatch
+        ? `Vehicle category ${claimCategory ?? "unknown"} is outside assigned rule scope (${requiredCategory})`
+        : `Customer territory (${resolvedState}) is outside assigned rule scope (${requiredState})`;
+
       preparedList.push({
         claim,
         submissionDate,
@@ -683,10 +683,10 @@ export async function reconcilePeriodIncentives(
         manualState,
         resolvedState,
         locationStatus,
-        resolutionNote: `Resolved state (${resolvedState}) does not match assigned state (${assignment.assignedState}).`,
-        eligibilityStatus: "ineligible_mismatch",
-        earningStatus: "ineligible",
-        exceptionReason: "state_mismatch",
+        resolutionNote: `${mismatchReason}. Held as Unassigned / Manual Review.`,
+        eligibilityStatus: "held_review",
+        earningStatus: "held",
+        exceptionReason: isCategoryMismatch ? "vehicle_mismatch" : "state_mismatch",
         rule: null,
         ruleVersionId: null,
         resolvedBy: existing ? ((existing.resolved_by as string | null) ?? null) : null,
@@ -772,7 +772,53 @@ export async function reconcilePeriodIncentives(
 
     const existingVerId = existing?.rule_version_id as string | null | undefined;
     const preservedVer = preserveVersions && existingVerId ? versionById.get(existingVerId) : undefined;
-    if (preservedVer && preservedVer.vehicleCategory === assignment.vehicleCategory) {
+    const directRule = assignment.ruleId ? rules.find((r) => r.id === assignment.ruleId && r.isActive) : undefined;
+    if (directRule) {
+      const catMismatch = Boolean(directRule.vehicleCategory && claimCategory && directRule.vehicleCategory !== claimCategory);
+      const stateMismatch = Boolean(
+        directRule.stateName &&
+        resolvedState &&
+        directRule.stateName.toLowerCase() !== resolvedState.toLowerCase() &&
+        directRule.scope === "exact_state"
+      );
+
+      if (catMismatch || stateMismatch) {
+        const mismatchReason = catMismatch
+          ? `Vehicle category (${claimCategory}) is outside assigned rule "${directRule.ruleName}" (${directRule.vehicleCategory})`
+          : `Territory (${resolvedState}) is outside assigned rule "${directRule.ruleName}" (${directRule.stateName})`;
+
+        preparedList.push({
+          claim,
+          submissionDate,
+          effectiveSlabDate,
+          agentId,
+          assignment,
+          claimCategory,
+          pincode,
+          manualState,
+          resolvedState,
+          locationStatus,
+          resolutionNote: `${mismatchReason}. Held as Unassigned / Manual Review.`,
+          eligibilityStatus: "held_review",
+          earningStatus: "held",
+          exceptionReason: "unassigned_rule_scope",
+          rule: null,
+          ruleVersionId: null,
+          resolvedBy: null,
+          resolvedAt: null,
+          isLocked: false,
+          lockedSequenceNo: 0,
+          lockedSlabLabel: null,
+          lockedRate: 0,
+          lockedAmount: 0,
+        });
+        continue;
+      }
+
+      matchedRule = directRule;
+      resolvedVersionId = directRule.currentVersionId ?? null;
+      resolvedTier = directRule.scope;
+    } else if (preservedVer && preservedVer.vehicleCategory === assignment.vehicleCategory) {
       matchedRule = preservedVer;
       resolvedVersionId = preservedVer.currentVersionId ?? existingVerId ?? null;
       resolvedTier = preservedVer.scope;
@@ -992,6 +1038,14 @@ export async function reconcilePeriodIncentives(
       if (calc?.daySummary) existingAgg.slabSummary = calc.daySummary;
     } else if (item.eligibilityStatus === "held_review") {
       existingAgg.heldClaims += 1;
+      if (
+        item.exceptionReason === "vehicle_mismatch" ||
+        item.exceptionReason === "state_mismatch" ||
+        item.exceptionReason === "unassigned_rule_scope" ||
+        item.exceptionReason === "no_active_assignment"
+      ) {
+        existingAgg.mismatchClaims += 1;
+      }
     } else if (item.eligibilityStatus === "ineligible_mismatch") {
       existingAgg.mismatchClaims += 1;
     }
@@ -1076,7 +1130,11 @@ export async function reconcilePeriodIncentives(
 
     let baseTarget = primaryCat ? DEFAULT_MONTHLY_TARGETS[primaryCat] : 0;
     let activeMonthlyRule: IncentiveRule | null = null;
-    if (primaryCat && primaryState) {
+    const directRule = activeAssign?.ruleId ? rules.find((r) => r.id === activeAssign.ruleId && r.isActive) : null;
+    if (directRule) {
+      baseTarget = directRule.monthlyTarget;
+      activeMonthlyRule = directRule;
+    } else if (primaryCat && primaryState) {
       const ruleHit = resolveMatchingRule(rules, {
         vehicleCategory: primaryCat,
         resolvedState: primaryState,

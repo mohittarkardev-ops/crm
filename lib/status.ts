@@ -104,6 +104,13 @@ const LABELS: Record<string, string> = {
   ineligible_assignment: "No Assignment",
   ineligible_non_working: "Non-Working Day",
   ineligible_status: "Status Ineligible",
+  home_native: "Home Feed Ad",
+  policies_native: "Policies List Ad",
+  updates_native: "Updates Feed Ad",
+  policy_detail_native: "Policy Detail Ad",
+  home_banner: "Home Hero Banner",
+  policies_notice: "Policies Notice",
+  policy_detail_notice: "Policy Detail Notice",
 };
 
 /** Category code from the database (car, bike, health, term, other) → display name. */

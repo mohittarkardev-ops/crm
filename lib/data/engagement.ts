@@ -200,7 +200,7 @@ export async function getPlacements() {
   const now = Number.isFinite(parsedDbNow) ? parsedDbNow : Date.now();
 
   const counts: Record<string, number> = { live: 0, scheduled: 0, off: 0, ended: 0 };
-  const slots = new Set<string>(["home_banner"]);
+  const slots = new Set<string>(["home_banner", "policies_notice", "policy_detail_notice"]);
 
   const rows: Row[] = records.map((p) => {
     const status = !p.is_active

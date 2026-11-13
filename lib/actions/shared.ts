@@ -1,6 +1,7 @@
 import { revalidatePath } from "next/cache";
 import { getStaff, type StaffProfile } from "@/lib/auth";
 import { can, type PermissionKey } from "@/lib/rbac/permissions";
+import { OTHER_INSURER_VALUE } from "@/lib/policy-fields";
 import { createClient } from "@/lib/supabase/server";
 import type { ActionState } from "@/lib/module-types";
 import { MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL } from "@/lib/upload-limits";
@@ -159,4 +160,30 @@ export async function allIds(
     if (rows.length < 1000) break;
   }
   return ids;
+}
+
+/** Finds an existing insurer case-insensitively or creates a new one in `public.insurers`. */
+export async function resolveInsurer(db: Db, name: string): Promise<{ id: string; name: string } | { error: string }> {
+  const list = await db.from("insurers").select("id, name");
+  if (list.error) return { error: dbMessage(list.error) };
+  const hit = (list.data ?? []).find((i) => String(i.name).trim().toLowerCase() === name.toLowerCase());
+  if (hit) return { id: hit.id as string, name: hit.name as string };
+  const created = await db.from("insurers").insert({ name }).select("id, name").single();
+  if (created.error) return { error: dbMessage(created.error) };
+  return { id: created.data.id as string, name: created.data.name as string };
+}
+
+/** Reads `insurer` (and conditional `insurerCustom` when `__other__` is selected) with uniform validation. */
+export function readInsurerInput(formData: FormData, fieldErrors: Record<string, string>): string {
+  const selected = text(formData, "insurer");
+  const isOther = selected === OTHER_INSURER_VALUE;
+  const name = isOther ? text(formData, "insurerCustom") : selected;
+  if (isOther) {
+    if (name.length < 2 || name.length > 120) {
+      fieldErrors.insurerCustom = "Enter the new insurer's name (2–120 characters).";
+    }
+  } else if (name.length < 2 || name.length > 120) {
+    fieldErrors.insurer = "Choose an insurer.";
+  }
+  return name;
 }

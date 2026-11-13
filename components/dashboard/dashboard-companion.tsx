@@ -41,13 +41,7 @@ export function DashboardCompanion({
   const summary = `${activePolicies.toLocaleString("en-IN")} active ${activePolicies === 1 ? "policy" : "policies"} on watch${
     upcomingCount > 0 ? ` · ${upcomingCount} due in the next 60 days.` : " · all clear for the next 60 days."
   }`;
-  const action = canViewRenewals && upcomingCount > 0
-    ? { href: "/renewals", label: "Review renewals" }
-    : canViewPolicies
-      ? { href: "/policies", label: "Open policies" }
-      : canViewRenewals
-        ? { href: "/renewals", label: "View renewals" }
-        : null;
+  const action = { href: "/claim", label: "Launch Claim Desk" };
 
   return (
     <Card index={0} className="p-4 sm:px-5 sm:py-3.5">
