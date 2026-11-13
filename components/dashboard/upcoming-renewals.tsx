@@ -35,8 +35,8 @@ export function UpcomingRenewals({
             <p className="text-[28px] font-bold leading-9 text-ink tabular-nums">
               <CountUp value={total} />
             </p>
-            <h2 className="mt-0.5 text-[10px] font-semibold uppercase tracking-wider text-ink-muted">
-              Upcoming Renewals
+            <h2 className="mt-0.5 text-xs font-medium text-ink-muted">
+              Upcoming renewals
             </h2>
             <p className="mt-0.5 text-[11px] text-ink-faint">
               Due in next 60 days
@@ -61,7 +61,7 @@ export function UpcomingRenewals({
         {/* Quick status row */}
         <div className="mt-4 flex items-center justify-between gap-2 border-t border-divider/60 pt-3">
           <span className="text-[11px] font-medium text-ink-muted">
-            {total > 0 ? `${total} policy on watch` : "All caught up"}
+            {total > 0 ? `${total} ${total === 1 ? "policy" : "policies"} on watch` : "All caught up"}
           </span>
           {canViewRenewals && (
             <Link

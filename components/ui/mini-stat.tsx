@@ -39,7 +39,7 @@ export function MiniStat({
           </p>
           <Icon size={16} strokeWidth={1.75} className="mt-1 text-ink-faint" aria-hidden="true" />
         </div>
-        <h2 className="mt-0.5 text-[10px] font-semibold uppercase tracking-wider text-ink-muted">{title}</h2>
+        <h2 className="mt-0.5 text-xs font-medium text-ink-muted">{title}</h2>
       </div>
     </Card>
   );

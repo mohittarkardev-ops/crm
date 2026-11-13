@@ -91,7 +91,7 @@ export function Topbar({ account, allowed }: { account: Account; allowed?: Permi
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold text-ink">{account.name}</p>
                   <p className="truncate text-xs text-ink-muted">{account.email}</p>
-                  <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-wider text-ink-faint">{roleLabel}</p>
+                  <p className="mt-0.5 text-xs text-ink-muted">{roleLabel}</p>
                 </div>
               </div>
               <form action={signOut} className="border-t border-divider pt-1">

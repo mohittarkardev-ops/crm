@@ -39,7 +39,7 @@ export default async function DashboardPage() {
         />
         <StatCard
           index={2}
-          title="New Clients"
+          title="New clients"
           icon={UserPlus}
           value={data.newClients}
           visual={<WelcomeClientMini />}

@@ -58,7 +58,7 @@ export function StatCard({
             <p className="text-[28px] font-bold leading-9 text-ink tabular-nums">
               <CountUp value={value} kind={kind} prefix={prefix} />
             </p>
-            <h2 className="mt-0.5 text-[10px] font-semibold uppercase tracking-wider text-ink-muted">
+            <h2 className="mt-0.5 text-xs font-medium text-ink-muted">
               {title}
             </h2>
             <p className="mt-0.5 text-[11px] text-ink-faint">{subtitle}</p>

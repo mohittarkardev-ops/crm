@@ -728,7 +728,7 @@ export function ModulePage({
                     key={column.key}
                     scope="col"
                     className={cn(
-                      "whitespace-nowrap pb-3 pr-4 text-[10px] font-semibold uppercase tracking-wider text-ink-muted",
+                      "whitespace-nowrap pb-3 pr-4 text-xs font-medium text-ink-muted",
                       column.align === "right" && "text-right",
                     )}
                   >

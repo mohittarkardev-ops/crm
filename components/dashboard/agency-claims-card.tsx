@@ -44,8 +44,8 @@ export function AgencyClaimsCard({
                 </span>
               )}
             </div>
-            <h2 className="mt-0.5 text-[10px] font-semibold uppercase tracking-wider text-ink-muted">
-              Agency Claims Desk
+            <h2 className="mt-0.5 text-xs font-medium text-ink-muted">
+              Agency claims desk
             </h2>
             <p className="mt-0.5 text-[11px] text-ink-faint">
               CSE submissions via /claim portal
@@ -73,7 +73,7 @@ export function AgencyClaimsCard({
             )}
             aria-label="Open claims review queue"
           >
-            <span>Review Queue</span>
+            <span>Review queue</span>
             <ArrowUpRight size={13} strokeWidth={2} />
           </Link>
 
@@ -84,7 +84,7 @@ export function AgencyClaimsCard({
             className="inline-flex items-center gap-1 rounded-control bg-surface-muted/60 px-2 py-0.5 text-[11px] font-semibold text-ink-muted hover:bg-surface-muted hover:text-ink transition-colors"
             aria-label="Open public claim portal in new tab"
           >
-            <span>Launch /claim</span>
+            <span>Launch portal</span>
             <ExternalLink size={11} strokeWidth={2} />
           </Link>
         </div>

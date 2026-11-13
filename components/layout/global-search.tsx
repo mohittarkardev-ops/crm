@@ -278,7 +278,7 @@ export function GlobalSearch({ allowed }: { allowed?: PermissionKey[] }) {
           {groups.map((group, groupIdx) => (
             <div key={group.key} className={cn(groupIdx > 0 && "mt-1 border-t border-divider/60 pt-1.5")}>
               <div className="flex items-center justify-between px-3.5 py-1.5">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted">
+                <span className="text-xs font-medium text-ink-muted">
                   {group.label}
                 </span>
                 {group.viewAllHref && (

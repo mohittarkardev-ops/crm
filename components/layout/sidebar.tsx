@@ -49,7 +49,7 @@ function NavLink({ item, active, count }: { item: NavItem; active: boolean; coun
         />
         {hasBadge && (
           <span
-            className="absolute -top-1 -right-1 flex size-2 rounded-full bg-negative ring-2 ring-sidebar animate-pulse"
+            className="absolute -top-1 -right-1 flex size-2 rounded-full bg-negative ring-2 ring-sidebar"
             aria-hidden="true"
           />
         )}
@@ -149,7 +149,7 @@ export function Sidebar({ allowed, badges }: { allowed: PermissionKey[]; badges?
                 <Icon size={20} strokeWidth={1.75} aria-hidden="true" />
                 {hasBadge && (
                   <span
-                    className="absolute -top-1.5 -right-2 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-negative px-1 text-[9px] font-extrabold text-white shadow ring-2 ring-surface animate-bounce-subtle"
+                    className="absolute -top-1.5 -right-2 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-negative px-1 text-[9px] font-extrabold text-white shadow ring-2 ring-surface"
                     aria-hidden="true"
                   >
                     {badgeLabel}

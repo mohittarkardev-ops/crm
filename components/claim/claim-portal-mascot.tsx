@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState } from "react";
-import { Sparkles } from "lucide-react";
 import { cn } from "@/lib/cn";
 
 export type ClaimMascotMood =
@@ -47,7 +46,7 @@ export function ClaimPortalMascot({
       />
 
       {/* Main Shield Body of Pip */}
-      <g className={mood === "searching" ? "animate-pulse" : ""}>
+      <g>
         <path
           d="M50 14 C66 14 78 20 78 28 V56 C78 72 50 80 50 80 C50 80 22 72 22 56 V28 C22 20 34 14 50 14 Z"
           fill="var(--surface-strong)"
@@ -238,27 +237,24 @@ export function ClaimGuideBanner({
           <button
             type="button"
             onClick={handlePipClick}
-            title="Click Pip for agent tips & motivation!"
+            title="Click Pip for agent tips & guidance"
             className="group relative cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-full p-0.5"
           >
             <div
               key={bounce}
-              className={cn(
-                "transition-transform duration-200 group-hover:scale-105 active:scale-90",
-                bounce > 0 && "animate-[bounce_0.5s_ease-in-out]",
-              )}
+              className="transition-transform duration-150 active:scale-[0.97]"
             >
               <ClaimPortalMascot mood={mood} className="h-14 w-16 sm:h-16 sm:w-20" />
             </div>
             <span className="sr-only">Pip the Claim Companion</span>
           </button>
           <span className="mt-0.5 text-[9px] font-semibold text-ink-faint hover:text-ink cursor-pointer select-none">
-            {isCustomTip ? "Click for next" : "Click Pip"}
+            {isCustomTip ? "Next tip" : "Agent tip"}
           </span>
         </div>
 
         {/* Speech-tail bubble container */}
-        <div className="relative min-w-0 flex-1 rounded-xl border border-divider/70 bg-surface-strong/80 p-3 shadow-xs">
+        <div className="relative min-w-0 flex-1 rounded-tile border border-divider/70 bg-surface-strong/80 p-3 shadow-xs">
           {/* Subtle speech tail pointing towards Pip */}
           <div
             aria-hidden="true"
@@ -268,10 +264,9 @@ export function ClaimGuideBanner({
           <div className="space-y-1">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-1.5">
-                <span className="text-xs font-bold uppercase tracking-wider text-ink">
-                  {isCustomTip ? "Pip's Agent Pro-Tip" : title}
+                <span className="text-xs font-semibold text-ink">
+                  {isCustomTip ? "Agent guide" : title}
                 </span>
-                <Sparkles size={13} className="text-accent-ink opacity-70" />
               </div>
 
               <div className="flex items-center gap-1.5">

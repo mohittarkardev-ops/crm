@@ -283,7 +283,7 @@ export function ClaimPortal() {
         guideMood: "ready",
         guideTitle: `${typeLabel} Verified`,
         guideMessage: `${regValidation.message} Click "Verify" or press Enter to search CRM policy records.`,
-        guideBadgeText: regValidation.registrationType === "BH_SERIES" ? "BH Series 🇮🇳" : "Format Valid ✓",
+        guideBadgeText: regValidation.registrationType === "BH_SERIES" ? "BH Series" : "Format valid",
         guideBadgeTone: "positive",
       };
     }
@@ -292,7 +292,7 @@ export function ClaimPortal() {
         guideMood: "unknown_guide",
         guideTitle: "Manual Verification Required",
         guideMessage: `${regValidation.message} This registration will be queued for admin document review.`,
-        guideBadgeText: "Manual Review ⚠️",
+        guideBadgeText: "Manual review",
         guideBadgeTone: "warning",
       };
     }
@@ -301,7 +301,7 @@ export function ClaimPortal() {
         guideMood: "scout",
         guideTitle: "Plate Entered",
         guideMessage: `Press Enter or click "Verify" to verify plate ${regInput.toUpperCase()} against active CRM records.`,
-        guideBadgeText: "Ready to Verify",
+        guideBadgeText: "Ready to verify",
         guideBadgeTone: "accent",
       };
     }
@@ -850,8 +850,8 @@ export function ClaimPortal() {
                   {/* Convertible Category Dropdown Menu */}
                   {categoryMenuOpen && (
                     <div className="absolute left-0 top-full mt-1.5 z-40 w-60 rounded-tile border border-divider bg-surface-strong p-1.5 shadow-elev-2 fade-down">
-                      <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-ink-muted border-b border-divider/60 mb-1">
-                        Select Category
+                      <div className="px-2 py-1 text-xs font-medium text-ink-muted border-b border-divider/60 mb-1">
+                        Select category
                       </div>
                       {[
                         { value: "2W", label: "2W · Two Wheeler", desc: "Bike, Scooter, Moped", icon: Bike },
@@ -1074,8 +1074,8 @@ export function ClaimPortal() {
                   Vehicle <b>{lookup.vehicle}</b> verified in database.
                 </span>
               </div>
-              <span className="text-[11px] font-semibold uppercase tracking-wider bg-positive/15 px-2.5 py-0.5 rounded-full">
-                Active CRM Policy
+              <span className="text-[11px] font-medium bg-positive/15 px-2.5 py-0.5 rounded-full text-positive">
+                Active CRM policy
               </span>
             </div>
 
@@ -1084,8 +1084,8 @@ export function ClaimPortal() {
               {/* Left Column: Vehicle & Policy Profile */}
               <div className="rounded-tile border border-divider bg-surface-muted/40 p-4 space-y-3">
                 <div className="flex items-center justify-between border-b border-divider/60 pb-2.5">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-ink-muted">
-                    Vehicle Profile
+                  <span className="text-xs font-medium text-ink-muted">
+                    Vehicle profile
                   </span>
                   <div className="inline-flex items-center gap-1.5 rounded-[4px] border border-divider bg-white px-2 py-0.5 text-xs font-bold uppercase tracking-wider text-ink shadow-2xs">
                     <span className="bg-accent-soft px-1 rounded text-[9px] font-bold text-ink">IND</span>
@@ -1104,17 +1104,17 @@ export function ClaimPortal() {
                     <span className="font-semibold text-ink">{lookup.model || "Not recorded"}</span>
                   </div>
                   <div>
-                    <span className="block text-[10.5px] text-ink-muted">Existing Policy No.</span>
+                    <span className="block text-[10.5px] text-ink-muted">Existing policy no.</span>
                     <span className="font-semibold text-ink tabular-nums">{lookup.policyNumber || "Not recorded"}</span>
                   </div>
                   <div>
-                    <span className="block text-[10.5px] text-ink-muted">Previous Insurer</span>
+                    <span className="block text-[10.5px] text-ink-muted">Previous insurer</span>
                     <span className="font-semibold text-ink">{lookup.insurer || "Not recorded"}</span>
                   </div>
                 </div>
 
                 <div className="border-t border-divider/60 pt-2 flex items-center justify-between text-xs">
-                  <span className="text-ink-muted">Current Policy Due Date:</span>
+                  <span className="text-ink-muted">Current policy due date</span>
                   <span className="font-bold text-ink tabular-nums">
                     {lookup.dueDate ? formatDate(lookup.dueDate) : "Not recorded"}
                   </span>
@@ -1125,8 +1125,8 @@ export function ClaimPortal() {
               <div className="rounded-tile border border-divider bg-surface-muted/40 p-4 space-y-3 flex flex-col justify-between">
                 <div>
                   <div className="flex items-center justify-between border-b border-divider/60 pb-2.5">
-                    <span className="text-xs font-semibold uppercase tracking-wider text-ink-muted">
-                      Customer &amp; Valuation
+                    <span className="text-xs font-medium text-ink-muted">
+                      Customer and valuation
                     </span>
                     {lookup.idv !== null && lookup.idv > 0 ? (
                       <Chip tone="positive">IDV Recorded</Chip>
@@ -1137,7 +1137,7 @@ export function ClaimPortal() {
 
                   <div className="grid grid-cols-2 gap-2.5 pt-2 text-xs">
                     <div>
-                      <span className="block text-[10.5px] text-ink-muted">Owner Name</span>
+                      <span className="block text-[10.5px] text-ink-muted">Owner name</span>
                       <span className="font-semibold text-ink">{lookup.customer || "Not recorded"}</span>
                     </div>
                     <div>
@@ -1163,9 +1163,12 @@ export function ClaimPortal() {
                     </span>
                   </div>
                   {(!lookup.idv || lookup.idv === 0) && (
-                    <p className="mt-1.5 text-[11px] text-warning leading-snug">
-                      ⚠️ <b>Required:</b> Enter the renewed IDV in Step 2 below so the customer&apos;s mobile app shows full policy valuation.
-                    </p>
+                    <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-warning leading-snug">
+                      <AlertCircle size={13} className="shrink-0 text-warning" />
+                      <span>
+                        <strong>Required:</strong> Enter the renewed IDV in step 2 below so the customer&apos;s mobile app shows full policy valuation.
+                      </span>
+                    </div>
                   )}
                 </div>
               </div>
@@ -1192,13 +1195,13 @@ export function ClaimPortal() {
 
             {/* Section 1: Personal Details */}
             <div className="space-y-3">
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-muted border-b border-divider pb-1.5">
-                Personal Details
+              <h3 className="text-xs font-semibold text-ink-muted border-b border-divider pb-1.5">
+                Personal details
               </h3>
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <label className="flex flex-col gap-1.5">
                   <span className="text-xs font-medium text-ink-muted">
-                    OWNER NAME <span className="text-negative">*</span>
+                    Owner name <span className="text-negative">*</span>
                   </span>
                   <input
                     type="text"
@@ -1218,7 +1221,7 @@ export function ClaimPortal() {
 
                 <label className="flex flex-col gap-1.5">
                   <span className="text-xs font-medium text-ink-muted">
-                    CONTACT <span className="text-negative">*</span>
+                    Contact <span className="text-negative">*</span>
                   </span>
                   <div
                     className={cn(
@@ -1288,8 +1291,8 @@ export function ClaimPortal() {
             {/* Section 2: Vehicle Details (Categorized Catalog Dropdowns) */}
             <div className="space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-divider pb-1.5">
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">
-                  Vehicle Details
+                <h3 className="text-xs font-semibold text-ink-muted">
+                  Vehicle details
                 </h3>
                 <span className="text-[11px] text-ink-faint">
                   Standardized catalog selection for data uniformity
@@ -1298,7 +1301,7 @@ export function ClaimPortal() {
 
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 items-start">
                 <div className="flex flex-col gap-1.5">
-                  <span className="text-xs font-medium text-ink-muted">REG NO.</span>
+                  <span className="text-xs font-medium text-ink-muted">Reg. number</span>
                   <div className="flex h-10 items-center rounded-control border border-divider bg-surface-muted/60 px-3 text-sm font-bold uppercase tracking-wider tabular-nums text-ink">
                     {lookup.vehicle}
                   </div>
@@ -1307,7 +1310,7 @@ export function ClaimPortal() {
                 {/* Visual Vehicle Type Selection */}
                 <div className="flex flex-col gap-1.5">
                   <span className="text-xs font-medium text-ink-muted">
-                    TYP <span className="text-negative">*</span>
+                    Type <span className="text-negative">*</span>
                   </span>
                   <div className="flex h-10 items-center gap-1 rounded-control border border-divider bg-surface-muted/35 p-1">
                     {[
@@ -1349,7 +1352,7 @@ export function ClaimPortal() {
                 {/* Make Dropdown */}
                 <div className="flex flex-col gap-1.5">
                   <span className="text-xs font-medium text-ink-muted">
-                    MAKE <span className="text-negative">*</span>
+                    Make <span className="text-negative">*</span>
                   </span>
                   <CustomSelect
                     value={vehicleMake}
@@ -1373,7 +1376,7 @@ export function ClaimPortal() {
                 {/* Model Dropdown */}
                 <div className="flex flex-col gap-1.5">
                   <span className="text-xs font-medium text-ink-muted">
-                    MODEL <span className="text-negative">*</span>
+                    Model <span className="text-negative">*</span>
                   </span>
                   <CustomSelect
                     value={vehicleModel}
@@ -1434,7 +1437,7 @@ export function ClaimPortal() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <label className="flex flex-col gap-1.5">
               <span className="text-xs font-medium text-ink-muted">
-                {known ? "New Policy No." : "POLICY NO."} <span className="text-negative">*</span>
+                {known ? "New policy no." : "Policy number"} <span className="text-negative">*</span>
               </span>
               <input
                 type="text"
@@ -1454,7 +1457,7 @@ export function ClaimPortal() {
 
             <div className="flex flex-col gap-1.5">
               <span className="text-xs font-medium text-ink-muted">
-                {known ? "New Insurer" : "INSURER"} <span className="text-negative">*</span>
+                {known ? "New insurer" : "Insurer"} <span className="text-negative">*</span>
               </span>
               <CustomSelect
                 value={insurer}
@@ -1474,7 +1477,7 @@ export function ClaimPortal() {
 
             <div className="flex flex-col gap-1.5">
               <span className="text-xs font-medium text-ink-muted">
-                {known ? "New Due Date" : "DUE DATE"} <span className="text-negative">*</span>
+                {known ? "New due date" : "Due date"} <span className="text-negative">*</span>
               </span>
               <DatePicker
                 value={dueDate}

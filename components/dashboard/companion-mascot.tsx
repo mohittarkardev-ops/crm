@@ -45,9 +45,9 @@ export function CompanionMascot({
       <button
         type="button"
         onClick={triggerWaveAndCycle}
-        aria-label={`Wave to Pip (${SHIFT_LABELS[activeShift]} mode, tap to switch shift flair)`}
-        title={`${SHIFT_LABELS[activeShift]} — click to wave & switch shift flair`}
-        className="group -m-1 shrink-0 cursor-pointer rounded-control p-1 transition-transform duration-150 hover:scale-[1.04] active:scale-[0.97]"
+        aria-label="Pip the agency companion (click to wave)"
+        title="Pip the agency companion — click to wave"
+        className="group -m-1 shrink-0 cursor-pointer rounded-control p-1 transition-transform duration-150 active:scale-[0.97]"
       >
         <WavingShieldCharacter shift={activeShift} waveKey={waveKey} />
       </button>
@@ -55,17 +55,10 @@ export function CompanionMascot({
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           <p className="text-sm font-semibold text-ink sm:text-[15px]">
-            {greeting}, {firstName}
+            Agency Overview · {firstName}
           </p>
-          <Chip tone="accent">Shield Crew</Chip>
-          <button
-            type="button"
-            onClick={triggerWaveAndCycle}
-            title="Click to cycle morning mug, sun visor, and evening desk lamp"
-            className="cursor-pointer rounded-full bg-surface-muted px-2 py-0.5 text-[11px] font-medium text-ink-muted transition-colors hover:bg-accent-soft hover:text-ink"
-          >
-            {SHIFT_LABELS[activeShift]}
-          </button>
+          <Chip tone="accent">Operations</Chip>
+          <Chip tone="neutral">Active session</Chip>
         </div>
         <p className="mt-0.5 text-xs text-ink-muted tabular-nums">{summary}</p>
       </div>

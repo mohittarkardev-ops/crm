@@ -170,7 +170,7 @@ export function DateRangeFilter({
       {open && (
         <div className="pop-in absolute right-0 top-12 z-30 flex w-[min(35rem,calc(100vw-2rem))] flex-col gap-3 rounded-tile bg-surface-strong p-3 shadow-card-hover sm:flex-row">
           <div className="sm:w-40 sm:shrink-0">
-            <p className="px-1 pb-2 text-[10px] font-semibold uppercase tracking-wider text-ink-muted">
+            <p className="px-1 pb-2 text-xs font-medium text-ink-muted">
               {label} date
             </p>
             <ul>

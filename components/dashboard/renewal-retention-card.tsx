@@ -68,11 +68,11 @@ export function RenewalRetentionCard({
         {/* Detailed Stats Row */}
         <div className="mt-3 grid grid-cols-2 gap-2 rounded-tile border border-divider/60 bg-surface-muted/30 p-2 text-xs">
           <div>
-            <span className="text-[10px] uppercase font-semibold text-ink-muted">Renewed</span>
+            <span className="text-[11px] font-medium text-ink-muted">Renewed</span>
             <p className="font-bold text-ink tabular-nums">{formatNumber(current.renewedCount)}</p>
           </div>
           <div>
-            <span className="text-[10px] uppercase font-semibold text-ink-muted">Closed Base</span>
+            <span className="text-[11px] font-medium text-ink-muted">Closed base</span>
             <p className="font-bold text-ink tabular-nums">{formatNumber(current.closedBaseCount)}</p>
           </div>
         </div>

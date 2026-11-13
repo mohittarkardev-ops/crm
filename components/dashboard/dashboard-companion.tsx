@@ -39,9 +39,9 @@ export function DashboardCompanion({
   const firstName = staffName.trim().split(/\s+/)[0] || staffName;
   const { greeting, shift } = istSchedule();
   const summary = `${activePolicies.toLocaleString("en-IN")} active ${activePolicies === 1 ? "policy" : "policies"} on watch${
-    upcomingCount > 0 ? ` · ${upcomingCount} due in the next 60 days.` : " · all clear for the next 60 days."
+    upcomingCount > 0 ? ` · ${upcomingCount} due in next 60 days` : " · no renewals due in next 60 days"
   }`;
-  const action = { href: "/claim", label: "Launch Claim Desk" };
+  const action = { href: "/claim", label: "Launch Claim Portal" };
 
   return (
     <Card index={0} className="p-4 sm:px-5 sm:py-3.5">

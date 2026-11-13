@@ -8,7 +8,7 @@ export function DetailList({ items, columns = 2 }: { items: DetailItem[]; column
     <dl className={columns === 2 ? "grid gap-x-6 gap-y-4 sm:grid-cols-2" : "grid gap-y-4"}>
       {items.map((item) => (
         <div key={item.label} className="min-w-0">
-          <dt className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted">{item.label}</dt>
+          <dt className="text-xs font-medium text-ink-muted">{item.label}</dt>
           <dd className="mt-0.5 break-words text-sm text-ink">
             {item.value === null || item.value === undefined || item.value === "" ? (
               <span className="text-ink-faint">—</span>

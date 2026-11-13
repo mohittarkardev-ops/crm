@@ -126,7 +126,7 @@ export function Calendar({ selected, rangeFrom, rangeTo, onPick, min, max }: Cal
             {WEEKDAYS.map((day) => (
               <span
                 key={day}
-                className="grid h-8 place-items-center text-[10px] font-semibold uppercase tracking-wider text-ink-muted"
+                className="grid h-8 place-items-center text-xs font-medium text-ink-muted"
               >
                 {day}
               </span>

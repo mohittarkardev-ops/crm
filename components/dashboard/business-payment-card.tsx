@@ -212,7 +212,7 @@ export function BusinessPaymentCard({
                 unit="%"
                 center={
                   <div className="pointer-events-none flex flex-col items-center justify-center text-center px-2">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-ink-muted">
+                    <span className="text-xs font-medium text-ink-muted">
                       {period.periodLabel}
                     </span>
                     <span className="text-sm font-bold text-ink tabular-nums">

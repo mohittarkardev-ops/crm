@@ -65,8 +65,8 @@ export function ActivePoliciesCard({
                 ({current.customersCount} {current.customersCount === 1 ? "client" : "clients"})
               </span>
             </div>
-            <h2 className="mt-0.5 text-[10px] font-semibold uppercase tracking-wider text-ink-muted">
-              Active Policies (Agency Renewed)
+            <h2 className="mt-0.5 text-xs font-medium text-ink-muted">
+              Active policies (agency renewed)
             </h2>
             <p className="mt-0.5 text-[11px] text-ink-faint">
               Renewed for current or future year
@@ -125,12 +125,12 @@ export function ActivePoliciesCard({
           {[
             { label: "2W", count: data.byCategory["2w"].policiesCount },
             { label: "4W", count: data.byCategory["4w"].policiesCount },
-            { label: "HLTH", count: data.byCategory.health.policiesCount },
-            { label: "TERM", count: data.byCategory.term.policiesCount },
+            { label: "Health", count: data.byCategory.health.policiesCount },
+            { label: "Term", count: data.byCategory.term.policiesCount },
             { label: "SME", count: data.byCategory.sme.policiesCount },
           ].map((item) => (
             <div key={item.label} className="min-w-0">
-              <span className="block text-[9px] font-bold uppercase tracking-wider text-ink-muted truncate">
+              <span className="block text-[10px] font-medium text-ink-muted truncate">
                 {item.label}
               </span>
               <span className="block text-xs font-bold tabular-nums text-ink">
