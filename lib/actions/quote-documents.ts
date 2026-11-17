@@ -51,9 +51,21 @@ export async function uploadQuoteDocument(_previous: ActionState, formData: Form
     return fail(dbMessage(inserted.error));
   }
 
+  // Smart auto-transition: When staff uploads a quote proposal / comparison document,
+  // automatically mark the quote request as 'completed' so customer's mobile app immediately
+  // transitions to "Quote ready" and displays the shared documents.
+  const statusUpdate = await db
+    .from("quote_requests")
+    .update({ status: "completed" })
+    .eq("id", quoteId);
+  if (!statusUpdate.error) {
+    await audit(db, staff.id, "quote.completed", "quote_request", quoteId);
+  }
+
   await audit(db, staff.id, "quote_document.upload", "quote_request", quoteId);
   revalidatePath(`/quotes/${quoteId}`);
-  return done("Quote document uploaded.");
+  revalidatePath("/quotes");
+  return done("Quote document uploaded and quote marked completed.");
 }
 
 export async function deleteQuoteDocument(documentId: string, quoteId: string): Promise<ActionState> {

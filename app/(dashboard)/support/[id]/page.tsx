@@ -17,7 +17,7 @@ import { requirePermission } from "@/lib/rbac/server";
 export default async function TicketDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const staff = await requirePermission("support.view");
-  const t = await getTicketDetail(id);
+  const t = await getTicketDetail(id, staff.id);
   const who = t.client?.name ?? t.client?.mobile ?? "Unknown user";
   const whatsapp = t.client ? `https://wa.me/${t.client.mobile.replace(/\D/g, "")}` : null;
 

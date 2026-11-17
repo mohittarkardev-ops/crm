@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { dateIST, one } from "@/lib/data/helpers";
+import { audit } from "@/lib/actions/shared";
 import type { ClientInfo } from "@/lib/data/details";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -14,7 +15,7 @@ export type TicketDetail = {
   client: ClientInfo | null;
 };
 
-export async function getTicketDetail(id: string): Promise<TicketDetail> {
+export async function getTicketDetail(id: string, staffId?: string): Promise<TicketDetail> {
   if (!UUID.test(id)) notFound();
   const db = await createClient();
 
@@ -46,11 +47,27 @@ export async function getTicketDetail(id: string): Promise<TicketDetail> {
     created_at: string;
   } | null;
 
+  // Smart auto-transition: When staff opens an unreviewed ticket,
+  // automatically advance status from 'open' to 'in_progress' so customer sees active resolution
+  let currentStatus = t.status;
+  if (currentStatus === "open") {
+    const updateRes = await db
+      .from("support_tickets")
+      .update({ status: "in_progress" })
+      .eq("id", id);
+    if (!updateRes.error) {
+      currentStatus = "in_progress";
+      if (staffId) {
+        await audit(db, staffId, "ticket.in_progress", "support_ticket", id);
+      }
+    }
+  }
+
   return {
     id: t.id,
     subject: t.subject,
     description: t.description,
-    status: t.status,
+    status: currentStatus,
     createdOn: dateIST(t.created_at),
     client: u
       ? {

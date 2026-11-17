@@ -22,7 +22,7 @@ import { categoryLabel } from "@/lib/status";
 export default async function QuoteDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const staff = await requirePermission("quotes.view");
-  const [q, attachments] = await Promise.all([getQuoteDetail(id), getQuoteAttachments(id)]);
+  const [q, attachments] = await Promise.all([getQuoteDetail(id, staff.id), getQuoteAttachments(id)]);
   const who = q.client?.name ?? q.client?.mobile ?? "Unknown user";
   const whatsapp = q.client ? `https://wa.me/${q.client.mobile.replace(/\D/g, "")}` : null;
 

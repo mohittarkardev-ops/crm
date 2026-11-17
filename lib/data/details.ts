@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { dateIST, daysBetween, one, policyState, todayIST, type PolicyState } from "@/lib/data/helpers";
+import { audit } from "@/lib/actions/shared";
 
 type Named<T> = T | T[] | null;
 
@@ -294,7 +295,7 @@ export type QuoteDetail = {
   documents: DocumentItem[];
 };
 
-export async function getQuoteDetail(id: string): Promise<QuoteDetail> {
+export async function getQuoteDetail(id: string, staffId?: string): Promise<QuoteDetail> {
   if (!UUID.test(id)) notFound();
   const db = await createClient();
   const today = todayIST();
@@ -331,9 +332,25 @@ export async function getQuoteDetail(id: string): Promise<QuoteDetail> {
   };
   const policy = one(q.policies);
 
+  // Smart auto-transition: When staff opens an unreviewed quote request,
+  // automatically advance status from 'new' to 'in_progress' so customer sees active review
+  let currentStatus = q.status;
+  if (currentStatus === "new") {
+    const updateRes = await db
+      .from("quote_requests")
+      .update({ status: "in_progress" })
+      .eq("id", id);
+    if (!updateRes.error) {
+      currentStatus = "in_progress";
+      if (staffId) {
+        await audit(db, staffId, "quote.in_progress", "quote_request", id);
+      }
+    }
+  }
+
   return {
     id: q.id,
-    status: q.status,
+    status: currentStatus,
     notes: q.notes,
     createdOn: dateIST(q.created_at),
     client: toClient(q.users),
